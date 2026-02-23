@@ -111,6 +111,11 @@ jobs:
           print(json.dumps(status, indent=2))
           PY
 
+      - name: Remove work directory from handoff artifact
+        run: |
+          set -euo pipefail
+          rm -rf out/work
+
       - name: Write pkgfile templates (armv7 handoff)
         run: |
           set -euo pipefail

@@ -21,28 +21,24 @@ if npm pack "@opencode-ai/cli@${OPENCODE_VERSION}" >"$ABS_OUT_DIR/logs/opencode-
 	tgz=$(ls -1 *.tgz | head -n1)
 	tar -xzf "$tgz"
 	pack_source="npm-scoped-cli"
-elif curl -fsSL "https://github.com/anomalyco/opencode/releases/download/v${OPENCODE_VERSION}/opencode-linux-arm64.tar.gz" -o opencode-linux-arm64.tar.gz >"$ABS_OUT_DIR/logs/opencode-fetch-release.txt" 2>&1; then
-	tar -xzf opencode-linux-arm64.tar.gz
-	pack_source="upstream-linux-arm64-release"
 else
-	printf '{\n  "status": "failed",\n  "reason": "no npm package and no upstream arm64 tarball fetched",\n  "opencode_version": "%s"\n}\n' "$OPENCODE_VERSION" >"$ABS_OUT_DIR/status/opencode-pack-status.json"
-	echo "opencode source package fetch failed" >&2
+	printf '{\n  "status": "failed",\n  "reason": "@opencode-ai/cli package not available for this version",\n  "opencode_version": "%s",\n  "source": "npm-scoped-cli"\n}\n' "$OPENCODE_VERSION" >"$ABS_OUT_DIR/status/opencode-pack-status.json"
+	echo "npm pack @opencode-ai/cli failed" >&2
 	exit 20
 fi
 
 printf '{\n  "status": "ok",\n  "source": "%s",\n  "opencode_version": "%s"\n}\n' "$pack_source" "$OPENCODE_VERSION" >"$ABS_OUT_DIR/status/opencode-pack-status.json"
 
-ENTRY=""
-if [[ "$pack_source" == "npm-scoped-cli" ]]; then
-	python3 - <<'PY' >"$ABS_OUT_DIR/logs/opencode-package-bin.txt"
+python3 - <<'PY' >"$ABS_OUT_DIR/logs/opencode-package-bin.txt"
 import json
 from pathlib import Path
 p=Path('package/package.json')
 d=json.loads(p.read_text())
 print(json.dumps({"name":d.get("name"),"version":d.get("version"),"bin":d.get("bin")}, indent=2))
 PY
-	BIN_REL=$(
-		python3 - <<'PY'
+
+BIN_REL=$(
+	python3 - <<'PY'
 import json
 from pathlib import Path
 d=json.loads(Path('package/package.json').read_text())
@@ -54,12 +50,9 @@ elif isinstance(b, dict):
 else:
     raise SystemExit(1)
 PY
-	)
-	ENTRY="package/${BIN_REL}"
-else
-	ENTRY="opencode"
-fi
+)
 
+ENTRY="package/${BIN_REL}"
 if [[ ! -f "$ENTRY" ]]; then
 	echo "bin entry not found: $ENTRY" >&2
 	exit 30
