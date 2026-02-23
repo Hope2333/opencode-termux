@@ -1,139 +1,42 @@
-# PKGBUILD for OpenCode on Termux
 pkgname=opencode
-pkgver=1.1.65
-pkgrel=8
-pkgdesc='Open source coding agent for Termux with TTY+lock cleanup'
+pkgver=1.2.10
+pkgrel=1
+pkgdesc='OpenCode for Termux from local staged prefix'
 arch=('aarch64')
 url='https://github.com/anomalyco/opencode'
 license=('MIT')
 options=('!strip' '!debug')
 
-depends=('bash' 'ncurses' 'bun')
+depends=('bash' 'ncurses')
 makedepends=()
-optdepends=(
-    'ripgrep: faster search'
-    'wl-clipboard: Wayland clipboard'
-    'xclip: X11 clipboard'
-)
-
 source=()
 sha256sums=()
 
-# Use environment variables for sensitive paths (separated into develop/.config/)
-_opencode_source="${OPENCODE_SOURCE:-${PWD}/../../sources/opencode}"
-_opencode_runtime="${OPENCODE_RUNTIME:-${PWD}/../../runtime/opencode}"
-# Build directory for staging (can be overridden)
-_builddir="${BUILD_DIR:-${PWD}/../../build}"
+_prefix="${PREFIX:-/data/data/com.termux/files/usr}"
+_repo_root="${REPO_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}"
+_staged_prefix="${STAGED_PREFIX:-${_repo_root}/artifacts/staged/prefix}"
 
 prepare() {
-    msg "Preparing OpenCode build..."
-    
-    # Create build directory
-    mkdir -p "$_builddir"
-    
-    # Check for source and runtime
-    if [[ ! -d "$_opencode_source" ]]; then
-        warning "OpenCode source not found at $_opencode_source"
-        warning "Set OPENCODE_SOURCE environment variable or clone sources to sources/opencode/"
-    fi
-    
-    if [[ ! -f "$_opencode_runtime" ]]; then
-        warning "OpenCode runtime not found at $_opencode_runtime"
-        warning "Set OPENCODE_RUNTIME environment variable or build runtime first"
-    fi
+  [[ -x "${_staged_prefix}/lib/opencode/runtime/opencode" ]] || {
+    error "missing runtime at ${_staged_prefix}/lib/opencode/runtime/opencode"
+    return 1
+  }
+  [[ -x "${_staged_prefix}/bin/opencode" ]] || {
+    error "missing launcher at ${_staged_prefix}/bin/opencode"
+    return 1
+  }
 }
 
 build() {
-    msg "Building OpenCode staged prefix..."
-    
-    local prefix="${PREFIX:-/data/data/com.termux/files/usr}"
-    mkdir -p "$pkgdir$prefix/lib/opencode/runtime"
-    mkdir -p "$pkgdir$prefix/bin"
-    mkdir -p "$pkgdir$prefix/share/opencode"
-    
-    # Copy source if available
-    if [[ -d "$_opencode_source" ]]; then
-        msg2 "Copying source from $_opencode_source"
-        rsync -a --exclude='.git' --exclude='node_modules' \
-            "$_opencode_source/" "$pkgdir$prefix/lib/opencode/" 2>/dev/null || \
-        cp -a "$_opencode_source/." "$pkgdir$prefix/lib/opencode/"
-        
-        # Also copy to share for development access
-        rsync -a --exclude='.git' --exclude='node_modules' \
-            "$_opencode_source/" "$pkgdir$prefix/share/opencode/source/" 2>/dev/null || true
-    else
-        warning "Source directory missing - package will be runtime-only"
-    fi
-    
-    # Install runtime
-    if [[ -f "$_opencode_runtime" ]]; then
-        msg2 "Installing runtime from $_opencode_runtime"
-        install -m755 "$_opencode_runtime" "$pkgdir$prefix/lib/opencode/runtime/opencode"
-    else
-        warning "Runtime not found - creating placeholder"
-        cat > "$pkgdir$prefix/lib/opencode/runtime/opencode" <<'PLACEHOLDER'
-#!/usr/bin/env bash
-echo "OpenCode runtime not installed. Please set OPENCODE_RUNTIME or build runtime."
-exit 1
-PLACEHOLDER
-        chmod 755 "$pkgdir$prefix/lib/opencode/runtime/opencode"
-    fi
-    
-    cat > "$pkgdir$prefix/bin/opencode" <<'LAUNCHER'
-#!/usr/bin/env bash
-set -euo pipefail
-
-SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-OPENCODE_CLI="$SELF_DIR/../lib/opencode/packages/opencode/bin/opencode"
-OPENCODE_RUNTIME="$SELF_DIR/../lib/opencode/runtime/opencode"
-
-cleanup_state_locks() {
-    local state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/opencode"
-    [[ -d "$state_dir" ]] && find "$state_dir" -maxdepth 1 -type f -name '*.lock' -delete 2>/dev/null || true
-}
-
-cleanup_broken_cached_modules() {
-    local cache_root="${XDG_CACHE_HOME:-$HOME/.cache}/opencode"
-    local mod_dir="$cache_root/node_modules/opencode-anthropic-auth"
-    [[ -d "$mod_dir" ]] && [[ ! -f "$mod_dir/package.json" ]] && rm -rf "$cache_root/node_modules" 2>/dev/null || true
-}
-
-ensure_stdio_tty() {
-    [[ -t 0 ]] && [[ -t 1 ]] && [[ -w /dev/tty ]] && exec </dev/tty >/dev/tty 2>/dev/tty || true
-}
-
-cleanup_tty() {
-    [[ -t 1 ]] && printf '\033[?1049l\033[?25h\033[0m' >/dev/tty 2>/dev/null || true
-    command -v stty >/dev/null 2>&1 && stty sane 2>/dev/null || true
-    command -v tput >/dev/null 2>&1 && tput rmcup >/dev/null 2>&1 || true
-}
-
-trap cleanup_tty EXIT INT TERM HUP QUIT
-
-ensure_stdio_tty
-cleanup_state_locks
-cleanup_broken_cached_modules
-
-: "\${OPENCODE_DISABLE_DEFAULT_PLUGINS:=1}"
-export OPENCODE_DISABLE_DEFAULT_PLUGINS
-
-if [[ -x "$OPENCODE_RUNTIME" ]]; then
-    "$OPENCODE_RUNTIME" "$@"
-    exit $?
-fi
-
-"$OPENCODE_CLI" "$@"
-LAUNCHER
-    chmod 755 "$pkgdir$prefix/bin/opencode"
+  true
 }
 
 package() {
-    true
+  mkdir -p "$pkgdir${_prefix}"
+  cp -a "${_staged_prefix}/." "$pkgdir${_prefix}/"
 }
 
 post_install() {
-    echo ""
-    echo "OpenCode for Termux installed!"
-    echo "Usage: opencode"
-    echo ""
+  echo "OpenCode for Termux installed"
+  echo "Run: opencode --version"
 }
