@@ -1,46 +1,89 @@
-# OpenCode for Termux (OCT)
+# opencode-termux (OCT)
 
-Sub-project of Oh-My-Litecode (OML)
+Termux-focused packaging and runtime workflow for OpenCode.
 
-## Overview
+This repository is part of the OML/OCT track and focuses on:
 
-This project provides OpenCode builds for Termux/Android with:
+- reproducible OpenCode runtime packaging on real Termux devices
+- consistent deb + pacman package outputs from one staged prefix
+- safer launcher defaults for Termux runtime behavior
+- plugin lifecycle support (install/update/rollback/patch)
 
-- TTY cleanup launcher (fixes setRawMode errors)
-- Stale lock cleanup on startup
-- Broken plugin cache auto-repair
-- Default plugins disabled (avoids EACCES errors)
+## Current status (important)
 
-## Installation
+- Verified runtime line: **OpenCode Runtime 1.2.10** (Android/Bionic wrapped)
+- Final packages are produced **locally on Termux**
+- GitHub Actions is used for **armv7 cross-prebuild handoff**, not final Termux runtime claims
 
-### From Pacman Package
+## Repository layout
+
+- `scripts/` - local build + package scripts
+- `packaging/` - package metadata/templates
+- `tools/` - helper tools (`produce-local.sh`, `plugin-manager.sh`)
+- `docs/` - canonical documentation and runbooks
+
+Start here: **`docs/README.md`**
+
+## Build model (Phase A/B/C)
+
+### Phase A: CI armv7 prebuild handoff
+
+Workflow: `.github/workflows/prebuild-armv7.yml`
+
+CI prepares cross-toolchain evidence + handoff templates/artifacts.
+It does **not** claim final Termux runtime compatibility.
+
+### Phase B: Local Termux final build/package
+
+Use real Termux environment for final runtime wrapping and package generation.
+
+Typical flow:
 
 ```bash
-pacman -U opencode-termux-1.1.65-1-aarch64.pkg.tar.xz
+./tools/produce-local.sh 1.2.10
+./scripts/build.sh
+./scripts/package/package_deb.sh
+./scripts/package/package_pacman.sh
 ```
 
-### From Source
+### Phase C: Plugin lifecycle
 
-```bash
-make build VER=1.1.65 PKGMGR=pacman
-```
+Use package-manager-driven plugin strategy + local recoverability tools.
 
-## Configuration
+See:
+- `docs/plugin-packaging-design.md`
+- `docs/plugin-management.md`
 
-The launcher sets these defaults:
+## Verified launcher safeguards
 
-- `OPENCODE_DISABLE_DEFAULT_PLUGINS=1` - Disables opencode-anthropic-auth
-- Lock cleanup in `~/.local/state/opencode/*.lock`
-- Plugin cache repair in `~/.cache/opencode/node_modules`
+Installed launcher includes:
 
-## Versioning
+- TTY cleanup on exit
+- stale lock cleanup
+- broken plugin cache cleanup
+- `OPENCODE_DISABLE_DEFAULT_PLUGINS=1` default
 
-Package naming: `opencode-{ver}-{relfix}.{pkgmgr}`
+## Metadata policy
 
-Examples:
-- `opencode-1.1.65-1.pacman.tar.xz`
-- `opencode-debug-1.1.65-1.pacman.tar.xz` (includes sources)
+Maintainer/packager identity defaults to:
 
-## Upstream
+`Hope2333(幽零小喵) <u0catmiao@proton.me>`
 
-- [OpenCode](https://github.com/anomalyco/opencode) - MIT License
+## What this repo does NOT do
+
+- Does not use musl as the final Termux runtime path
+- Does not use proot as official build path
+- Does not treat CI artifacts as final Termux release binaries
+
+## Quick links
+
+- Runtime build details: `docs/13-opencode-runtime-build.md`
+- Package docs: `docs/20-packaging-deb.md`, `docs/21-packaging-pkg-tar-xz.md`
+- CI armv7 handoff: `docs/ci-prebuild-armv7.md`
+- Execution checklist: `docs/execution-checklist.md`
+- Incident RCA (`.so` restart snowball): `docs/incidents/2026-02-23-opencode-web-termux-so-avalanche.md`
+
+## License / upstream
+
+- Upstream OpenCode: <https://github.com/anomalyco/opencode>
+- This packaging workflow repository follows upstream license constraints for redistributed artifacts.

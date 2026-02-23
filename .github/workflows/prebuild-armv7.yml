@@ -1,149 +1,142 @@
-name: "Prebuild armv7 assets (handoff only)"
+name: armv7 cross-prebuild handoff
 
 on:
   workflow_dispatch:
     inputs:
       opencode_version:
-        description: "OpenCode version"
+        description: OpenCode version tag (metadata only unless source build succeeds)
         required: true
         default: "1.2.10"
       bun_version:
-        description: "Bun version"
+        description: Bun version tag (metadata only unless source build succeeds)
         required: true
         default: "1.2.20"
   push:
-    branches:
-      - main
-      - master
+    branches: [main, master]
     paths:
-      - ".github/workflows/prebuild-armv7.yml"
-      - "docs/ci-prebuild-armv7.md"
+      - .github/workflows/prebuild-armv7.yml
+      - docs/ci-prebuild-armv7.md
 
 jobs:
-  prebuild-armv7:
+  armv7-cross-prebuild:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Prepare directories
+      - name: Prepare output directories
         run: |
           set -euo pipefail
-          mkdir -p out/assets out/pkgfile-template
+          mkdir -p out/assets out/logs out/pkgfile-template out/toolchain
 
-      - name: Download opencode armv7 artifact if available
-        env:
-          OPENCODE_VERSION: ${{ github.event.inputs.opencode_version || '1.2.10' }}
+      - name: Install cross toolchain and emulation
         run: |
           set -euo pipefail
-          url="https://github.com/anomalyco/opencode/releases/download/v${OPENCODE_VERSION}/opencode-linux-armv7.tar.gz"
-          if curl -fL "$url" -o "out/assets/opencode-linux-armv7-${OPENCODE_VERSION}.tar.gz"; then
-            echo "opencode armv7 fetched"
-          else
-            printf 'missing upstream artifact: %s\n' "$url" > out/assets/opencode-linux-armv7-MISSING.txt
-          fi
+          sudo apt-get update
+          sudo apt-get install -y \
+            gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf \
+            binutils-arm-linux-gnueabihf libc6-dev-armhf-cross \
+            qemu-user-static file jq zip unzip curl ca-certificates
+          arm-linux-gnueabihf-gcc --version | head -n1 | tee out/toolchain/gcc-version.txt
+          qemu-arm-static --version | head -n1 | tee out/toolchain/qemu-version.txt
 
-      - name: Download bun armv7 artifact if available
-        env:
-          BUN_VERSION: ${{ github.event.inputs.bun_version || '1.2.20' }}
-        run: |
-          set -euo pipefail
-          url="https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/bun-linux-armv7.zip"
-          if curl -fL "$url" -o "out/assets/bun-linux-armv7-${BUN_VERSION}.zip"; then
-            echo "bun armv7 fetched"
-          else
-            printf 'missing upstream artifact: %s\n' "$url" > out/assets/bun-linux-armv7-MISSING.txt
-          fi
-
-      - name: Generate checksums and manifest
+      - name: Probe upstream release assets (evidence only)
         env:
           OPENCODE_VERSION: ${{ github.event.inputs.opencode_version || '1.2.10' }}
           BUN_VERSION: ${{ github.event.inputs.bun_version || '1.2.20' }}
         run: |
           set -euo pipefail
-          if [ -n "$(ls -A out/assets 2>/dev/null)" ]; then
-            (cd out/assets && sha256sum * > ../checksums.txt)
-          else
-            : > out/checksums.txt
-          fi
+          curl -fsSL "https://api.github.com/repos/anomalyco/opencode/releases/tags/v${OPENCODE_VERSION}" -o out/logs/opencode-release.json || true
+          curl -fsSL "https://api.github.com/repos/oven-sh/bun/releases/tags/bun-v${BUN_VERSION}" -o out/logs/bun-release.json || true
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          variants = ["armv7", "armhf", "arm32", "armv7l", "linux-arm"]
+          for name in ["opencode-release.json", "bun-release.json"]:
+              p = Path("out/logs") / name
+              if not p.exists():
+                  continue
+              try:
+                  data = json.loads(p.read_text())
+              except Exception:
+                  continue
+              assets = [a.get("name", "") for a in data.get("assets", [])]
+              Path(f"out/logs/{name}.assets.txt").write_text("\n".join(assets) + "\n")
+              hits = [a for a in assets if any(v in a.lower() for v in variants)]
+              Path(f"out/logs/{name}.arm-candidates.txt").write_text("\n".join(hits) + "\n")
+          PY
+
+      - name: Cross-build platform scaffold (placeholder for source builds)
+        env:
+          OPENCODE_VERSION: ${{ github.event.inputs.opencode_version || '1.2.10' }}
+          BUN_VERSION: ${{ github.event.inputs.bun_version || '1.2.20' }}
+        run: |
+          set -euo pipefail
+          cat > out/logs/cross-build-platform.txt <<'TXT'
+          This workflow sets up the armv7 cross toolchain and collects release evidence.
+          Source build commands for OpenCode/Bun armv7 are intentionally not hard-coded yet,
+          because upstream build systems and dependencies must be validated first.
+          Next step: add repo-specific source build scripts and run them here.
+          TXT
+
+      - name: Write pkgfile templates (armv7 handoff)
+        run: |
+          set -euo pipefail
+          cat > out/pkgfile-template/PKGBUILD.template <<'P1'
+          pkgname=opencode
+          pkgver=__OPENCODE_VERSION__
+          pkgrel=1
+          arch=('armv7l')
+          source=('opencode-linux-armv7-__OPENCODE_VERSION__.tar.gz')
+          sha256sums=('__SHA256__')
+          P1
+          cat > out/pkgfile-template/debian-control.template <<'P2'
+          Package: opencode
+          Version: __OPENCODE_VERSION__
+          Architecture: armhf
+          Maintainer: Hope2333(幽零小喵) <u0catmiao@proton.me>
+          Description: OpenCode armv7 cross-prebuild handoff template for local Termux final packaging
+          P2
+
+      - name: Generate manifest
+        env:
+          OPENCODE_VERSION: ${{ github.event.inputs.opencode_version || '1.2.10' }}
+          BUN_VERSION: ${{ github.event.inputs.bun_version || '1.2.20' }}
+        run: |
+          set -euo pipefail
           python3 - <<'PY'
           import hashlib
           import json
           import os
           from pathlib import Path
 
-          assets = Path("out/assets")
           items = []
-          for p in sorted(assets.glob("*")):
+          for p in sorted(Path('out').rglob('*')):
               if p.is_file():
                   items.append(
                       {
-                          "name": p.name,
-                          "size": p.stat().st_size,
-                          "sha256": hashlib.sha256(p.read_bytes()).hexdigest(),
+                          'path': str(p.relative_to('out')),
+                          'size': p.stat().st_size,
+                          'sha256': hashlib.sha256(p.read_bytes()).hexdigest(),
                       }
                   )
-
           manifest = {
-              "kind": "prebuild-handoff",
-              "target": "linux-armv7",
-              "opencode_version": os.environ.get("OPENCODE_VERSION"),
-              "bun_version": os.environ.get("BUN_VERSION"),
-              "git_sha": os.environ.get("GITHUB_SHA", ""),
-              "items": items,
-              "note": "handoff assets only; final Termux packages must be built and validated locally",
+              'kind': 'cross-prebuild-handoff',
+              'target': 'linux-armv7',
+              'opencode_version': os.environ.get('OPENCODE_VERSION'),
+              'bun_version': os.environ.get('BUN_VERSION'),
+              'git_sha': os.environ.get('GITHUB_SHA', ''),
+              'contains_final_termux_runtime': False,
+              'note': 'Cross toolchain scaffold plus evidence/templates only until source build scripts are integrated',
+              'items': items,
           }
-          Path("out/manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+          Path('out/manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
           PY
+          (cd out && find . -type f | sort | xargs sha256sum > checksums.txt)
 
-      - name: Write pkgfile templates
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-
-          Path("out/pkgfile-template/PKGBUILD.template").write_text(
-              "\n".join(
-                  [
-                      "pkgname=opencode",
-                      "pkgver=<opencode_version>",
-                      "pkgrel=1",
-                      "arch=('armv7l')",
-                      "source=('opencode-linux-armv7-<opencode_version>.tar.gz')",
-                      "sha256sums=('<sha256>')",
-                      "",
-                  ]
-              )
-          )
-          Path("out/pkgfile-template/debian-control.template").write_text(
-              "\n".join(
-                  [
-                      "Package: opencode",
-                      "Version: <opencode_version>",
-                      "Architecture: armhf",
-                      "Maintainer: Hope2333(幽零小喵) <u0catmiao@proton.me>",
-                      "Description: OpenCode prebuild handoff template for local Termux final packaging",
-                      "",
-                  ]
-              )
-          )
-          PY
-
-      - name: Write handoff note
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          Path("out/HANDOFF.md").write_text(
-              "This artifact bundle is for prebuild handoff only.\n"
-              "Do not treat as final Termux package output.\n"
-              "Final runtime wrapping, launcher bugfix integration, package build, and runtime/plugin verification must run locally on Termux.\n"
-          )
-          PY
-
-      - name: Upload prebuild bundle
+      - name: Upload armv7 prebuild handoff bundle
         uses: actions/upload-artifact@v4
         with:
-          name: prebuild-armv7-bundle
+          name: armv7-cross-prebuild-handoff
           path: out/
           retention-days: 30
