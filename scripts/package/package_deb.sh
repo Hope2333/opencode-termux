@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
 STAGED_PREFIX="${STAGED_PREFIX:-$ROOT_DIR/artifacts/staged/prefix}"
-ARCH_DEB="${ARCH_DEB:-arm64}"
+ARCH_DEB="${ARCH_DEB:-$(dpkg --print-architecture 2>/dev/null || echo aarch64)}"
 MAINTAINER="${MAINTAINER:-Hope2333(幽零小喵) <u0catmiao@proton.me>}"
 
 command -v dpkg-deb >/dev/null 2>&1 || {

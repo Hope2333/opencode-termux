@@ -17,6 +17,7 @@ on:
       - .github/workflows/prebuild-armv7.yml
       - docs/ci-prebuild-armv7.md
       - scripts/ci/build-bun-armv7.sh
+      - scripts/ci/build-bun-armv7-source.sh
       - scripts/ci/build-opencode-armv7.sh
 
 jobs:
@@ -85,6 +86,15 @@ jobs:
           chmod +x scripts/ci/build-bun-armv7.sh
           scripts/ci/build-bun-armv7.sh "$BUN_VERSION" out > out/logs/build-bun-armv7.log 2>&1
 
+      - name: Attempt bun armv7 source build (cross-first)
+        env:
+          BUN_VERSION: ${{ github.event.inputs.bun_version || '1.2.20' }}
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          chmod +x scripts/ci/build-bun-armv7-source.sh
+          scripts/ci/build-bun-armv7-source.sh "$BUN_VERSION" out > out/logs/build-bun-armv7-source.log 2>&1
+
       - name: Attempt opencode armv7 binary build (compile/probe)
         env:
           OPENCODE_VERSION: ${{ github.event.inputs.opencode_version || '1.2.10' }}
@@ -105,6 +115,7 @@ jobs:
           status = {
             'bun_armv7_bin_present': any('bun' in p and 'armv7' in p for p in assets),
             'opencode_armv7_bin_present': any('opencode' in p and 'armv7' in p for p in assets),
+            'bun_source_attempted': (out/'status'/'bun-source-build-status.json').exists(),
             'assets': assets,
           }
           (out/'status'/'build-attempt-status.json').write_text(json.dumps(status, indent=2)+"\n")
