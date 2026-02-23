@@ -11,6 +11,10 @@ on:
         description: Bun version tag (metadata/source-attempt)
         required: true
         default: "1.2.20"
+      run_native_armv7:
+        description: Run native armv7 fallback job (requires self-hosted armv7 runner labels)
+        required: false
+        default: "false"
   push:
     branches: [main, master]
     paths:
@@ -18,6 +22,7 @@ on:
       - docs/ci-prebuild-armv7.md
       - scripts/ci/build-bun-armv7.sh
       - scripts/ci/build-bun-armv7-source.sh
+      - scripts/ci/build-bun-armv7-native.sh
       - scripts/ci/build-opencode-armv7.sh
 
 jobs:
@@ -232,4 +237,31 @@ jobs:
         with:
           name: armv7-cross-prebuild-handoff
           path: out/
+          retention-days: 30
+
+  armv7-native-bun-fallback:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_native_armv7 == 'true' }}
+    runs-on: [self-hosted, linux, armv7]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare native fallback output directories
+        run: |
+          set -euo pipefail
+          mkdir -p out-native
+
+      - name: Attempt Bun native armv7 source build
+        env:
+          BUN_VERSION: ${{ github.event.inputs.bun_version || '1.2.20' }}
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          chmod +x scripts/ci/build-bun-armv7-native.sh
+          scripts/ci/build-bun-armv7-native.sh "$BUN_VERSION" out-native > out-native/build-bun-armv7-native-wrapper.log 2>&1
+
+      - name: Upload native armv7 fallback bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: armv7-native-bun-fallback
+          path: out-native/
           retention-days: 30

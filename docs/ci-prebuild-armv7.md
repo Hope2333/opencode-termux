@@ -31,3 +31,19 @@ Artifact contains both files (or their build logs explaining blockers):
 - `status/build-attempt-status.json`
 
 This keeps CI iterations fast and makes failures actionable.
+
+## Native armv7 fallback job
+
+When cross-build signals indicate `native_required: true`, run workflow dispatch with:
+
+- `run_native_armv7 = true`
+
+This triggers a second job that requires a self-hosted runner with labels:
+
+- `self-hosted`
+- `linux`
+- `armv7`
+
+The job runs `scripts/ci/build-bun-armv7-native.sh` and uploads `armv7-native-bun-fallback` artifact.
+
+If no such runner exists, keep using cross-build job for diagnosis until runner infrastructure is ready.
