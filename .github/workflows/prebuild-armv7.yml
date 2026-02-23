@@ -122,6 +122,60 @@ jobs:
           print(json.dumps(status, indent=2))
           PY
 
+      - name: Decide native armv7 fallback requirement
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          out = Path('out')
+          status_dir = out / 'status'
+
+          def read_json(name):
+              p = status_dir / name
+              if not p.exists():
+                  return None
+              try:
+                  return json.loads(p.read_text())
+              except Exception:
+                  return None
+
+          build_attempt = read_json('build-attempt-status.json') or {}
+          bun_target = read_json('bun-target-support.json') or {}
+          bun_source = read_json('bun-source-build-status.json') or {}
+          opencode_pack = read_json('opencode-pack-status.json') or {}
+
+          bun_bin_present = bool(build_attempt.get('bun_armv7_bin_present'))
+          bun_target_supported = bool(bun_target.get('supported'))
+          bun_source_ok = bun_source.get('status') == 'success'
+
+          native_required = (not bun_bin_present) and (not bun_target_supported) and (not bun_source_ok)
+
+          reasons = []
+          if not bun_target_supported:
+              reasons.append('bun compile target bun-linux-armv7 unsupported in host bun build mode')
+          if bun_source.get('status') == 'failed':
+              reasons.append('bun source cross-build attempt failed to produce armv7-like binary')
+          if opencode_pack.get('status') == 'failed':
+              reasons.append('opencode package source unavailable for current flow')
+
+          decision = {
+              'native_required': native_required,
+              'next_path': 'native-armv7-runner' if native_required else 'continue-cross-build',
+              'reasons': reasons,
+              'signals': {
+                  'bun_armv7_bin_present': bun_bin_present,
+                  'bun_target_supported': bun_target_supported,
+                  'bun_source_status': bun_source.get('status'),
+                  'opencode_pack_status': opencode_pack.get('status'),
+              },
+          }
+
+          (status_dir / 'next-build-path.json').write_text(json.dumps(decision, indent=2) + "\n")
+          print(json.dumps(decision, indent=2))
+          PY
+
       - name: Remove work directory from handoff artifact
         run: |
           set -euo pipefail
