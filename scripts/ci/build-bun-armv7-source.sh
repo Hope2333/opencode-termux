@@ -10,12 +10,12 @@ WORK="$ABS_OUT_DIR/work/bun-src"
 rm -rf "$WORK"
 mkdir -p "$WORK"
 
-printf '{\n  "status": "started",\n  "bun_version": "%s",\n  "strategy": "cross-compile-first"\n}\n' "$BUN_VERSION" >"$ABS_OUT_DIR/status/bun-source-build-status.json"
+printf '{\n  "status": "started",\n  "bun_version": "%s",\n  "strategy": "cross-compile-matrix"\n}\n' "$BUN_VERSION" >"$ABS_OUT_DIR/status/bun-source-build-status.json"
 
-git clone --depth=1 --branch "bun-v${BUN_VERSION}" https://github.com/oven-sh/bun.git "$WORK" >"$ABS_OUT_DIR/logs/bun-source-git-clone.txt" 2>&1 || {
+if ! git clone --depth=1 --branch "bun-v${BUN_VERSION}" https://github.com/oven-sh/bun.git "$WORK" >"$ABS_OUT_DIR/logs/bun-source-git-clone.txt" 2>&1; then
 	printf '{\n  "status": "failed",\n  "phase": "git-clone",\n  "reason": "failed to clone bun tag",\n  "bun_version": "%s"\n}\n' "$BUN_VERSION" >"$ABS_OUT_DIR/status/bun-source-build-status.json"
 	exit 41
-}
+fi
 
 cd "$WORK"
 
@@ -36,27 +36,76 @@ export CC=arm-linux-gnueabihf-gcc
 export CXX=arm-linux-gnueabihf-g++
 export AR=arm-linux-gnueabihf-ar
 export STRIP=arm-linux-gnueabihf-strip
-export PKG_CONFIG_PATH="${PKG_CONFIG_PATH:-}"
 export BUN_CROSS_TARGET="linux-armv7l"
 
-printf '{\n  "status": "attempting",\n  "phase": "source-build",\n  "bun_version": "%s",\n  "strategy": "cross-compile-first"\n}\n' "$BUN_VERSION" >"$ABS_OUT_DIR/status/bun-source-build-status.json"
+attempt_names=(
+	"baseline-release"
+	"explicit-cmake-processor"
+	"explicit-cmake-system-arm"
+)
+attempt_cmds=(
+	"bun run build:release"
+	"bun ./scripts/build.mjs -GNinja -DCMAKE_BUILD_TYPE=Release -DCMAKE_SYSTEM_PROCESSOR=armv7 -B build/release-armv7-processor"
+	"bun ./scripts/build.mjs -GNinja -DCMAKE_BUILD_TYPE=Release -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=armv7 -B build/release-armv7-system"
+)
 
-set +e
-bash -lc 'bun run build:release' >"$ABS_OUT_DIR/logs/bun-source-build.log" 2>&1
-rc=$?
-set -e
+success="false"
+selected_artifact=""
+selected_attempt=""
 
-if [[ -f "$WORK/build/release/bun" ]]; then
-	cp -a "$WORK/build/release/bun" "$ABS_OUT_DIR/assets/bun-linux-armv7-source-attempt"
-	file "$ABS_OUT_DIR/assets/bun-linux-armv7-source-attempt" >"$ABS_OUT_DIR/logs/bun-source-build-file.txt" || true
-	printf '{\n  "status": "success",\n  "phase": "source-build",\n  "bun_version": "%s",\n  "artifact": "assets/bun-linux-armv7-source-attempt",\n  "build_exit_code": %s\n}\n' "$BUN_VERSION" "$rc" >"$ABS_OUT_DIR/status/bun-source-build-status.json"
+for i in "${!attempt_names[@]}"; do
+	name="${attempt_names[$i]}"
+	cmd="${attempt_cmds[$i]}"
+	log_file="$ABS_OUT_DIR/logs/bun-source-${name}.log"
+	status_file="$ABS_OUT_DIR/status/bun-source-${name}.json"
+
+	printf '{\n  "status": "running",\n  "attempt": "%s",\n  "command": "%s"\n}\n' "$name" "$cmd" >"$status_file"
+
+	set +e
+	bash -lc "$cmd" >"$log_file" 2>&1
+	rc=$?
+	set -e
+
+	found=""
+	for candidate in \
+		"$WORK/build/release/bun" \
+		"$WORK/build/release-armv7-processor/bun" \
+		"$WORK/build/release-armv7-system/bun"; do
+		if [[ -f "$candidate" ]]; then
+			found="$candidate"
+			break
+		fi
+	done
+
+	if [[ -n "$found" ]]; then
+		out_bin="$ABS_OUT_DIR/assets/bun-linux-armv7-source-${name}"
+		cp -a "$found" "$out_bin"
+		file "$out_bin" >"$ABS_OUT_DIR/logs/bun-source-${name}-file.txt" || true
+
+		arch_line="$(file "$out_bin" 2>/dev/null || true)"
+		is_armv7="false"
+		if echo "$arch_line" | grep -Eiq 'arm(,| )|armv7|EABI'; then
+			is_armv7="true"
+		fi
+
+		printf '{\n  "status": "completed",\n  "attempt": "%s",\n  "exit_code": %s,\n  "artifact": "%s",\n  "file": "%s",\n  "armv7_like": %s\n}\n' "$name" "$rc" "$out_bin" "$arch_line" "$is_armv7" >"$status_file"
+
+		if [[ "$is_armv7" == "true" ]]; then
+			success="true"
+			selected_artifact="$out_bin"
+			selected_attempt="$name"
+			break
+		fi
+	else
+		printf '{\n  "status": "completed",\n  "attempt": "%s",\n  "exit_code": %s,\n  "artifact": null,\n  "reason": "no bun binary produced"\n}\n' "$name" "$rc" >"$status_file"
+	fi
+done
+
+if [[ "$success" == "true" ]]; then
+	printf '{\n  "status": "success",\n  "phase": "source-build",\n  "bun_version": "%s",\n  "selected_attempt": "%s",\n  "artifact": "%s"\n}\n' "$BUN_VERSION" "$selected_attempt" "$selected_artifact" >"$ABS_OUT_DIR/status/bun-source-build-status.json"
 	exit 0
 fi
 
-reason="source build failed; see bun-source-build.log"
-if grep -qi 'unsupported\|unknown target\|aarch64\|x86_64' "$ABS_OUT_DIR/logs/bun-source-build.log" 2>/dev/null; then
-	reason="source build did not produce armv7 binary; likely default host-target build path or unsupported cross flags"
-fi
-
-printf '{\n  "status": "failed",\n  "phase": "source-build",\n  "bun_version": "%s",\n  "build_exit_code": %s,\n  "reason": "%s",\n  "next": "try explicit bun build scripts/flags or native armv7 runner"\n}\n' "$BUN_VERSION" "$rc" "$reason" >"$ABS_OUT_DIR/status/bun-source-build-status.json"
+reason="no armv7-like bun binary produced across cross-build attempts"
+printf '{\n  "status": "failed",\n  "phase": "source-build",\n  "bun_version": "%s",\n  "reason": "%s",\n  "next": "inspect bun-source-*.log and consider native armv7 runner"\n}\n' "$BUN_VERSION" "$reason" >"$ABS_OUT_DIR/status/bun-source-build-status.json"
 exit 42
