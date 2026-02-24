@@ -32,6 +32,10 @@ Artifact contains both files (or their build logs explaining blockers):
 
 This keeps CI iterations fast and makes failures actionable.
 
+## Native runner setup guide
+
+See `docs/armv7-native-runner-setup.md` for the self-hosted armv7 runner checklist (labels, dependencies, verification, and artifact inspection).
+
 ## Native armv7 fallback job
 
 When cross-build signals indicate `native_required: true`, run workflow dispatch with:
