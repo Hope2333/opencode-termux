@@ -5,12 +5,19 @@ SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OPENCODE_CLI="$SELF_DIR/../lib/opencode/packages/opencode/bin/opencode"
 OPENCODE_RUNTIME="$SELF_DIR/../lib/opencode/runtime/opencode"
 
-cleanup_tty() {
+cleanup_tty_full() {
 	if [ -t 1 ]; then
 		printf '\033[?1049l\033[?25h\033[0m' >/dev/tty 2>/dev/null || true
 	fi
 	command -v stty >/dev/null 2>&1 && stty sane 2>/dev/null || true
 	command -v tput >/dev/null 2>&1 && tput rmcup >/dev/null 2>&1 || true
+}
+
+cleanup_tty_soft() {
+	command -v stty >/dev/null 2>&1 && stty sane 2>/dev/null || true
+	if [ -t 1 ]; then
+		printf '\033[?25h\033[0m' >/dev/tty 2>/dev/null || true
+	fi
 }
 
 cleanup_state_locks() {
@@ -34,7 +41,7 @@ ensure_stdio_tty() {
 	fi
 }
 
-trap cleanup_tty EXIT INT TERM HUP QUIT
+trap 'cleanup_tty_full; exit 130' INT TERM HUP QUIT
 ensure_stdio_tty
 cleanup_state_locks
 cleanup_broken_cached_modules
@@ -44,11 +51,19 @@ export OPENCODE_DISABLE_DEFAULT_PLUGINS
 if [[ -x "$OPENCODE_RUNTIME" ]]; then
 	"$OPENCODE_RUNTIME" "$@"
 	rc=$?
-	cleanup_tty
+	if [ "$rc" -eq 0 ]; then
+		cleanup_tty_soft
+	else
+		cleanup_tty_full
+	fi
 	exit $rc
 fi
 
 "$OPENCODE_CLI" "$@"
 rc=$?
-cleanup_tty
+if [ "$rc" -eq 0 ]; then
+	cleanup_tty_soft
+else
+	cleanup_tty_full
+fi
 exit $rc
