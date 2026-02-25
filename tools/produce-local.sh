@@ -2,12 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-VER="${1:-1.2.10}"
-WORK_DIR="${WORK_DIR:-$HOME/work-opencode-$VER}"
-RUNTIME_DIR="$ROOT_DIR/artifacts/opencode/runtime"
-RUNTIME_OUT="$RUNTIME_DIR/opencode-termux"
-UPSTREAM_TGZ="opencode-linux-arm64-$VER.tgz"
-UPSTREAM_BIN="$WORK_DIR/package/bin/opencode"
+INPUT_VER="${1:-}"
 
 log() { printf '[produce-local] %s\n' "$*"; }
 die() {
@@ -15,6 +10,24 @@ die() {
 	exit 1
 }
 need() { command -v "$1" >/dev/null 2>&1 || die "missing command: $1"; }
+
+resolve_version() {
+	if [[ -n "$INPUT_VER" ]]; then
+		printf '%s' "$INPUT_VER"
+		return 0
+	fi
+	local latest
+	latest="$(npm view opencode-linux-arm64 version 2>/dev/null || true)"
+	[[ -n "$latest" ]] || die "unable to resolve latest opencode-linux-arm64 version; pass explicit version as first argument"
+	printf '%s' "$latest"
+}
+
+VER="$(resolve_version)"
+WORK_DIR="${WORK_DIR:-$HOME/work-opencode-$VER}"
+RUNTIME_DIR="$ROOT_DIR/artifacts/opencode/runtime"
+RUNTIME_OUT="$RUNTIME_DIR/opencode-termux"
+UPSTREAM_TGZ="opencode-linux-arm64-$VER.tgz"
+UPSTREAM_BIN="$WORK_DIR/package/bin/opencode"
 
 find_loader_repo() {
 	local c
@@ -63,7 +76,7 @@ file "$RUNTIME_OUT"
 "$RUNTIME_OUT" --version
 
 log "cleaning generated outputs to avoid stale contamination"
-rm -rf "$ROOT_DIR/artifacts/staged" "$ROOT_DIR/packaging/deb/work" "$ROOT_DIR/packaging/pacman/src"
+rm -rf "$ROOT_DIR/artifacts/staged" "$ROOT_DIR/packaging/dpkg/work" "$ROOT_DIR/packaging/pacman/src"
 
 cat <<MSG
 [produce-local] Runtime prepared successfully:

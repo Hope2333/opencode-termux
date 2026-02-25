@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+TARGET=help
+VER=""
+PKG=""
+PACKAGER_NAME=""
+PASSTHRU=()
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --all) TARGET=all; shift ;;
+    --runtime) TARGET=runtime; shift ;;
+    --stage) TARGET=stage; shift ;;
+    --deb) TARGET=deb; shift ;;
+    --pacman) TARGET=pacman; shift ;;
+    --status) TARGET=status; shift ;;
+    --clean) TARGET=clean; shift ;;
+    --ver) VER="${2:?missing version after --ver}"; shift 2 ;;
+    --pkg) PKG="${2:?missing pkg after --pkg}"; shift 2 ;;
+    --packager) PACKAGER_NAME="${2:?missing value after --packager}"; shift 2 ;;
+    --) shift; PASSTHRU+=("$@"); break ;;
+    *) PASSTHRU+=("$1"); shift ;;
+  esac
+done
+
+MAKE_ARGS=("$TARGET")
+[[ -n "$VER" ]] && MAKE_ARGS+=("VER=$VER")
+[[ -n "$PKG" ]] && MAKE_ARGS+=("PKG=$PKG")
+[[ -n "$PACKAGER_NAME" ]] && MAKE_ARGS+=("PACKAGER_NAME=$PACKAGER_NAME")
+if [[ ${#PASSTHRU[@]} -gt 0 ]]; then
+  MAKE_ARGS+=("MORE=${PASSTHRU[*]}")
+fi
+
+exec make "${MAKE_ARGS[@]}"
