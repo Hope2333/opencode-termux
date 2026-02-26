@@ -7,6 +7,7 @@ VERS=""
 PKG=""
 PACKAGER_NAME=""
 ODIR=""
+MIX=0
 PASSTHRU=()
 
 while [[ $# -gt 0 ]]; do
@@ -24,6 +25,7 @@ while [[ $# -gt 0 ]]; do
     --pkg) PKG="${2:?missing pkg after --pkg}"; shift 2 ;;
     --packager) PACKAGER_NAME="${2:?missing value after --packager}"; shift 2 ;;
     --odir) ODIR="${2:?missing value after --odir}"; shift 2 ;;
+    --mix) MIX=1; shift ;;
     --) shift; PASSTHRU+=("$@"); break ;;
     *) PASSTHRU+=("$1"); shift ;;
   esac
@@ -35,6 +37,7 @@ MAKE_ARGS=("$TARGET")
 [[ -n "$PKG" ]] && MAKE_ARGS+=("PKG=$PKG")
 [[ -n "$PACKAGER_NAME" ]] && MAKE_ARGS+=("PACKAGER_NAME=$PACKAGER_NAME")
 [[ -n "$ODIR" ]] && MAKE_ARGS+=("ODIR=$ODIR")
+[[ "$MIX" == "1" ]] && MAKE_ARGS+=("MIX=1")
 if [[ ${#PASSTHRU[@]} -gt 0 ]]; then
   if [[ "$TARGET" == "batch" ]]; then
     # pass through raw flags directly to nested make calls in batch mode

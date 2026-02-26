@@ -21,6 +21,11 @@
 8. (Optional) Send artifacts to custom output dir:
    - `ODIR=~/oct-out make all VER=1.2.10 PKG=both`
    - `ODIR=~/oct-out make batch VERS='1.1.[1-20]' PKG=deb`
+9. Output layout policy:
+   - default output root: project `packing/`
+   - with `ODIR`, do not write into project `packing/`
+   - default classified layout: `deb/` and `pacman/`
+   - flattened layout: use `MIX=1` or wrapper `--mix`
 
 ## Phase C (plugin lifecycle)
 

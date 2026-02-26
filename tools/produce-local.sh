@@ -23,7 +23,9 @@ resolve_version() {
 }
 
 VER="$(resolve_version)"
-WORK_DIR="${WORK_DIR:-$HOME/work-opencode-$VER}"
+WORK_BASE="${WORK_BASE:-$ROOT_DIR/.work}"
+WORK_DIR="${WORK_DIR:-$WORK_BASE/opencode-$VER}"
+KEEP_WORK="${KEEP_WORK:-0}"
 RUNTIME_DIR="$ROOT_DIR/artifacts/opencode/runtime"
 RUNTIME_OUT="$RUNTIME_DIR/opencode-termux"
 UPSTREAM_TGZ="opencode-linux-arm64-$VER.tgz"
@@ -83,9 +85,11 @@ LOADER_REPO="$(find_loader_repo || true)"
 [[ -n "$LOADER_REPO" ]] || die "bun-termux-loader not found (need build.py)"
 
 log "version=$VER"
+log "work_base=$WORK_BASE"
 log "work_dir=$WORK_DIR"
 log "loader_repo=$LOADER_REPO"
 
+mkdir -p "$WORK_BASE"
 rm -rf "$WORK_DIR"
 mkdir -p "$WORK_DIR"
 cd "$WORK_DIR"
@@ -107,6 +111,11 @@ file "$RUNTIME_OUT"
 
 log "cleaning generated outputs to avoid stale contamination"
 rm -rf "$ROOT_DIR/artifacts/staged" "$ROOT_DIR/packaging/dpkg/work" "$ROOT_DIR/packaging/pacman/src"
+
+if [[ "$KEEP_WORK" != "1" ]]; then
+	log "cleaning temporary work directory"
+	rm -rf "$WORK_DIR"
+fi
 
 cat <<MSG
 [produce-local] Runtime prepared successfully:
