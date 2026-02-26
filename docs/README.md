@@ -16,6 +16,17 @@ This directory is the single source of truth for the current Termux packaging/ru
 - `arch-reference-mapping.md` — reusable parts from Arch plugin packaging approach
 - `execution-checklist.md` — exact runbook for Phase A/B/C
 
+## Classification
+
+- `mainline/` information in this docs tree reflects the currently maintained local Termux packaging workflow.
+- arm32 and broader armv7 portability implementation work is **deferred/non-mainline** unless explicitly promoted.
+- CI armv7 content should be treated as handoff/prebuild context, not final runtime release proof.
+
+## Rewrite / maintenance notes
+
+- If implementation behavior and docs diverge, update docs first in this directory and then adjust root README summary.
+- Prefer replacing stale sections rather than appending contradictory notes.
+
 ## Repository map (current)
 
 - OpenCode Termux repo (canonical): `~/develop/opencode-termux`

@@ -13,7 +13,19 @@ This repository is part of the OML/OCT track and focuses on:
 
 - Verified runtime line: **OpenCode Runtime 1.2.10** (Android/Bionic wrapped)
 - Final packages are produced **locally on Termux**
-- GitHub Actions is used for **armv7 cross-prebuild handoff**, not final Termux runtime claims
+- GitHub Actions is used for **armv7 cross-prebuild handoff** only (non-mainline/deferred track)
+
+## Scope and status classification
+
+- **Mainline (maintained in this repo)**
+  - local Termux build/package flow (`make`, `tools/produce-local.sh`, `scripts/package/*`)
+  - dependency policy and runtime stability improvements
+  - docs and operational runbooks under `docs/`
+- **Deferred / non-mainline**
+  - arm32 adaptation and migration experiments
+  - broad armv7 portability work beyond handoff artifacts
+
+Deferred items may be referenced in docs/history but are not release-blocking for the mainline workflow.
 
 ## Repository layout
 
@@ -121,6 +133,15 @@ Rules:
   - if `ODIR` is set, outputs go to `ODIR` and do not use project `packing/`
   - default classified layout: `deb/` and `pacman/` subfolders
   - if `MIX=1` or `--mix`, artifacts are flattened into one directory
+
+### Suggested production command patterns
+
+- single version, classified output in project:
+  - `make all VER=1.2.10 PKG=both`
+- single version, custom output root:
+  - `make all VER=1.2.10 PKG=both ODIR=~/oct-out`
+- batch versions with range and flat output:
+  - `make batch VERS='1.1.[1-20]' PKG=deb ODIR=~/oct-out MIX=1`
 
 ## TUI exit behavior (latest update)
 

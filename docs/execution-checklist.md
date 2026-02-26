@@ -2,11 +2,15 @@
 
 ## Phase A (CI armv7 prebuild)
 
+> Status: handoff/deferred track. Not a substitute for local Termux final runtime validation.
+
 1. Run workflow `prebuild-armv7.yml`
 2. Download `prebuild-armv7-bundle`
 3. Verify `manifest.json` and `checksums.txt`
 
 ## Phase B (local Termux final package)
+
+> Status: mainline release path.
 
 1. Prepare runtime: `tools/produce-local.sh <version>`
    - If npm has no requested version, script falls back to GitHub release binary download for that version.
