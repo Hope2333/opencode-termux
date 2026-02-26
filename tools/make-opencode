@@ -3,13 +3,16 @@ set -euo pipefail
 
 TARGET=help
 VER=""
+VERS=""
 PKG=""
 PACKAGER_NAME=""
+ODIR=""
 PASSTHRU=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --all) TARGET=all; shift ;;
+    --batch) TARGET=batch; shift ;;
     --runtime) TARGET=runtime; shift ;;
     --stage) TARGET=stage; shift ;;
     --deb) TARGET=deb; shift ;;
@@ -17,8 +20,10 @@ while [[ $# -gt 0 ]]; do
     --status) TARGET=status; shift ;;
     --clean) TARGET=clean; shift ;;
     --ver) VER="${2:?missing version after --ver}"; shift 2 ;;
+    --vers) VERS="${2:?missing versions after --vers}"; shift 2 ;;
     --pkg) PKG="${2:?missing pkg after --pkg}"; shift 2 ;;
     --packager) PACKAGER_NAME="${2:?missing value after --packager}"; shift 2 ;;
+    --odir) ODIR="${2:?missing value after --odir}"; shift 2 ;;
     --) shift; PASSTHRU+=("$@"); break ;;
     *) PASSTHRU+=("$1"); shift ;;
   esac
@@ -26,10 +31,17 @@ done
 
 MAKE_ARGS=("$TARGET")
 [[ -n "$VER" ]] && MAKE_ARGS+=("VER=$VER")
+[[ -n "$VERS" ]] && MAKE_ARGS+=("VERS=$VERS")
 [[ -n "$PKG" ]] && MAKE_ARGS+=("PKG=$PKG")
 [[ -n "$PACKAGER_NAME" ]] && MAKE_ARGS+=("PACKAGER_NAME=$PACKAGER_NAME")
+[[ -n "$ODIR" ]] && MAKE_ARGS+=("ODIR=$ODIR")
 if [[ ${#PASSTHRU[@]} -gt 0 ]]; then
-  MAKE_ARGS+=("MORE=${PASSTHRU[*]}")
+  if [[ "$TARGET" == "batch" ]]; then
+    # pass through raw flags directly to nested make calls in batch mode
+    MAKE_ARGS+=("MORE=")
+  else
+    MAKE_ARGS+=("MORE=${PASSTHRU[*]}")
+  fi
 fi
 
 exec make "${MAKE_ARGS[@]}"

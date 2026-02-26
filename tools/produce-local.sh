@@ -28,6 +28,7 @@ RUNTIME_DIR="$ROOT_DIR/artifacts/opencode/runtime"
 RUNTIME_OUT="$RUNTIME_DIR/opencode-termux"
 UPSTREAM_TGZ="opencode-linux-arm64-$VER.tgz"
 UPSTREAM_BIN="$WORK_DIR/package/bin/opencode"
+GITHUB_URL="https://github.com/anomalyco/opencode/releases/download/v${VER}/opencode-linux-arm64.tar.gz"
 
 find_loader_repo() {
 	local c
@@ -38,6 +39,39 @@ find_loader_repo() {
 		fi
 	done
 	return 1
+}
+
+download_upstream_binary() {
+	local npm_ok=0
+	log "downloading upstream package from npm (preferred)"
+	if npm pack "opencode-linux-arm64@$VER" >/dev/null 2>&1 && [[ -f "$UPSTREAM_TGZ" ]]; then
+		tar -xzf "$UPSTREAM_TGZ"
+		if [[ -x "$UPSTREAM_BIN" ]]; then
+			npm_ok=1
+		fi
+	fi
+
+	if [[ "$npm_ok" -eq 1 ]]; then
+		log "using npm package source for version $VER"
+		return 0
+	fi
+
+	log "npm package for version $VER not available, falling back to GitHub release binary"
+	local gh_tgz="$WORK_DIR/opencode-linux-arm64-github-$VER.tar.gz"
+	if command -v curl >/dev/null 2>&1; then
+		curl -fL "$GITHUB_URL" -o "$gh_tgz" || die "github fallback download failed: $GITHUB_URL"
+	elif command -v wget >/dev/null 2>&1; then
+		wget -O "$gh_tgz" "$GITHUB_URL" || die "github fallback download failed: $GITHUB_URL"
+	else
+		die "missing curl/wget for github fallback download"
+	fi
+	mkdir -p "$WORK_DIR/package/bin"
+	tar -xzf "$gh_tgz" -C "$WORK_DIR" || true
+	if [[ -x "$WORK_DIR/opencode-linux-arm64" ]]; then
+		cp "$WORK_DIR/opencode-linux-arm64" "$UPSTREAM_BIN"
+	fi
+	[[ -x "$UPSTREAM_BIN" ]] || die "github fallback unpacked but upstream binary not found"
+	log "using GitHub release source for version $VER"
 }
 
 need npm
@@ -56,11 +90,7 @@ rm -rf "$WORK_DIR"
 mkdir -p "$WORK_DIR"
 cd "$WORK_DIR"
 
-log "downloading upstream npm package"
-npm pack "opencode-linux-arm64@$VER" >/dev/null
-[[ -f "$UPSTREAM_TGZ" ]] || die "missing $UPSTREAM_TGZ"
-tar -xzf "$UPSTREAM_TGZ"
-[[ -x "$UPSTREAM_BIN" ]] || die "missing upstream binary: $UPSTREAM_BIN"
+download_upstream_binary
 
 log "upstream fingerprint"
 file "$UPSTREAM_BIN"
