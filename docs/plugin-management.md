@@ -33,3 +33,18 @@ For Termux, user-friendly plugin management should be based on **local-plugin fi
 4. Re-apply patch after future upstream updates as needed
 
 This gives both convenience and recoverability.
+
+## Resilience behavior (network / upstream instability)
+
+`plugin-manager.sh` now includes additional safeguards:
+
+- git clone/fetch/pull retry with exponential backoff (configurable)
+- automatic rollback to latest snapshot when install/update fails
+- state file output with last action/status/error metadata
+
+Defaults and knobs:
+
+- `PLUGIN_GIT_RETRY_MAX=3`
+- `PLUGIN_GIT_RETRY_DELAY=2` (seconds, exponential backoff)
+- `PLUGIN_FORCE_NPM=1` (force npm path, skip bun install when bun causes permission/platform issues)
+- state file: `~/.config/opencode/plugin-manager-state.json`
