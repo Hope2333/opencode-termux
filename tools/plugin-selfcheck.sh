@@ -8,7 +8,7 @@ LOCAL_PLUGINS="$CFG_DIR/local-plugins"
 SYSTEM_PLUGINS="${PREFIX:-/data/data/com.termux/files/usr}/lib/opencode/plugins"
 SYSTEM_SKILLS="${PREFIX:-/data/data/com.termux/files/usr}/lib/opencode/system-skills"
 SKILL_REGISTRY="${PREFIX:-/data/data/com.termux/files/usr}/share/opencode/system-skills-registry.json"
-SKILL_BLOCKLIST="${PREFIX:-/data/data/com.termux/files/usr}/share/opencode/system-skills-blocklist.json"
+SKILL_BLOCKLIST="${PREFIX:-/data/data/com.termux/files/usr}/lib/opencode/system-skills/blocklist.json"
 
 json_escape() {
 	local s="$1"

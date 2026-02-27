@@ -63,6 +63,10 @@ OPENCODE_HOOK_ENABLE_NETWORK=1 OPENCODE_HOOK_STRICT=0 opencode --version
 7. self-check runs as read-only verification
 8. registry is updated (`$PREFIX/share/opencode/system-skills-registry.json`)
 
+Note: blocklist source of truth is currently:
+
+- `$PREFIX/lib/opencode/system-skills/blocklist.json`
+
 ## Simulation integration (machine1 -> machine2)
 
 `tools/upgrade-matrix.sh` now:
