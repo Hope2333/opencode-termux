@@ -82,9 +82,14 @@ rollback_if_available() {
 	local name="$1" snapshot="$2"
 	if [[ -n "$snapshot" && -f "$snapshot" ]]; then
 		log "auto-rollback using snapshot=$snapshot"
-		cmd_rollback "$name" "$snapshot" || true
+		if cmd_rollback "$name" "$snapshot"; then
+			update_state "auto_rollback" "$name" "ok" "rollback_applied" ""
+		else
+			update_state "auto_rollback" "$name" "error" "rollback_failed" ""
+		fi
 	else
 		log "auto-rollback skipped: no snapshot available"
+		update_state "auto_rollback" "$name" "warn" "no_snapshot" ""
 	fi
 }
 
@@ -246,6 +251,9 @@ cmd_rollback() {
 	[[ -n "$arc" && -f "$arc" ]] || die "snapshot not found"
 	rm -rf "$(root_of "$name")"
 	mkdir -p "$PLUG_DIR"
+	if [[ -d "$PLUG_DIR/$name" ]]; then
+		rm -rf "$PLUG_DIR/$name"
+	fi
 	case "$arc" in
 	*.tar.zst) tar -C "$PLUG_DIR" -I zstd -xf "$arc" ;;
 	*.tar.gz) tar -C "$PLUG_DIR" -xzf "$arc" ;;

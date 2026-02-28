@@ -9,6 +9,7 @@ SYSTEM_PLUGINS="${PREFIX:-/data/data/com.termux/files/usr}/lib/opencode/plugins"
 SYSTEM_SKILLS="${PREFIX:-/data/data/com.termux/files/usr}/lib/opencode/system-skills"
 SKILL_REGISTRY="${PREFIX:-/data/data/com.termux/files/usr}/share/opencode/system-skills-registry.json"
 SKILL_BLOCKLIST="${PREFIX:-/data/data/com.termux/files/usr}/lib/opencode/system-skills/blocklist.json"
+PM_STATE="$CFG_DIR/plugin-manager-state.json"
 
 json_escape() {
 	local s="$1"
@@ -29,6 +30,25 @@ main() {
 	if [[ -f "$CFG_FILE" ]]; then
 		if python3 -c 'import json,sys;json.load(open(sys.argv[1]))' "$CFG_FILE" >/dev/null 2>&1; then
 			print_check "config.opencode_json" "ok" "$CFG_FILE"
+			python3 - "$CFG_FILE" <<'PY'
+import json,sys
+p=sys.argv[1]
+d=json.load(open(p))
+plugins=d.get("plugin",[])
+if not isinstance(plugins,list):
+    print('{"check":"config.plugin_mode","status":"warn","detail":"plugin field is not a list"}')
+    raise SystemExit(0)
+file_plugins=[x for x in plugins if isinstance(x,str) and x.startswith("file://")]
+named_plugins=[x for x in plugins if isinstance(x,str) and not x.startswith("file://")]
+if file_plugins and not named_plugins:
+    print('{"check":"config.plugin_mode","status":"ok","detail":"file-plugin mode"}')
+elif file_plugins and named_plugins:
+    print('{"check":"config.plugin_mode","status":"warn","detail":"mixed file and named plugin entries"}')
+elif named_plugins:
+    print('{"check":"config.plugin_mode","status":"warn","detail":"named plugin mode may be unstable on Termux"}')
+else:
+    print('{"check":"config.plugin_mode","status":"info","detail":"no plugin entries"}')
+PY
 		else
 			print_check "config.opencode_json" "fail" "invalid json: $CFG_FILE"
 		fi
@@ -84,6 +104,16 @@ main() {
 		fi
 	else
 		print_check "skills.blocklist" "warn" "missing: $SKILL_BLOCKLIST"
+	fi
+
+	if [[ -f "$PM_STATE" ]]; then
+		if python3 -c 'import json,sys;json.load(open(sys.argv[1]))' "$PM_STATE" >/dev/null 2>&1; then
+			print_check "plugin_manager.state" "ok" "$PM_STATE"
+		else
+			print_check "plugin_manager.state" "fail" "invalid json: $PM_STATE"
+		fi
+	else
+		print_check "plugin_manager.state" "warn" "missing: $PM_STATE"
 	fi
 }
 

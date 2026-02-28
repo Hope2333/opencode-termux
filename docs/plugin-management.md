@@ -2,6 +2,10 @@
 
 For Termux, user-friendly plugin management should be based on **local-plugin file URLs**, not direct package-name plugin install.
 
+Main packaging/build route for external plugins now lives in:
+
+- `https://github.com/Hope2333/opencode-plugins-termux`
+
 ## Why
 
 `plugin: ["oh-my-opencode"]` can trigger runtime installation behavior and native dependency breakage on Termux/Bionic after upstream updates.
@@ -23,6 +27,15 @@ For Termux, user-friendly plugin management should be based on **local-plugin fi
 ./tools/plugin-manager.sh patch-export             # export local patch file
 ./tools/plugin-manager.sh patch-apply oh-my-opencode /path/to.patch
 ./tools/plugin-manager.sh verify-config 7600       # check MCPs/agents from /config
+```
+
+External plugin builder route (recommended for reproducible plugin packaging):
+
+```bash
+git clone https://github.com/Hope2333/opencode-plugins-termux.git
+cd opencode-plugins-termux
+make list
+make all PLUGIN=omo MODE=source
 ```
 
 ## Recovery model (self patch + rollback)
@@ -48,3 +61,14 @@ Defaults and knobs:
 - `PLUGIN_GIT_RETRY_DELAY=2` (seconds, exponential backoff)
 - `PLUGIN_FORCE_NPM=1` (force npm path, skip bun install when bun causes permission/platform issues)
 - state file: `~/.config/opencode/plugin-manager-state.json`
+
+Default safety recommendation:
+
+- Prefer local file plugin registration (`file:///.../dist/index.js`) on Termux.
+- Avoid bare package-name plugin entries in `opencode.json` on Termux if plugin has native or postinstall-heavy deps.
+
+Suggested replacement candidate for oauth-login style plugin flow:
+
+- `https://github.com/andyvandaric/opencode-ag-auth`
+  - active repository and explicit OpenCode auth plugin focus
+  - supports local file plugin registration path for Termux-first setups

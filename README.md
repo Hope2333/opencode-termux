@@ -153,6 +153,7 @@ Maintainer/packager identity defaults to:
 - Glibc dependency reduction report: `docs/glibc-min-deps-test-report.md`
 - Upgrade/downgrade simulation helper: `tools/upgrade-matrix.sh`
 - Read-only plugin/environment self-check: `tools/plugin-selfcheck.sh`
+- External plugin builder project (main route): `https://github.com/Hope2333/opencode-plugins-termux`
 - System skill manifests (package mode): `packaging/manifests/system-skills/`
 - Hook runner (package mode): `scripts/hooks/run-system-skills.sh`
 - System-skill architecture: `docs/system-skills-hook-architecture.md`
