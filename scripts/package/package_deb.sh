@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/data/data/com.termux/files/usr/bin/bash
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -58,6 +58,28 @@ fi
 exit 0
 POSTINST
 chmod 755 "$DEB_ROOT/DEBIAN/postinst"
+
+cat >"$DEB_ROOT/DEBIAN/prerm" <<'PRERM'
+#!/data/data/com.termux/files/usr/bin/bash
+set -e
+HOOK_RUNNER="/data/data/com.termux/files/usr/lib/opencode/tools/run-system-skills.sh"
+if [[ -x "$HOOK_RUNNER" ]]; then
+  OPENCODE_HOOK_STRICT=0 OPENCODE_HOOK_ENABLE_NETWORK=0 "$HOOK_RUNNER" pre_remove || true
+fi
+exit 0
+PRERM
+chmod 755 "$DEB_ROOT/DEBIAN/prerm"
+
+cat >"$DEB_ROOT/DEBIAN/postrm" <<'POSTRM'
+#!/data/data/com.termux/files/usr/bin/bash
+set -e
+HOOK_RUNNER="/data/data/com.termux/files/usr/lib/opencode/tools/run-system-skills.sh"
+if [[ -x "$HOOK_RUNNER" ]]; then
+  OPENCODE_HOOK_STRICT=0 OPENCODE_HOOK_ENABLE_NETWORK=0 "$HOOK_RUNNER" post_remove || true
+fi
+exit 0
+POSTRM
+chmod 755 "$DEB_ROOT/DEBIAN/postrm"
 
 dpkg-deb --build "$DEB_ROOT" "$OUT_FILE"
 echo "DEB package created: $OUT_FILE"
