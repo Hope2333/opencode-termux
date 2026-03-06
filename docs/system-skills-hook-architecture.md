@@ -26,7 +26,7 @@ Example: `packaging/manifests/system-skills/omo.json`
 Key fields:
 
 - `plugin_id`, `repo`
-- `events` (`post_install`, `post_upgrade`)
+- `events` (`post_install`, `post_upgrade`, `pre_remove`, `post_remove`)
 - `auto_install_latest` / `auto_update`
 - `minimum_core_version`, `maximum_core_version`, `blocked_core_versions`
 - `policy`, `idempotency_key`
@@ -55,13 +55,14 @@ OPENCODE_HOOK_ENABLE_NETWORK=1 OPENCODE_HOOK_STRICT=0 opencode --version
 ## Lifecycle flow
 
 1. package install/upgrade triggers post hook (`postinst` / `post_install` / `post_upgrade`)
-2. hook runner loads system/user manifests
-3. compatibility gate checks run (`min/max`, manifest blocked versions, global blocklist)
-4. idempotency marker check runs (`$PREFIX/var/lib/opencode/hooks/*.done`)
-5. matching event manifests are processed
-6. optional plugin-manager install/update runs only if network enable flag is set
-7. self-check runs as read-only verification
-8. registry is updated (`$PREFIX/share/opencode/system-skills-registry.json`)
+2. package remove triggers remove hooks (`prerm` / `postrm` / `pre_remove` / `post_remove`)
+3. hook runner loads system/user manifests
+4. compatibility gate checks run (`min/max`, manifest blocked versions, global blocklist)
+5. idempotency marker check runs (`$PREFIX/var/lib/opencode/hooks/*.done`)
+6. matching event manifests are processed
+7. optional plugin-manager install/update runs only if network enable flag is set
+8. self-check runs as read-only verification
+9. registry is updated (`$PREFIX/share/opencode/system-skills-registry.json`)
 
 Note: blocklist source of truth is currently:
 
