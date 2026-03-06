@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/data/data/com.termux/files/usr/bin/bash
 set -euo pipefail
 
 DEFAULT_NAME="oh-my-opencode"
@@ -20,9 +20,18 @@ need() { command -v "$1" >/dev/null 2>&1 || die "missing command: $1"; }
 root_of() { printf '%s/%s' "$PLUG_DIR" "$1"; }
 repo_of() { printf '%s/repo' "$(root_of "$1")"; }
 pkg_of() { printf '%s/package' "$(root_of "$1")"; }
-entry_of() { printf '%s/dist/index.js' "$(pkg_of "$1")"; }
+dist_entry_of() { printf '%s/dist/index.js' "$(pkg_of "$1")"; }
+entry_of() { printf '%s/index.js' "$(root_of "$1")"; }
 
 ensure_dirs() { mkdir -p "$CFG_DIR" "$PLUG_DIR" "$SNAP_DIR"; }
+ensure_root_entry() {
+	local name="$1" root dist entry
+	root="$(root_of "$name")"
+	dist="$(dist_entry_of "$name")"
+	entry="$(entry_of "$name")"
+	[[ -f "$dist" ]] || die "missing built plugin entry: $dist"
+	cp -f "$dist" "$entry"
+}
 
 update_state() {
 	local action="$1" name="$2" status="$3" detail="$4" repo="${5:-}"
@@ -109,13 +118,17 @@ snapshot_plugin() {
 }
 
 ensure_file_plugin_config() {
-	local name="$1" cfg entry
+	local name="$1" cfg entry root legacy_pkg legacy_dist
 	cfg="$CFG_DIR/opencode.json"
+	root="$(root_of "$name")"
 	entry="file://$(entry_of "$name")"
-	python3 - "$cfg" "$entry" <<'PY'
+	legacy_pkg="file://${root}/package/dist/index.js"
+	legacy_dist="file://${root}/dist/index.js"
+	python3 - "$cfg" "$entry" "$name" "$legacy_pkg" "$legacy_dist" <<'PY'
 import json,sys
 from pathlib import Path
-p=Path(sys.argv[1]); e=sys.argv[2]
+p=Path(sys.argv[1]); e=sys.argv[2]; n=sys.argv[3]
+legacy=set(sys.argv[4:])
 if p.exists():
     data=json.loads(p.read_text())
 else:
@@ -124,7 +137,11 @@ plugins=data.get("plugin")
 if plugins is None:
     data["plugin"]=[e]
 elif isinstance(plugins,list):
-    if e not in plugins: plugins.append(e)
+	# Prefer file:// plugin entry on Termux; remove bare name and legacy file entries if present.
+	plugins=[x for x in plugins if x!=n and x not in legacy]
+	if e not in plugins:
+		plugins.append(e)
+	data["plugin"]=plugins
 else:
     raise SystemExit("plugin field is not a list")
 p.write_text(json.dumps(data,ensure_ascii=False,indent=2)+"\n")
@@ -136,6 +153,67 @@ build_plugin() {
 	local name="$1" pkg
 	pkg="$(pkg_of "$name")"
 	[[ -f "$pkg/package.json" ]] || die "missing package.json: $pkg"
+
+	# oh-my-opencode is the default plugin target on Termux. Its upstream build
+	# scripts rely on `bun run`, which can be unreliable under some Termux/glibc
+	# setups. Prefer a Termux-stable path: npm install + tsc emit.
+	if [[ "$name" == "oh-my-opencode" ]]; then
+		need npm
+		log "oh-my-opencode: pruning android-incompatible deps"
+		python3 - "$pkg/package.json" <<'PY'
+import json,sys
+from pathlib import Path
+
+p=Path(sys.argv[1])
+d=json.loads(p.read_text())
+changed=False
+
+PRUNE={"@code-yeongyu/comment-checker","@ast-grep/napi"}
+for key in ("dependencies","devDependencies","optionalDependencies"):
+    obj=d.get(key)
+    if isinstance(obj,dict):
+        for dep in list(obj.keys()):
+            if dep in PRUNE:
+                del obj[dep]
+                changed=True
+
+if changed:
+    p.write_text(json.dumps(d,ensure_ascii=False,indent=2)+"\n")
+PY
+
+		rm -rf "$pkg/node_modules" "$pkg/package-lock.json" "$pkg/bun.lock" "$pkg/bun.lockb" 2>/dev/null || true
+		log "oh-my-opencode: npm install (ignore scripts)"
+		(cd "$pkg" && npm install --ignore-scripts --no-audit --no-fund)
+
+		# Keep upstream sources building on Termux even after pruning deps.
+		mkdir -p "$pkg/src"
+		cat >"$pkg/src/shims-termux.d.ts" <<'DTS'
+declare module "@ast-grep/napi";
+DTS
+		if [[ -f "$pkg/src/plugin/system-transform.ts" ]]; then
+			cat >"$pkg/src/plugin/system-transform.ts" <<'TS'
+export function createSystemTransformHandler(): (
+  input: any,
+  output: { system: string[] },
+) => Promise<void> {
+  return async (): Promise<void> => {}
+}
+TS
+		fi
+
+		[[ -f "$pkg/node_modules/typescript/bin/tsc" ]] || die "typescript not installed correctly (missing: $pkg/node_modules/typescript/bin/tsc)"
+		log "oh-my-opencode: tsc emit to dist/"
+		node "$pkg/node_modules/typescript/bin/tsc" -p "$pkg/tsconfig.json" --pretty false
+
+		if [[ -f "$pkg/assets/oh-my-opencode.schema.json" ]] && [[ ! -f "$pkg/dist/oh-my-opencode.schema.json" ]]; then
+			mkdir -p "$pkg/dist"
+			cp -f "$pkg/assets/oh-my-opencode.schema.json" "$pkg/dist/oh-my-opencode.schema.json"
+		fi
+
+		ensure_root_entry "$name"
+		return 0
+	fi
+
 	_npm_install_fallback() {
 		if ! (cd "$pkg" && npm install); then
 			log "npm install failed; retrying with linux platform compatibility flags"
@@ -145,14 +223,17 @@ build_plugin() {
 				python3 - "$pkg/package.json" <<'PY'
 import json,sys
 from pathlib import Path
+
 p=Path(sys.argv[1])
 d=json.loads(p.read_text())
 changed=False
+
 for key in ("dependencies","devDependencies","optionalDependencies"):
     obj=d.get(key)
     if isinstance(obj,dict) and "@code-yeongyu/comment-checker" in obj:
         del obj["@code-yeongyu/comment-checker"]
         changed=True
+
 if changed:
     p.write_text(json.dumps(d,ensure_ascii=False,indent=2)+"\n")
 PY
@@ -177,7 +258,7 @@ PY
 	else
 		(cd "$pkg" && (npm run build || npm run compile || true))
 	fi
-	[[ -f "$(entry_of "$name")" ]] || die "missing built plugin entry: $(entry_of "$name")"
+	ensure_root_entry "$name"
 }
 
 cmd_install() {
@@ -259,7 +340,8 @@ cmd_rollback() {
 	*.tar.gz) tar -C "$PLUG_DIR" -xzf "$arc" ;;
 	*) die "unsupported snapshot format: $arc" ;;
 	esac
-	[[ -f "$(entry_of "$name")" ]] || die "restored snapshot missing dist/index.js"
+	ensure_root_entry "$name"
+	[[ -f "$(entry_of "$name")" ]] || die "restored snapshot missing plugin entry: $(entry_of "$name")"
 	ensure_file_plugin_config "$name"
 	update_state "rollback" "$name" "ok" "rolled_back" ""
 	log "rolled back $name from $arc"
