@@ -363,7 +363,7 @@ OpenCode 支持通过 `file://` URL 加载本地插件，这完全绕过了 npm 
 // ~/.config/opencode/opencode.json
 {
   "plugin": [
-    "file:///data/data/com.termux/files/home/.config/opencode/local-plugins/oh-my-opencode/package/dist/index.js"
+"file:///data/data/com.termux/files/home/.config/opencode/local-plugins/oh-my-opencode/index.js"
   ]
 }
 ```
@@ -448,4 +448,3 @@ print("Tools:", list(d.get("tools",{}).keys())[:10])
 - [x] MCPs连接 (websearch, context7, grep_app)
 - [x] Tools注册
 - [x] Commands注册
-

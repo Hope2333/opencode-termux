@@ -8,7 +8,7 @@ Primary package per plugin:
 
 - `opencode-plugin-<name>`
 - install built plugin files to:
-  - `$PREFIX/lib/opencode/plugins/<name>/package/dist/index.js`
+- `$PREFIX/lib/opencode/plugins/<name>/index.js`
 
 Optional source package for patch workflows:
 

@@ -13,8 +13,8 @@ Main packaging/build route for external plugins now lives in:
 ## Recommended path
 
 - Online source of truth: plugin Git repo
-- Local runtime path: `~/.config/opencode/local-plugins/<name>/package/dist/index.js`
-- Config registration: `file:///.../dist/index.js`
+- Local runtime path: `~/.config/opencode/local-plugins/<name>/index.js`
+- Config registration: `file:///.../index.js`
 - Snapshots for rollback before every update
 
 ## Commands
@@ -64,7 +64,7 @@ Defaults and knobs:
 
 Default safety recommendation:
 
-- Prefer local file plugin registration (`file:///.../dist/index.js`) on Termux.
+- Prefer local file plugin registration (`file:///.../index.js`) on Termux.
 - Avoid bare package-name plugin entries in `opencode.json` on Termux if plugin has native or postinstall-heavy deps.
 
 Suggested replacement candidate for oauth-login style plugin flow:
