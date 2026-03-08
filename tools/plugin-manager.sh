@@ -7,6 +7,7 @@ CFG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/opencode"
 PLUG_DIR="$CFG_DIR/local-plugins"
 SNAP_DIR="$CFG_DIR/plugin-snapshots"
 STATE_FILE="$CFG_DIR/plugin-manager-state.json"
+SYSTEM_PLUG_DIR="${PREFIX:-/data/data/com.termux/files/usr}/lib/opencode/plugins"
 GIT_RETRY_MAX="${PLUGIN_GIT_RETRY_MAX:-3}"
 GIT_RETRY_DELAY="${PLUGIN_GIT_RETRY_DELAY:-2}"
 
@@ -22,6 +23,18 @@ repo_of() { printf '%s/repo' "$(root_of "$1")"; }
 pkg_of() { printf '%s/package' "$(root_of "$1")"; }
 dist_entry_of() { printf '%s/dist/index.js' "$(pkg_of "$1")"; }
 entry_of() { printf '%s/index.js' "$(root_of "$1")"; }
+system_root_of() { printf '%s/%s' "$SYSTEM_PLUG_DIR" "$1"; }
+system_entry_of() {
+	local root
+	root="$(system_root_of "$1")"
+	if [[ -f "$root/dist/index.js" ]]; then
+		printf '%s/dist/index.js' "$root"
+	elif [[ -f "$root/index.js" ]]; then
+		printf '%s/index.js' "$root"
+	else
+		return 1
+	fi
+}
 
 ensure_dirs() { mkdir -p "$CFG_DIR" "$PLUG_DIR" "$SNAP_DIR"; }
 ensure_root_entry() {
@@ -115,6 +128,16 @@ snapshot_plugin() {
 		tar -C "$PLUG_DIR" -czf "$out" "$name"
 	fi
 	log "snapshot=$out"
+}
+
+snapshot_config() {
+	local ts out cfg
+	cfg="$CFG_DIR/opencode.json"
+	[[ -f "$cfg" ]] || return 0
+	ts="$(date +%Y%m%d-%H%M%S)"
+	out="$SNAP_DIR/opencode-json-${ts}.json"
+	cp -f "$cfg" "$out"
+	log "config_snapshot=$out"
 }
 
 ensure_file_plugin_config() {
@@ -381,8 +404,69 @@ a=d.get('agent',{}) if isinstance(d.get('agent',{}),dict) else {}
 print('mcp=', sorted(m.keys()))
 print('agent_sample=', sorted(a.keys())[:15])
 body=json.dumps(d,ensure_ascii=False).lower()
-print('mentions_oh_my_opencode=', 'oh-my-opencode' in body)
+	print('mentions_oh_my_opencode=', 'oh-my-opencode' in body)
 PY
+}
+
+cmd_migrate_installed() {
+	local name="${1:-$DEFAULT_NAME}" cfg installed_entry snapshot=""
+	ensure_dirs
+	cfg="$CFG_DIR/opencode.json"
+	[[ -f "$cfg" ]] || die "missing config: $cfg"
+	installed_entry="file://$(system_entry_of "$name")" || die "system plugin entry missing for $name under $SYSTEM_PLUG_DIR"
+	snapshot_config
+	python3 - "$cfg" "$name" "$installed_entry" <<'PY'
+import json,sys
+from pathlib import Path
+
+cfg_path = Path(sys.argv[1])
+name = sys.argv[2]
+installed_entry = sys.argv[3]
+
+data = json.loads(cfg_path.read_text())
+plugins = data.get("plugin", [])
+if not isinstance(plugins, list):
+    raise SystemExit("plugin field is not a list")
+
+def is_legacy_entry(item: object) -> bool:
+    if not isinstance(item, str):
+        return False
+    if item == name:
+        return True
+    if not item.startswith("file://"):
+        return False
+    suffixes = [
+        f"/local-plugins/{name}/index.js",
+        f"/local-plugins/{name}/dist/index.js",
+        f"/local-plugins/{name}/package/dist/index.js",
+    ]
+    return any(item.endswith(suffix) for suffix in suffixes)
+
+found = False
+already_installed = False
+updated = []
+for item in plugins:
+    if item == installed_entry:
+        already_installed = True
+    if is_legacy_entry(item):
+        if not found:
+            updated.append(installed_entry)
+            found = True
+        continue
+    updated.append(item)
+
+if not found and not already_installed:
+    raise SystemExit("no matching local plugin entry found to migrate")
+
+if installed_entry not in updated:
+    updated.append(installed_entry)
+
+data["plugin"] = updated
+cfg_path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n")
+print(installed_entry)
+PY
+	update_state "migrate" "$name" "ok" "migrated_to_system_path" "$installed_entry"
+	log "migrated $name -> $installed_entry"
 }
 
 usage() {
@@ -390,6 +474,7 @@ usage() {
 plugin-manager.sh commands:
   install [name] [repo-url]
   update [name]
+  migrate-installed [name]
   list-snapshots [name]
   rollback [name] [snapshot-file]
   patch-export [name]
@@ -406,6 +491,10 @@ install)
 update)
 	shift
 	cmd_update "$@"
+	;;
+migrate-installed)
+	shift
+	cmd_migrate_installed "$@"
 	;;
 list-snapshots)
 	shift
