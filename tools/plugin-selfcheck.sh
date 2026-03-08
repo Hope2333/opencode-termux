@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/data/data/com.termux/files/usr/bin/bash
 set -euo pipefail
 
 CFG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/opencode"

@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/data/data/com.termux/files/usr/bin/bash
 set -euo pipefail
 
 TARGET_HOST="${TARGET_HOST:-192.168.1.22}"
