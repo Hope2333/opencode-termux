@@ -33,6 +33,14 @@ UPSTREAM_BIN="$WORK_DIR/package/bin/opencode"
 GITHUB_URL="https://github.com/anomalyco/opencode/releases/download/v${VER}/opencode-linux-arm64.tar.gz"
 
 find_loader_repo() {
+	# Allow explicit override via environment variable
+	if [[ -n "${BUN_TERMUX_LOADER:-}" ]]; then
+		if [[ -f "$BUN_TERMUX_LOADER/build.py" ]]; then
+			printf '%s' "$BUN_TERMUX_LOADER"
+			return 0
+		fi
+		return 1
+	fi
 	local c
 	for c in "$HOME/bun-termux-loader" "$HOME/develop/bun-termux-loader"; do
 		if [[ -f "$c/build.py" ]]; then
