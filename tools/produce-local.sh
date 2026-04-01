@@ -32,8 +32,11 @@ UPSTREAM_TGZ="opencode-linux-arm64-$VER.tgz"
 UPSTREAM_BIN="$WORK_DIR/package/bin/opencode"
 GITHUB_URL="https://github.com/anomalyco/opencode/releases/download/v${VER}/opencode-linux-arm64.tar.gz"
 
-find_loader_repo() {
-	# Allow explicit override via environment variable
+LOADER_VENDOR="$ROOT_DIR/third-party/bun-termux-loader"
+LOADER_URL="${BUN_TERMUX_LOADER_URL:-https://github.com/kaan-escober/bun-termux-loader}"
+
+resolve_loader_repo() {
+	# 1. Explicit env override
 	if [[ -n "${BUN_TERMUX_LOADER:-}" ]]; then
 		if [[ -f "$BUN_TERMUX_LOADER/build.py" ]]; then
 			printf '%s' "$BUN_TERMUX_LOADER"
@@ -41,6 +44,14 @@ find_loader_repo() {
 		fi
 		return 1
 	fi
+
+	# 2. Project-internal third-party (preferred auto-clone target)
+	if [[ -f "$LOADER_VENDOR/build.py" ]]; then
+		printf '%s' "$LOADER_VENDOR"
+		return 0
+	fi
+
+	# 3. External common paths (existing user setups)
 	local c
 	for c in "$HOME/bun-termux-loader" "$HOME/develop/bun-termux-loader"; do
 		if [[ -f "$c/build.py" ]]; then
@@ -48,51 +59,20 @@ find_loader_repo() {
 			return 0
 		fi
 	done
-	return 1
-}
 
-clone_loader_repo() {
-	local target="${1:?target dir required}"
-	local url="${2:?repo URL required}"
-	log "bun-termux-loader not found locally, cloning from $url"
+	# 4. Auto-clone into project-internal third-party
+	log "bun-termux-loader not found locally, cloning into third-party/"
 	if ! command -v git >/dev/null 2>&1; then
 		return 1
 	fi
-	local parent
-	parent="$(dirname "$target")"
-	mkdir -p "$parent"
-	git clone --depth 1 "$url" "$target" 2>&1 || return 1
-	if [[ ! -f "$target/build.py" ]]; then
+	rm -rf "$LOADER_VENDOR"
+	git clone --depth 1 "$LOADER_URL" "$LOADER_VENDOR" 2>&1 || return 1
+	if [[ ! -f "$LOADER_VENDOR/build.py" ]]; then
 		log "warning: cloned repo missing build.py, cleaning up"
-		rm -rf "$target"
+		rm -rf "$LOADER_VENDOR"
 		return 1
 	fi
-	return 0
-}
-
-resolve_loader_repo() {
-	local found
-	if found="$(find_loader_repo)"; then
-		printf '%s' "$found"
-		return 0
-	fi
-
-	# Auto-clone fallback: try common upstream locations
-	local candidates=(
-		"$HOME/develop/bun-termux-loader:https://github.com/kaan-escober/bun-termux-loader"
-		"$HOME/bun-termux-loader:https://github.com/kaan-escober/bun-termux-loader"
-	)
-	local c target url
-	for c in "${candidates[@]}"; do
-		target="${c%%:*}"
-		url="${c#*:}"
-		if clone_loader_repo "$target" "$url"; then
-			printf '%s' "$target"
-			return 0
-		fi
-	done
-
-	return 1
+	printf '%s' "$LOADER_VENDOR"
 }
 
 download_upstream_binary() {

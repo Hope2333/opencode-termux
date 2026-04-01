@@ -9,3 +9,6 @@ packages/
 *.tar.gz
 *.zip
 packaging/dpkg/work/
+
+# Vendored third-party dependencies (auto-cloned)
+third-party/
