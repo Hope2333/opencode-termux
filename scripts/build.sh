@@ -71,6 +71,27 @@ if [[ -f "$DOCS_LIST" ]]; then
 	done <"$DOCS_LIST"
 fi
 
+# Compile statx-seccomp shim for Android/Termux compatibility
+# See: tools/statx-shim.c — returns ENOSYS so glibc falls back to stat/fstatat
+# The shim is self-contained (no libc calls), so any C compiler works.
+STATX_SHIM_SRC="$ROOT_DIR/tools/statx-shim.c"
+STATX_SHIM_DST="$PREFIX_DIR/lib/opencode/lib/libstatx-shim.so"
+if [[ -f "$STATX_SHIM_SRC" ]]; then
+	log "compiling statx seccomp shim"
+	ensure_dir "$PREFIX_DIR/lib/opencode/lib"
+	if command -v gcc >/dev/null 2>&1; then
+		gcc -shared -fPIC -o "$STATX_SHIM_DST" "$STATX_SHIM_SRC" || {
+			log "warning: statx shim compilation failed, skipping"
+		}
+	elif command -v cc >/dev/null 2>&1; then
+		cc -shared -fPIC -o "$STATX_SHIM_DST" "$STATX_SHIM_SRC" || {
+			log "warning: statx shim compilation failed, skipping"
+		}
+	else
+		log "warning: no C compiler found, statx shim not built"
+	fi
+fi
+
 write_build_meta "$ROOT_DIR/artifacts/opencode/build.meta" \
 	"component=opencode" \
 	"prefix=$PREFIX_DIR" \

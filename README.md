@@ -134,6 +134,7 @@ Installed launcher includes:
 - stale lock cleanup
 - broken plugin cache cleanup
 - `OPENCODE_DISABLE_DEFAULT_PLUGINS=1` default
+- statx seccomp shim (`libstatx-shim.so`): installs a SIGSYS handler that catches seccomp-blocked `statx()` syscalls and returns `-ENOSYS`, so glibc falls back to `stat`/`fstatat` (Android seccomp blocks `statx` → `SIGSYS` → `SIGSEGV`). Disable with `OPENCODE_DISABLE_STATX_SHIM=1`.
 
 ## Metadata policy
 
@@ -162,6 +163,7 @@ Maintainer/packager identity defaults to:
 - CI armv7 handoff: `docs/ci-prebuild-armv7.md`
 - Execution checklist: `docs/execution-checklist.md`
 - Incident RCA (`.so` restart snowball): `docs/incidents/2026-02-23-opencode-web-termux-so-avalanche.md`
+- Statx seccomp shim: `tools/statx-shim.c` (compiled during staging, preloaded via launcher)
 
 ## License / upstream
 

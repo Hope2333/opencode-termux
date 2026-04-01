@@ -4,6 +4,21 @@ set -euo pipefail
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OPENCODE_CLI="$SELF_DIR/../lib/opencode/packages/opencode/bin/opencode"
 OPENCODE_RUNTIME="$SELF_DIR/../lib/opencode/runtime/opencode"
+STATX_SHIM="$SELF_DIR/../lib/opencode/lib/libstatx-shim.so"
+
+# Preload statx shim to avoid seccomp-blocked statx() syscall on Android.
+# glibc's stat()/fstatat() internally use direct syscall(statx) instructions;
+# Android seccomp blocks this (SIGSYS → SIGSEGV). The shim installs a SIGSYS
+# handler that returns -ENOSYS, triggering glibc's fallback to fstatat.
+# Can be disabled with OPENCODE_DISABLE_STATX_SHIM=1.
+apply_statx_shim() {
+    if [[ "${OPENCODE_DISABLE_STATX_SHIM:-0}" == "1" ]]; then
+        return
+    fi
+    if [[ -f "$STATX_SHIM" ]]; then
+        export LD_PRELOAD="${STATX_SHIM}${LD_PRELOAD:+:$LD_PRELOAD}"
+    fi
+}
 
 cleanup_tty_full() {
 	if [ -t 1 ]; then
@@ -47,6 +62,7 @@ cleanup_state_locks
 cleanup_broken_cached_modules
 : "${OPENCODE_DISABLE_DEFAULT_PLUGINS:=1}"
 export OPENCODE_DISABLE_DEFAULT_PLUGINS
+apply_statx_shim
 
 if [[ -x "$OPENCODE_RUNTIME" ]]; then
 	"$OPENCODE_RUNTIME" "$@"
