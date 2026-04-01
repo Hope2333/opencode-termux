@@ -51,6 +51,50 @@ find_loader_repo() {
 	return 1
 }
 
+clone_loader_repo() {
+	local target="${1:?target dir required}"
+	local url="${2:?repo URL required}"
+	log "bun-termux-loader not found locally, cloning from $url"
+	if ! command -v git >/dev/null 2>&1; then
+		return 1
+	fi
+	local parent
+	parent="$(dirname "$target")"
+	mkdir -p "$parent"
+	git clone --depth 1 "$url" "$target" 2>&1 || return 1
+	if [[ ! -f "$target/build.py" ]]; then
+		log "warning: cloned repo missing build.py, cleaning up"
+		rm -rf "$target"
+		return 1
+	fi
+	return 0
+}
+
+resolve_loader_repo() {
+	local found
+	if found="$(find_loader_repo)"; then
+		printf '%s' "$found"
+		return 0
+	fi
+
+	# Auto-clone fallback: try common upstream locations
+	local candidates=(
+		"$HOME/develop/bun-termux-loader:https://github.com/kaan-escober/bun-termux-loader"
+		"$HOME/bun-termux-loader:https://github.com/kaan-escober/bun-termux-loader"
+	)
+	local c target url
+	for c in "${candidates[@]}"; do
+		target="${c%%:*}"
+		url="${c#*:}"
+		if clone_loader_repo "$target" "$url"; then
+			printf '%s' "$target"
+			return 0
+		fi
+	done
+
+	return 1
+}
+
 download_upstream_binary() {
 	local npm_ok=0
 	log "downloading upstream package from npm (preferred)"
@@ -101,8 +145,8 @@ need tar
 need file
 need python3
 
-LOADER_REPO="$(find_loader_repo || true)"
-[[ -n "$LOADER_REPO" ]] || die "bun-termux-loader not found (need build.py)"
+LOADER_REPO="$(resolve_loader_repo || true)"
+[[ -n "$LOADER_REPO" ]] || die "bun-termux-loader not found and auto-clone failed (need build.py)"
 
 log "version=$VER"
 log "work_base=$WORK_BASE"
