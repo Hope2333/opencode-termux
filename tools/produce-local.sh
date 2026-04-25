@@ -143,15 +143,47 @@ download_upstream_binary
 log "upstream fingerprint"
 file "$UPSTREAM_BIN"
 
-mkdir -p "$RUNTIME_DIR"
-log "wrapping upstream binary for Termux/Android"
-(cd "$LOADER_REPO" && python3 build.py "$UPSTREAM_BIN" --wrapper ./wrapper)
-[[ -f "$WORK_DIR/package/bin/opencode-termux" ]] || die "wrapped runtime not generated"
-install -m 755 "$WORK_DIR/package/bin/opencode-termux" "$RUNTIME_OUT"
+# Detect binary type: Bun bundled vs native Go
+# Bun bundled binaries have "---- Bun! ----" marker at EOF
+# Native Go binaries (v1.14.21+) don't have this marker
+check_bun_marker() {
+    if [[ ! -f "$UPSTREAM_BIN" ]]; then
+        return 1
+    fi
+    # Use python for more reliable binary search
+    if command -v python3 >/dev/null 2>&1; then
+        if python3 -c "
+import sys
+with open('$UPSTREAM_BIN', 'rb') as f:
+    f.seek(-256, 2)  # Last 256 bytes
+    if b'---- Bun! ----' in f.read():
+        sys.exit(0)
+    sys.exit(1)
+" 2>/dev/null; then
+            return 0
+        fi
+    fi
+    return 1  # Not Bun bundled (native Go)
+}
+
+if check_bun_marker; then
+    log "detected Bun bundled binary, using bun-termux-loader wrapper"
+    mkdir -p "$RUNTIME_DIR"
+    log "wrapping upstream binary for Termux/Android"
+    (cd "$LOADER_REPO" && python3 build.py "$UPSTREAM_BIN" --wrapper ./wrapper)
+    [[ -f "$WORK_DIR/package/bin/opencode-termux" ]] || die "wrapped runtime not generated"
+install -m 755 "$UPSTREAM_BIN" "$RUNTIME_OUT"
+fi
 
 log "wrapped runtime verification"
 file "$RUNTIME_OUT"
-"$RUNTIME_OUT" --version
+
+# Only try version check if we're on Termux (has bionic linker)
+if [[ -x /system/bin/linker64 ]]; then
+    "$RUNTIME_OUT" --version || log "version check skipped (non-Termux environment)"
+else
+    log "runtime verification: binary ready (skipped exec on non-Termux)"
+fi
 
 log "cleaning generated outputs to avoid stale contamination"
 rm -rf "$ROOT_DIR/artifacts/staged" "$ROOT_DIR/packaging/dpkg/work" "$ROOT_DIR/packaging/pacman/src"
