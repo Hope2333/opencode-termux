@@ -33,7 +33,7 @@ UPSTREAM_BIN="$WORK_DIR/package/bin/opencode"
 GITHUB_URL="https://github.com/anomalyco/opencode/releases/download/v${VER}/opencode-linux-arm64.tar.gz"
 
 LOADER_VENDOR="$ROOT_DIR/third-party/bun-termux-loader"
-LOADER_URL="${BUN_TERMUX_LOADER_URL:-https://github.com/kaan-escober/bun-termux-loader}"
+LOADER_URL="${BUN_TERMUX_LOADER_URL:-https://github.com/Hope2333/bun-termux-loader}"
 
 resolve_loader_repo() {
 	# 1. Explicit env override
