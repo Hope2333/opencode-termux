@@ -345,6 +345,12 @@ jobs:
           fi
           echo "=== Wrapping with bun-termux-loader ===" | tee out/logs/wrap-output.txt
           echo "Wrapper path: $WRAPPER_PATH" | tee -a out/logs/wrap-output.txt
+          # Create dummy shim if missing (opencode has 0 native libs, shim unused)
+          if [[ ! -f "$LOADER_DIR/bunfs_shim.so" ]]; then
+            echo "Creating placeholder bunfs_shim.so (no native libs needed)" | tee -a out/logs/wrap-output.txt
+            python3 -c "open('$LOADER_DIR/bunfs_shim.so','wb').write(b'\\x7fELF')" 2>/dev/null || \
+            touch "$LOADER_DIR/bunfs_shim.so"
+          fi
           python3 "$LOADER_DIR/build.py" "$BIN" --wrapper "$WRAPPER_PATH" \
             2>&1 | tee -a out/logs/wrap-output.txt
 
