@@ -307,18 +307,17 @@ jobs:
         continue-on-error: true
         run: |
           set -euo pipefail
-          if [[ -d "third-party/bun-termux-loader" && -f "third-party/bun-termux-loader/build.py" ]]; then
-            echo "bun-termux-loader already present in third-party/"
-            echo "BUN_TERMUX_LOADER_AVAILABLE=true" >> "$GITHUB_ENV"
-            exit 0
-          fi
           mkdir -p third-party
           git clone --depth 1 "$BUN_TERMUX_LOADER_REPO" third-party/bun-termux-loader 2>&1 || true
           if [[ -f "third-party/bun-termux-loader/build.py" ]]; then
             echo "bun-termux-loader cloned successfully"
             echo "BUN_TERMUX_LOADER_AVAILABLE=true" >> "$GITHUB_ENV"
+            if [[ -f "third-party/bun-termux-loader/wrapper" ]]; then
+              WRAPPER_INFO="$(file third-party/bun-termux-loader/wrapper | cut -d: -f2)"
+              echo "Pre-built wrapper: $WRAPPER_INFO"
+            fi
           else
-            echo "bun-termux-loader clone failed (neither repo worked)" >&2
+            echo "bun-termux-loader clone failed" >&2
             echo "BUN_TERMUX_LOADER_AVAILABLE=false" >> "$GITHUB_ENV"
           fi
 
@@ -338,31 +337,34 @@ jobs:
             echo "bun-termux-loader not available, skipping wrap" | tee out/logs/wrap-output.txt
             exit 0
           fi
+          LOADER_DIR="$(pwd)/third-party/bun-termux-loader"
+          WRAPPER_PATH="$LOADER_DIR/wrapper"
+          if [[ ! -f "$WRAPPER_PATH" ]]; then
+            echo "Wrapper binary missing at $WRAPPER_PATH" | tee out/logs/wrap-output.txt
+            exit 0
+          fi
           echo "=== Wrapping with bun-termux-loader ===" | tee out/logs/wrap-output.txt
-          python3 third-party/bun-termux-loader/build.py "$BIN" --wrapper ./wrapper \
+          echo "Wrapper path: $WRAPPER_PATH" | tee -a out/logs/wrap-output.txt
+          python3 "$LOADER_DIR/build.py" "$BIN" --wrapper "$WRAPPER_PATH" \
             2>&1 | tee -a out/logs/wrap-output.txt
 
+          # build.py output naming: input_stem + "-termux"
+          # e.g. opencode-linux-arm64 → opencode-linux-arm64-termux
           WRAPPED_BIN_DIR="$(dirname "$BIN")"
-          WRAPPED_CANDIDATES=()
-          for c in "$WRAPPED_BIN_DIR/opencode-termux" "package/bin/opencode-termux" "opencode-termux"; do
-            if [[ -f "$c" ]]; then
-              WRAPPED_CANDIDATES+=("$c")
-            fi
-          done
-
-          if [[ ${#WRAPPED_CANDIDATES[@]} -gt 0 ]]; then
-            cp "${WRAPPED_CANDIDATES[0]}" out/assets/opencode-termux-aarch64
+          EXPECTED="$WRAPPED_BIN_DIR/opencode-linux-arm64-termux"
+          if [[ -f "$EXPECTED" ]]; then
+            cp "$EXPECTED" out/assets/opencode-termux-aarch64
             file out/assets/opencode-termux-aarch64 | tee out/logs/wrap-file.txt
             ls -lh out/assets/opencode-termux-aarch64 | tee -a out/logs/wrap-output.txt
             echo "Wrapped binary placed at out/assets/opencode-termux-aarch64"
           else
-            echo "WARNING: wrapped binary not found in expected locations, attempting search"
-            FOUND="$(find "$GITHUB_WORKSPACE" -maxdepth 5 -name "opencode-termux" -type f 2>/dev/null | head -n1 || true)"
+            echo "Wrapped binary NOT found at expected path: $EXPECTED" | tee -a out/logs/wrap-output.txt
+            FOUND="$(find "$GITHUB_WORKSPACE" -maxdepth 5 -name "*-termux" -type f 2>/dev/null | head -n1 || true)"
             if [[ -n "$FOUND" ]]; then
               cp "$FOUND" out/assets/opencode-termux-aarch64
-              echo "Wrapped binary found at $FOUND and copied"
+              echo "Found wrapped binary at: $FOUND" | tee -a out/logs/wrap-output.txt
             else
-              echo "Wrapped binary not generated — this is expected if the loader's binfmt/emulation cannot run the Linux arm64 binary to extract its embedded bun runtime" | tee -a out/logs/wrap-output.txt
+              echo "No wrapped binary found in workspace" | tee -a out/logs/wrap-output.txt
             fi
           fi
 
