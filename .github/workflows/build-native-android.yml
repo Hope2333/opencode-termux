@@ -350,7 +350,9 @@ jobs:
           fi
           echo "=== Wrapping with bun-termux-loader ===" | tee out/logs/wrap-output.txt
           echo "Wrapper path: $WRAPPER_PATH" | tee -a out/logs/wrap-output.txt
-          python3 "$LOADER_DIR/build.py" "$BIN" --wrapper "$WRAPPER_PATH" \
+          SHIM_PATH="$(pwd)/tools/prebuilt/bunfs_shim.so"
+          echo "Shim path: $SHIM_PATH" | tee -a out/logs/wrap-output.txt
+          python3 "$LOADER_DIR/build.py" "$BIN" --wrapper "$WRAPPER_PATH" --shim "$SHIM_PATH" \
             2>&1 | tee -a out/logs/wrap-output.txt
 
           # build.py output naming: input_stem + "-termux"
