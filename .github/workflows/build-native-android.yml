@@ -7,7 +7,7 @@
 #
 # Trigger: manual (workflow_dispatch).
 
-name: Build Native Android (aarch64)
+name: Build Native Android
 
 on:
   workflow_dispatch:
@@ -19,14 +19,21 @@ on:
 
 env:
   BUN_INSTALL: "${{ github.workspace }}/.bun"
-  BUN_ANDROID_URL: "https://github.com/oven-sh/bun/releases/download/bun-v1.3.14/bun-linux-aarch64-android.zip"
   BUN_TERMUX_LOADER_REPO: "https://github.com/Hope2333/bun-termux-loader"
 
 jobs:
   build-android:
+    strategy:
+      matrix:
+        arch: [aarch64, x64]
+      fail-fast: false
     runs-on: ubuntu-latest
     outputs:
       status_json: ${{ steps.write-status.outputs.status_json }}
+    env:
+      BUN_ANDROID_URL: "https://github.com/oven-sh/bun/releases/download/bun-v1.3.14/bun-linux-${{ matrix.arch }}-android.zip"
+      ANDROID_ARCH: ${{ matrix.arch }}
+      OUTPUT_DIR: "out/${{ matrix.arch }}"
 
     steps:
       # ---- step (a): checkout repo ----
@@ -406,7 +413,7 @@ jobs:
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: opencode-android-aarch64-build
+          name: opencode-android-${{ matrix.arch }}-build
           path: |
             out/bundle/
             out/status/
