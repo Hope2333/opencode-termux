@@ -311,10 +311,15 @@ jobs:
           git clone --depth 1 "$BUN_TERMUX_LOADER_REPO" third-party/bun-termux-loader 2>&1 || true
           if [[ -f "third-party/bun-termux-loader/build.py" ]]; then
             echo "bun-termux-loader cloned successfully"
-            echo "BUN_TERMUX_LOADER_AVAILABLE=true" >> "$GITHUB_ENV"
-            if [[ -f "third-party/bun-termux-loader/wrapper" ]]; then
-              WRAPPER_INFO="$(file third-party/bun-termux-loader/wrapper | cut -d: -f2)"
-              echo "Pre-built wrapper: $WRAPPER_INFO"
+            # Use pre-built wrapper + shim from this repo (avoids aarch64 cross-compilation on CI)
+            if [[ -f "tools/prebuilt/wrapper" && -f "tools/prebuilt/bunfs_shim.so" ]]; then
+              cp tools/prebuilt/wrapper third-party/bun-termux-loader/wrapper
+              cp tools/prebuilt/bunfs_shim.so third-party/bun-termux-loader/bunfs_shim.so
+              echo "Pre-built aarch64 wrapper+shim deployed from tools/prebuilt/"
+              echo "BUN_TERMUX_LOADER_AVAILABLE=true" >> "$GITHUB_ENV"
+            else
+              echo "Warning: prebuilt files not found in tools/prebuilt/"
+              echo "BUN_TERMUX_LOADER_AVAILABLE=true" >> "$GITHUB_ENV"
             fi
           else
             echo "bun-termux-loader clone failed" >&2
