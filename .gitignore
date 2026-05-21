@@ -4,11 +4,29 @@ runtime/
 packages/
 *.deb
 *.pkg.tar.*
+*.tgz
 
 # Large files (downloaded by CI)
 *.tar.gz
 *.zip
+opencode-1.14.*
+opencode-linux-arm64-*.tgz
+
+# Build work directories
 packaging/dpkg/work/
+packaging/pacman/pkg/
+packaging/pacman/src/
+.work/
+
+# Session artifacts / temp test files
+26003091@session*
+f1.bin
+f2.bin
+package/bin/opencode
 
 # Vendored third-party dependencies (auto-cloned)
 third-party/
+
+# Project metadata
+.ai/
+.sisyphus/

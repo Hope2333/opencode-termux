@@ -1,0 +1,442 @@
+# Build Native Android (aarch64)
+#
+# Produces Android/Bionic-wrapped OpenCode runtime artifacts on ubuntu CI.
+# Steps: resolve version → install bun → fetch opencode-linux-arm64 from npm →
+# fetch Android native bun → analyze binary marker → attempt cross-compile →
+# wrap via bun-termux-loader → bundle → upload.
+#
+# Trigger: manual (workflow_dispatch).
+
+name: Build Native Android (aarch64)
+
+on:
+  workflow_dispatch:
+    inputs:
+      opencode_version:
+        description: "OpenCode version (use 'latest' for npm latest)"
+        required: false
+        default: "latest"
+
+env:
+  BUN_INSTALL: "${{ github.workspace }}/.bun"
+  BUN_ANDROID_URL: "https://github.com/oven-sh/bun/releases/download/bun-v1.3.14/bun-linux-aarch64-android.zip"
+  BUN_TERMUX_LOADER_REPO1: "https://github.com/kaan-escober/bun-termux-loader"
+  BUN_TERMUX_LOADER_REPO2: "https://github.com/Hope2333/bun-termux-loader"
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    outputs:
+      status_json: ${{ steps.write-status.outputs.status_json }}
+
+    steps:
+      # ---- step (a): checkout repo ----
+      - uses: actions/checkout@v4
+
+      # ---- install QEMU user emulation for aarch64 (needed by bun-termux-loader wrapping) ----
+      - name: Install QEMU for aarch64
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-user-static binfmt-support
+          # Register binfmt for aarch64
+          docker run --rm --privileged multiarch/qemu-user-static --reset -p yes 2>/dev/null || \
+          sudo update-binfmts --enable qemu-aarch64 2>/dev/null || true
+          echo "QEMU aarch64 support installed"
+
+      # ---- prepare output directory structure ----
+      - name: Prepare output directories
+        run: |
+          set -euo pipefail
+          mkdir -p out/assets out/logs out/status out/bundle
+
+      # ---- resolve opencode version (default: latest from npm) ----
+      - name: Resolve opencode version
+        id: resolve-version
+        run: |
+          set -euo pipefail
+          INPUT_VER="${{ github.event.inputs.opencode_version || 'latest' }}"
+          if [[ "$INPUT_VER" == "latest" ]]; then
+            VER="$(npm view opencode-linux-arm64 version 2>/dev/null || true)"
+            if [[ -z "$VER" ]]; then
+              echo "WARNING: could not resolve latest version from npm, falling back to 'latest' tag"
+              VER="latest"
+            fi
+          else
+            VER="$INPUT_VER"
+          fi
+          echo "version=$VER"
+          echo "opencode_version=$VER" >> "$GITHUB_OUTPUT"
+
+      # ---- step (b): install Bun (Linux) ----
+      - name: Install Bun (Linux)
+        run: |
+          set -euo pipefail
+          curl -fsSL https://bun.sh/install | bash
+          "$BUN_INSTALL/bin/bun" --version | tee out/logs/bun-linux-version.txt
+          echo "$BUN_INSTALL/bin" >> "$GITHUB_PATH"
+
+      # ---- step (c): download opencode-linux-arm64 from npm ----
+      - name: Download opencode-linux-arm64 from npm
+        continue-on-error: true
+        env:
+          VER: ${{ steps.resolve-version.outputs.opencode_version }}
+        run: |
+          set -euo pipefail
+          mkdir -p out/work/opencode
+          cd out/work/opencode
+          if [[ "$VER" == "latest" ]]; then
+            npm pack opencode-linux-arm64 2>&1 | tee ../../logs/npm-pack.log || true
+          else
+            npm pack "opencode-linux-arm64@$VER" 2>&1 | tee ../../logs/npm-pack.log || true
+          fi
+          TGZ="$(ls -1 *.tgz 2>/dev/null | head -n1 || true)"
+          if [[ -z "$TGZ" ]]; then
+            echo "npm pack failed — opencode-linux-arm64 may not exist for version $VER" | tee ../../logs/npm-pack.log
+            exit 0
+          fi
+          tar -xzf "$TGZ"
+          if [[ -f package/bin/opencode ]]; then
+            cp package/bin/opencode ../../assets/opencode-linux-arm64
+            chmod +x ../../assets/opencode-linux-arm64
+          fi
+          file ../../assets/opencode-linux-arm64 2>/dev/null | tee ../../logs/opencode-file.txt || true
+
+      # ---- verify bun installation path ----
+      - name: Verify Bun installation
+        run: |
+          set -euo pipefail
+          if [[ -x "$BUN_INSTALL/bin/bun" ]]; then
+            echo "Bun installed at: $BUN_INSTALL/bin/bun"
+            "$BUN_INSTALL/bin/bun" --version | tee -a out/logs/bun-linux-version.txt
+          else
+            echo "Bun not found at $BUN_INSTALL/bin/bun, checking HOME/.bun..."
+            if [[ -x "$HOME/.bun/bin/bun" ]]; then
+              echo "Bun found at HOME/.bun, updating BUN_INSTALL"
+              echo "BUN_INSTALL=$HOME/.bun" >> "$GITHUB_ENV"
+            else
+              echo "ERROR: Bun not found anywhere after installation" >&2
+            fi
+          fi
+
+      # ---- verify downloaded opencode version matches expected ----
+      - name: Verify opencode version
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          BIN="out/assets/opencode-linux-arm64"
+          EXP_VER="${{ steps.resolve-version.outputs.opencode_version }}"
+          if [[ ! -f "$BIN" ]]; then
+            echo "opencode binary not available, skipping version check" | tee out/logs/version-check.txt
+            exit 0
+          fi
+          ACTUAL_VER="$("$BIN" --version 2>/dev/null || true)"
+          echo "Expected version: $EXP_VER" | tee out/logs/version-check.txt
+          echo "Actual version:   $ACTUAL_VER" | tee -a out/logs/version-check.txt
+          if [[ -n "$ACTUAL_VER" && "$ACTUAL_VER" == "$EXP_VER" ]]; then
+            echo "VERSION_MATCH=true" >> "$GITHUB_ENV"
+            echo "Version match: OK" | tee -a out/logs/version-check.txt
+          elif [[ -n "$ACTUAL_VER" ]]; then
+            echo "VERSION_MATCH=false (expected $EXP_VER, got $ACTUAL_VER)" >> "$GITHUB_ENV"
+            echo "Version MISMATCH: expected=$EXP_VER actual=$ACTUAL_VER" | tee -a out/logs/version-check.txt
+          else
+            echo "VERSION_MATCH=unknown" >> "$GITHUB_ENV"
+            echo "Could not determine actual version (binary may not be executable on x86_64)" | tee -a out/logs/version-check.txt
+          fi
+
+      # ---- step (d): download Android-native Bun for aarch64 (diagnostic artifact, not used by wrapping) ----
+      - name: Download Android Bun for aarch64 (diagnostic)
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          curl -fL "$BUN_ANDROID_URL" -o out/assets/bun-linux-aarch64-android.zip
+          if [[ ! -f out/assets/bun-linux-aarch64-android.zip ]]; then
+            echo "Android Bun download failed (URL: $BUN_ANDROID_URL)" >&2
+            exit 0
+          fi
+          unzip -o out/assets/bun-linux-aarch64-android.zip -d out/assets/
+          BUN_BIN="$(find out/assets/ -name 'bun' -type f 2>/dev/null | head -1 || true)"
+          if [[ -f "$BUN_BIN" ]]; then
+            mv "$BUN_BIN" out/assets/bun-linux-aarch64-android
+            file out/assets/bun-linux-aarch64-android | tee out/logs/bun-android-file.txt
+            out/assets/bun-linux-aarch64-android --version 2>&1 | tee out/logs/bun-android-version.txt || true
+          fi
+
+      # ---- step (e): analyze opencode binary for ---- Bun! ---- marker and extract JS payload ----
+      - name: Analyze binary — find ---- Bun! ---- marker and extract JS payload
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          BIN="out/assets/opencode-linux-arm64"
+          if [[ ! -f "$BIN" ]]; then
+            echo "opencode binary not available, skipping analysis" | tee out/logs/binary-analysis.txt
+            exit 0
+          fi
+          {
+            echo "=== Binary analysis ==="
+            file "$BIN"
+            ls -lh "$BIN"
+          } | tee out/logs/binary-analysis.txt
+          python3 - <<'PY' | tee -a out/logs/binary-analysis.txt
+          import sys, re
+
+          bin_path = "out/assets/opencode-linux-arm64"
+          with open(bin_path, "rb") as f:
+              data = f.read()
+
+          marker = b"---- Bun! ----"
+          idx = data.find(marker)
+          if idx < 0:
+              print("STATUS: MARKER_NOT_FOUND")
+              print("ERROR: ---- Bun! ---- marker NOT found in binary")
+              sys.exit(0)
+
+          print(f"STATUS: MARKER_FOUND")
+          print(f"Marker offset:      {idx} (0x{idx:x})")
+          print(f"Total file size:    {len(data)} bytes ({len(data)/1024/1024:.1f} MiB)")
+          payload_start = idx + len(marker)
+          payload = data[payload_start:]
+          print(f"Payload start:      {payload_start} (0x{payload_start:x})")
+          print(f"Payload size:       {len(payload)} bytes ({len(payload)/1024/1024:.1f} MiB)")
+
+          with open("out/assets/opencode-js-payload.bin", "wb") as out:
+              out.write(payload)
+          print(f"Extracted payload -> out/assets/opencode-js-payload.bin")
+
+          text_strings = re.findall(rb'[\x20-\x7e]{8,}', payload)
+          print(f"Readable strings in payload: {len(text_strings)}")
+          with open("out/logs/payload-strings.txt", "w", errors="replace") as sf:
+              for s in text_strings[:500]:
+                  sf.write(s.decode("utf-8", errors="replace") + "\n")
+          print("Wrote first 500 readable strings -> out/logs/payload-strings.txt")
+          PY
+          # Set GITHUB_ENV from analysis result
+          if grep -q "STATUS: MARKER_FOUND" out/logs/binary-analysis.txt 2>/dev/null; then
+            echo "MARKER_FOUND=true" >> "$GITHUB_ENV"
+          else
+            echo "MARKER_FOUND=false" >> "$GITHUB_ENV"
+          fi
+
+      # ---- step (f): attempt cross-compile with bun build --compile --target=bun-linux-arm64 ----
+      - name: Attempt cross-compile for aarch64
+        continue-on-error: true
+        env:
+          VER: ${{ steps.resolve-version.outputs.opencode_version }}
+        run: |
+          set -euo pipefail
+          BUN="$BUN_INSTALL/bin/bun"
+          BIN="out/assets/opencode-linux-arm64"
+          if [[ ! -x "$BUN" || ! -f "$BIN" ]]; then
+            echo "bun or opencode binary unavailable, skipping cross-compile" | tee out/logs/cross-compile.txt
+            exit 0
+          fi
+          mkdir -p out/work/cross
+          cd out/work/cross
+          echo "=== Cross-compile attempt ===" | tee ../../logs/cross-compile.txt
+
+          # Attempt 1: build from npm package source entry
+          SRC_PKG="$(ls -d ../../work/opencode/package 2>/dev/null || true)"
+          if [[ -n "$SRC_PKG" && -f "$SRC_PKG/package.json" ]]; then
+            ENTRY="$(python3 -c "
+          import json
+          d = json.load(open('$SRC_PKG/package.json'))
+          b = d.get('bin', {})
+          if isinstance(b, str):
+              print(b)
+          elif isinstance(b, dict):
+              print(next(iter(b.values())))
+          " 2>/dev/null || true)"
+          fi
+
+          if [[ -n "${ENTRY:-}" && -f "$SRC_PKG/$ENTRY" ]]; then
+            echo "Attempt 1: building from npm package source entry: $ENTRY" | tee -a ../../logs/cross-compile.txt
+            "$BUN" build "$SRC_PKG/$ENTRY" --compile --target=bun-linux-arm64 \
+              --outfile "../../assets/opencode-cross-aarch64" \
+              2>&1 | tee -a ../../logs/cross-compile.txt
+          else
+            echo "Attempt 1: no package source entry available" | tee -a ../../logs/cross-compile.txt
+            echo "Attempt 2: scanning extracted payload for JS entry points" | tee -a ../../logs/cross-compile.txt
+            PLD="../../assets/opencode-js-payload.bin"
+            if [[ -f "$PLD" ]]; then
+              python3 - <<'PY'
+          import re
+          with open("../../assets/opencode-js-payload.bin", "rb") as f:
+              data = f.read()
+          hits = re.findall(rb'(?:index\.js|main\.js|src/index|dist/index|src/main)[\x00-\x7f]{0,40}', data)
+          for h in hits[:20]:
+              print(h.decode("utf-8", errors="replace"))
+          PY
+              echo "(raw payload — cannot reliably extract entry point for re-compile)" | tee -a ../../logs/cross-compile.txt
+            fi
+          fi
+
+          if [[ -f "../../assets/opencode-cross-aarch64" ]]; then
+            file "../../assets/opencode-cross-aarch64" | tee -a ../../logs/cross-compile.txt
+            echo "CROSS_COMPILE_STATUS=success" >> "$GITHUB_ENV"
+          else
+            echo "Cross-compile did not produce output binary" | tee -a ../../logs/cross-compile.txt
+            echo "CROSS_COMPILE_STATUS=failed" >> "$GITHUB_ENV"
+          fi
+
+          cd "$GITHUB_WORKSPACE"
+
+      # ---- clone bun-termux-loader for wrapping step ----
+      - name: Clone bun-termux-loader
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          if [[ -d "third-party/bun-termux-loader" && -f "third-party/bun-termux-loader/build.py" ]]; then
+            echo "bun-termux-loader already present in third-party/"
+            echo "BUN_TERMUX_LOADER_AVAILABLE=true" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          mkdir -p third-party
+          git clone --depth 1 "$BUN_TERMUX_LOADER_REPO1" third-party/bun-termux-loader 2>&1 || \
+          git clone --depth 1 "$BUN_TERMUX_LOADER_REPO2" third-party/bun-termux-loader 2>&1 || true
+          if [[ -f "third-party/bun-termux-loader/build.py" ]]; then
+            echo "bun-termux-loader cloned successfully"
+            echo "BUN_TERMUX_LOADER_AVAILABLE=true" >> "$GITHUB_ENV"
+          else
+            echo "bun-termux-loader clone failed (neither repo worked)" >&2
+            echo "BUN_TERMUX_LOADER_AVAILABLE=false" >> "$GITHUB_ENV"
+          fi
+
+      # ---- step (g): wrap opencode with bun-termux-loader for Bionic/Android ----
+      - name: Wrap opencode with bun-termux-loader
+        continue-on-error: true
+        env:
+          LOADER_AVAIL: ${{ env.BUN_TERMUX_LOADER_AVAILABLE }}
+        run: |
+          set -euo pipefail
+          BIN="$(pwd)/out/assets/opencode-linux-arm64"
+          if [[ ! -f "$BIN" ]]; then
+            echo "opencode binary not available, skipping wrap" | tee out/logs/wrap-output.txt
+            exit 0
+          fi
+          if [[ "${LOADER_AVAIL:-false}" != "true" && "${BUN_TERMUX_LOADER_AVAILABLE:-false}" != "true" ]]; then
+            echo "bun-termux-loader not available, skipping wrap" | tee out/logs/wrap-output.txt
+            exit 0
+          fi
+          echo "=== Wrapping with bun-termux-loader ===" | tee out/logs/wrap-output.txt
+          python3 third-party/bun-termux-loader/build.py "$BIN" --wrapper ./wrapper \
+            2>&1 | tee -a out/logs/wrap-output.txt
+
+          WRAPPED_BIN_DIR="$(dirname "$BIN")"
+          WRAPPED_CANDIDATES=()
+          for c in "$WRAPPED_BIN_DIR/opencode-termux" "package/bin/opencode-termux" "opencode-termux"; do
+            if [[ -f "$c" ]]; then
+              WRAPPED_CANDIDATES+=("$c")
+            fi
+          done
+
+          if [[ ${#WRAPPED_CANDIDATES[@]} -gt 0 ]]; then
+            cp "${WRAPPED_CANDIDATES[0]}" out/assets/opencode-termux-aarch64
+            file out/assets/opencode-termux-aarch64 | tee out/logs/wrap-file.txt
+            ls -lh out/assets/opencode-termux-aarch64 | tee -a out/logs/wrap-output.txt
+            echo "Wrapped binary placed at out/assets/opencode-termux-aarch64"
+          else
+            echo "WARNING: wrapped binary not found in expected locations, attempting search"
+            FOUND="$(find "$GITHUB_WORKSPACE" -maxdepth 5 -name "opencode-termux" -type f 2>/dev/null | head -n1 || true)"
+            if [[ -n "$FOUND" ]]; then
+              cp "$FOUND" out/assets/opencode-termux-aarch64
+              echo "Wrapped binary found at $FOUND and copied"
+            else
+              echo "Wrapped binary not generated — this is expected if the loader's binfmt/emulation cannot run the Linux arm64 binary to extract its embedded bun runtime" | tee -a out/logs/wrap-output.txt
+            fi
+          fi
+
+      # ---- step (g cont'd): create output bundle with all artifacts ----
+      - name: Create output bundle
+        run: |
+          set -euo pipefail
+          echo "=== Creating output bundle ===" | tee out/logs/bundle-manifest.txt
+          copy_asset() {
+            local src="$1" dst="$2" label="$3"
+            if [[ -f "$src" ]]; then
+              cp "$src" "$dst"
+              echo "added: $label" | tee -a out/logs/bundle-manifest.txt
+            else
+              echo "skipped: $label (not available)" | tee -a out/logs/bundle-manifest.txt
+            fi
+          }
+          copy_asset "out/assets/opencode-linux-arm64"        "out/bundle/opencode-linux-arm64"         "Original opencode-linux-arm64 binary"
+          copy_asset "out/assets/bun-linux-aarch64-android"   "out/bundle/bun-linux-aarch64-android"    "Android-native bun aarch64"
+          copy_asset "out/assets/bun-linux-aarch64-android.zip" "out/bundle/bun-linux-aarch64-android.zip" "Android-native bun zip"
+          copy_asset "out/assets/opencode-termux-aarch64"     "out/bundle/opencode-termux-aarch64"      "Termux-wrapped opencode (bun-termux-loader)"
+          copy_asset "out/assets/opencode-cross-aarch64"      "out/bundle/opencode-cross-aarch64"       "Cross-compiled opencode aarch64"
+          copy_asset "out/assets/opencode-js-payload.bin"     "out/bundle/opencode-js-payload.bin"      "Extracted JS payload"
+          echo "---" | tee -a out/logs/bundle-manifest.txt
+          ls -lh out/bundle/ | tee -a out/logs/bundle-manifest.txt
+
+      # ---- step (h): upload artifacts (bundle + status only, not logs/work) ----
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencode-android-aarch64-build
+          path: |
+            out/bundle/
+            out/status/
+          retention-days: 30
+
+      # ---- step (i): write status JSON ----
+      - name: Write status JSON
+        id: write-status
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, hashlib
+          from pathlib import Path
+
+          out = Path("out")
+          bundle = out / "bundle"
+
+          assets = []
+          if bundle.exists():
+              for p in sorted(bundle.rglob("*")):
+                  if p.is_file():
+                      rel = str(p.relative_to(out))
+                      assets.append({
+                          "path": rel,
+                          "size": p.stat().st_size,
+                          "sha256": hashlib.sha256(p.read_bytes()).hexdigest(),
+                      })
+
+          marker_found = os.environ.get("MARKER_FOUND", "unknown")
+          cross_status = os.environ.get("CROSS_COMPILE_STATUS", "unknown")
+          loader_avail = os.environ.get("BUN_TERMUX_LOADER_AVAILABLE", "unknown")
+
+          status = {
+              "workflow": "build-native-android",
+              "target": "linux-aarch64-android",
+              "opencode_version": "${{ steps.resolve-version.outputs.opencode_version }}",
+              "git_sha": os.environ.get("GITHUB_SHA", ""),
+              "run_id": os.environ.get("GITHUB_RUN_ID", ""),
+              "status": "completed",
+              "artifacts": assets,
+              "analysis": {
+                  "bun_marker_found": marker_found,
+                  "bun_marker_description": "---- Bun! ---- marker presence in opencode binary indicates bun build --compile origin",
+                  "cross_compile_attempted": cross_status,
+                  "bun_termux_loader_available": loader_avail,
+              },
+              "summary": {
+                  "total_artifacts": len(assets),
+                  "has_opencode_binary": any("opencode-linux-arm64" in a["path"] for a in assets),
+                  "has_android_bun": any("bun-linux-aarch64-android" in a["path"] and a["path"].endswith("-android") for a in assets),
+                  "has_termux_wrapped": any("opencode-termux" in a["path"] for a in assets),
+                  "has_cross_compile": any("opencode-cross" in a["path"] for a in assets),
+                  "has_js_payload": any("js-payload" in a["path"] for a in assets),
+              },
+              "notes": "This workflow produces Android/Bionic-targeted OpenCode artifacts on ubuntu CI. The bun-termux-loader wrapping step requires the Linux arm64 binary to be runnable (via qemu-user or binfmt) to extract its embedded bun runtime — on stock ubuntu runners this may fail, which is expected and handled.",
+          }
+
+          status_path = out / "status" / "build-status.json"
+          status_path.parent.mkdir(parents=True, exist_ok=True)
+          status_path.write_text(json.dumps(status, indent=2) + "\n")
+          print(json.dumps(status, indent=2))
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write("status_json=" + json.dumps(status) + "\n")
+          PY
+
+          (cd out && find . -type f | sort | xargs sha256sum > checksums.txt 2>/dev/null || true)
