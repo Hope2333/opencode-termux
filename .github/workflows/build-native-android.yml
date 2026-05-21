@@ -20,8 +20,7 @@ on:
 env:
   BUN_INSTALL: "${{ github.workspace }}/.bun"
   BUN_ANDROID_URL: "https://github.com/oven-sh/bun/releases/download/bun-v1.3.14/bun-linux-aarch64-android.zip"
-  BUN_TERMUX_LOADER_REPO1: "https://github.com/kaan-escober/bun-termux-loader"
-  BUN_TERMUX_LOADER_REPO2: "https://github.com/Hope2333/bun-termux-loader"
+  BUN_TERMUX_LOADER_REPO: "https://github.com/Hope2333/bun-termux-loader"
 
 jobs:
   build-android:
@@ -72,9 +71,32 @@ jobs:
       - name: Install Bun (Linux)
         run: |
           set -euo pipefail
+          # Primary: official install script
+          set +e
           curl -fsSL https://bun.sh/install | bash
-          "$BUN_INSTALL/bin/bun" --version | tee out/logs/bun-linux-version.txt
-          echo "$BUN_INSTALL/bin" >> "$GITHUB_PATH"
+          BUN_INSTALL_OK=$?
+          set -e
+          if [[ $BUN_INSTALL_OK -ne 0 || ! -x "$BUN_INSTALL/bin/bun" && ! -x "$HOME/.bun/bin/bun" ]]; then
+            echo "Bun install script failed, trying npm..." | tee out/logs/bun-linux-version.txt
+            npm install -g bun 2>&1 | tee -a out/logs/bun-linux-version.txt || true
+          fi
+          # Try both possible locations
+          if [[ -x "$BUN_INSTALL/bin/bun" ]]; then
+            echo "Bun installed at BUN_INSTALL path"
+          elif [[ -x "$HOME/.bun/bin/bun" ]]; then
+            echo "Bun installed at HOME/.bun"
+            export BUN_INSTALL="$HOME/.bun"
+            echo "BUN_INSTALL=$HOME/.bun" >> "$GITHUB_ENV"
+          elif command -v bun >/dev/null 2>&1; then
+            echo "Bun found in PATH"
+          else
+            echo "ERROR: Bun installation failed" >&2
+          fi
+          command -v bun 2>/dev/null && bun --version | tee out/logs/bun-linux-version.txt || true
+          # Add to PATH
+          if [[ -x "${BUN_INSTALL:-$HOME/.bun}/bin/bun" ]]; then
+            echo "${BUN_INSTALL:-$HOME/.bun}/bin" >> "$GITHUB_PATH"
+          fi
 
       # ---- step (c): download opencode-linux-arm64 from npm ----
       - name: Download opencode-linux-arm64 from npm
@@ -291,8 +313,7 @@ jobs:
             exit 0
           fi
           mkdir -p third-party
-          git clone --depth 1 "$BUN_TERMUX_LOADER_REPO1" third-party/bun-termux-loader 2>&1 || \
-          git clone --depth 1 "$BUN_TERMUX_LOADER_REPO2" third-party/bun-termux-loader 2>&1 || true
+          git clone --depth 1 "$BUN_TERMUX_LOADER_REPO" third-party/bun-termux-loader 2>&1 || true
           if [[ -f "third-party/bun-termux-loader/build.py" ]]; then
             echo "bun-termux-loader cloned successfully"
             echo "BUN_TERMUX_LOADER_AVAILABLE=true" >> "$GITHUB_ENV"
