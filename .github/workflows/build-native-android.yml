@@ -166,23 +166,27 @@ jobs:
             echo "Could not determine actual version (binary may not be executable on x86_64)" | tee -a out/logs/version-check.txt
           fi
 
-      # ---- step (d): download Android-native Bun for aarch64 (diagnostic artifact, not used by wrapping) ----
-      - name: Download Android Bun for aarch64 (diagnostic)
+      # ---- step (d): download Android-native Bun for aarch64 ----
+      - name: Download Android Bun for aarch64
         continue-on-error: true
         run: |
           set -euo pipefail
           curl -fL "$BUN_ANDROID_URL" -o out/assets/bun-linux-aarch64-android.zip
           if [[ ! -f out/assets/bun-linux-aarch64-android.zip ]]; then
-            echo "Android Bun download failed (URL: $BUN_ANDROID_URL)" >&2
+            echo "Android Bun download failed" >&2
             exit 0
           fi
-          unzip -o out/assets/bun-linux-aarch64-android.zip -d out/assets/
-          BUN_BIN="$(find out/assets/ -name 'bun' -type f 2>/dev/null | head -1 || true)"
-          if [[ -f "$BUN_BIN" ]]; then
-            mv "$BUN_BIN" out/assets/bun-linux-aarch64-android
+          # Extract and rename the bun binary cleanly
+          mkdir -p out/assets/bun-tmp
+          unzip -o out/assets/bun-linux-aarch64-android.zip -d out/assets/bun-tmp/
+          BUN_BIN="$(find out/assets/bun-tmp/ -name 'bun' -type f 2>/dev/null | head -1 || true)"
+          if [[ -n "$BUN_BIN" && "$BUN_BIN" != "out/assets/bun-linux-aarch64-android" ]]; then
+            cp "$BUN_BIN" out/assets/bun-linux-aarch64-android
+            chmod +x out/assets/bun-linux-aarch64-android
             file out/assets/bun-linux-aarch64-android | tee out/logs/bun-android-file.txt
             out/assets/bun-linux-aarch64-android --version 2>&1 | tee out/logs/bun-android-version.txt || true
           fi
+          rm -rf out/assets/bun-tmp
 
       # ---- step (e): analyze opencode binary for ---- Bun! ---- marker and extract JS payload ----
       - name: Analyze binary — find ---- Bun! ---- marker and extract JS payload

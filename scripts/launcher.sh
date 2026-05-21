@@ -6,6 +6,45 @@ OPENCODE_CLI="$SELF_DIR/../lib/opencode/packages/opencode/bin/opencode"
 OPENCODE_RUNTIME="$SELF_DIR/../lib/opencode/runtime/opencode"
 STATX_SHIM="$SELF_DIR/../lib/opencode/lib/libstatx-shim.so"
 
+# Android-native Bun runtime (preferred when available)
+BUN_RUNTIME="$SELF_DIR/../lib/opencode/runtime/bun"
+BUNDLE_DIR="$SELF_DIR/../lib/opencode/runtime"
+BUNDLE_JS=""
+
+# Find bundle.js in standard locations
+for candidate in "$BUNDLE_DIR/bundle.js" "$SELF_DIR/../share/opencode/bundle.js"; do
+    if [[ -f "$candidate" ]]; then
+        BUNDLE_JS="$candidate"
+        break
+    fi
+done
+
+# Determine which runtime to use: Android Bun > glibc wrapped > CLI
+select_runtime() {
+    # Android-native path: Bun + JS bundle (no glibc, no statx shim needed)
+    if [[ -z "${OPENCODE_DISABLE_ANDROID_BUNDLE:-}" && -x "$BUN_RUNTIME" && -n "$BUNDLE_JS" ]]; then
+        export OPENCODE_RUNTIME_SELECTED="android-bun"
+        exec "$BUN_RUNTIME" run "$BUNDLE_JS" "$@"
+    fi
+
+    # glibc-wrapped path (backward compatible, needs statx shim)
+    if [[ -x "$OPENCODE_RUNTIME" ]]; then
+        apply_statx_shim
+        export OPENCODE_RUNTIME_SELECTED="glibc-wrapped"
+        exec "$OPENCODE_RUNTIME" "$@"
+    fi
+
+    # CLI source path (npm-based)
+    if [[ -f "$OPENCODE_CLI" ]]; then
+        apply_statx_shim
+        export OPENCODE_RUNTIME_SELECTED="cli"
+        exec "$OPENCODE_CLI" "$@"
+    fi
+
+    echo "opencode: no runtime found" >&2
+    exit 1
+}
+
 # Preload statx shim to avoid seccomp-blocked statx() syscall on Android.
 # glibc's stat()/fstatat() internally use direct syscall(statx) instructions;
 # Android seccomp blocks this (SIGSYS → SIGSEGV). The shim installs a SIGSYS
@@ -62,24 +101,14 @@ cleanup_state_locks
 cleanup_broken_cached_modules
 : "${OPENCODE_DISABLE_DEFAULT_PLUGINS:=1}"
 export OPENCODE_DISABLE_DEFAULT_PLUGINS
-apply_statx_shim
 
-if [[ -x "$OPENCODE_RUNTIME" ]]; then
-	"$OPENCODE_RUNTIME" "$@"
-	rc=$?
-	if [ "$rc" -eq 0 ]; then
-		cleanup_tty_soft
-	else
-		cleanup_tty_full
-	fi
-	exit $rc
-fi
-
-"$OPENCODE_CLI" "$@"
+# Dispatch to the best available runtime
+select_runtime "$@"
 rc=$?
 if [ "$rc" -eq 0 ]; then
 	cleanup_tty_soft
 else
 	cleanup_tty_full
 fi
+exit $rc
 exit $rc
