@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 INPUT_VER="${1:-}"
 
-log() { printf '[produce-local] %s\n' "$*"; }
+log() { printf '[produce-local] %s\n' "$*"; } >&2;
 die() {
 	printf '[produce-local] ERROR: %s\n' "$*" >&2
 	exit 1
@@ -66,7 +66,7 @@ resolve_loader_repo() {
 		return 1
 	fi
 	rm -rf "$LOADER_VENDOR"
-	git clone --depth 1 "$LOADER_URL" "$LOADER_VENDOR" 2>&1 || return 1
+	git clone --depth 1 "$LOADER_URL" "$LOADER_VENDOR" >/dev/null 2>&1 || return 1
 	if [[ ! -f "$LOADER_VENDOR/build.py" ]]; then
 		log "warning: cloned repo missing build.py, cleaning up"
 		rm -rf "$LOADER_VENDOR"
