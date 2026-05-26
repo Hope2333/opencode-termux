@@ -71,18 +71,18 @@ Bionic wrapper:
 
 ```
 ┌──────────────────────────────────────────────┐
-│ Bionic wrapper ELF (~12KB)                    │
-│   - Reads /proc/self/exe                      │
-│   - Finds BUNWRAP1 metadata                   │
-│   - Extracts embedded OpenCode binary          │
-│   - Userland exec via glibc's ld.so           │
+│ Bionic wrapper ELF (~12KB)                   │
+│   - Reads /proc/self/exe                     │
+│   - Finds BUNWRAP1 metadata                  │
+│   - Extracts embedded OpenCode binary        │
+│   - Userland exec via glibc's ld.so          │
 ├──────────────────────────────────────────────┤
-│ BUNWRAP1 metadata                             │
+│ BUNWRAP1 metadata                            │
 ├──────────────────────────────────────────────┤
-│ Original opencode binary (glibc Bun + JS)     │
-│   - Interpreter: /lib/ld-linux-aarch64.so.1   │
-│   - Entry: compiled-app mode (RX seg base)    │
-│   - ---- Bun! ---- marker + JS bytecode       │
+│ Original opencode binary (glibc Bun + JS)    │
+│   - Interpreter: /lib/ld-linux-aarch64.so.1  │
+│   - Entry: compiled-app mode (RX seg base)   │
+│   - ---- Bun! ---- marker + JS bytecode      │
 └──────────────────────────────────────────────┘
 ```
 
