@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 INPUT_VER="${1:-}"
 
-log() { printf '[produce-local] %s\n' "$*"; }
+log() { printf '[produce-local] %s\n' "$*" >&2; }
 die() {
 	printf '[produce-local] ERROR: %s\n' "$*" >&2
 	exit 1
