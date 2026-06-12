@@ -1,8 +1,7 @@
 # PROJECT KNOWLEDGE BASE
 
-**Generated:** 2026-03-05T13:10:53Z  
-**Commit:** 1b92c1e  
-**Branch:** main
+**Generated:** 2026-06-12  
+**Branch:** pure-android
 
 ## OVERVIEW
 Termux-first OpenCode build/packaging workspace. Mainline release path is local Termux build (`tools/produce-local.sh` + `scripts/*`), while GitHub Actions armv7 workflow is diagnostic/handoff, not final runtime release.

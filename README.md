@@ -5,7 +5,7 @@ bun-termux-loader to wrap the upstream `opencode-linux-arm64` binary for
 Android/Bionic. glibc is required at runtime (the wrapper loads it via
 userland exec).
 
-**Looking for the legacy branch?** See the `glibc-legacy` branch (same approach,
+**Looking for the legacy branch?** See the `glibc` branch (same approach,
 older version).
 
 ---
@@ -49,13 +49,13 @@ pacman -U /path/to/opencode-<version>-aarch64.pkg.tar.xz
 
 ## What this branch provides
 
-- ✅ **Real OpenCode AI** (`opencode --version` → `1.15.x`)
+- ✅ **Real OpenCode AI** (`opencode --version` → `1.17.x`)
 - ✅ deb + pacman package output
 - ✅ Plugin lifecycle system (install/update/rollback)
 - ✅ TTY/signal cleanup launcher
 - ✅ System-skill hooks (post-install/upgrade/remove)
 - ✅ CI workflow for automated builds
-- ✅ Batch build (`make batch VERS='1.15.[1-7]'`)
+- ✅ Batch build (`make batch VERS='1.17.[0-3]'`)
 - ✅ Release upload automation (`make release-upload`)
 
 ---
@@ -137,7 +137,7 @@ Releases: https://github.com/Hope2333/opencode-termux/releases
 ## Usage
 
 ```bash
-opencode --version          # → 1.15.7
+opencode --version          # → 1.17.3
 opencode run "hi"           # OpenCode AI chat
 opencode run --mode=dev .   # development mode
 opencode serve              # API server mode
@@ -152,24 +152,24 @@ opencode web                # web interface
 
 ```bash
 # Single version
-make all VER=1.15.7 PKG=both
+make all VER=1.17.3 PKG=both
 
-# Batch build (1.15.1 through 1.15.7)
-make batch VERS='1.15.[1-7]' PKG=both ODIR=~/oct-out MIX=1
+# Batch build (1.17.0 through 1.17.3)
+make batch VERS='1.17.[0-3]' PKG=both ODIR=~/oct-out MIX=1
 ```
 
 ### Build + release upload
 
 ```bash
 # Hidden target (not in help):
-make release-upload TAG=Push260522 VERS='1.15.[1-7]'
+make release-upload TAG=Push260522 VERS='1.17.[0-3]'
 # Defaults: TAG=Push<YYMMDD>, REPO=Hope2333/opencode-termux, PKG=both
 ```
 
 ### Build flow
 
 ```
-make all VER=1.15.7 PKG=both
+make all VER=1.17.3 PKG=both
   → clean (rm -rf artifacts/staged, packaging work dirs)
   → runtime (tools/produce-local.sh: npm download + bun-termux-loader wrap)
   → stage (scripts/build.sh: copy to prefix tree)
@@ -193,7 +193,7 @@ workflow_dispatch (manual, with version input)
   ↓ Create bundle + upload artifact + write status JSON
 ```
 
-Matrix builds for: `aarch64`, `x64`
+Matrix builds for: `aarch64`
 
 ---
 
@@ -201,7 +201,8 @@ Matrix builds for: `aarch64`, `x64`
 
 ```
 .github/workflows/
-  build-pure-android.yml      CI automated build pipeline
+  build-pure-android.yml      CI automated build pipeline (aarch64)
+  prebuild-armv7.yml          armv7 prebuild handoff (deferred)
 tools/
   produce-local.sh            Download from npm + wrap
   prebuilt/                   Pre-built aarch64 wrapper+shim for CI

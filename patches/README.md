@@ -5,8 +5,8 @@ to support Android/Termux as a build target.
 
 ## Patch files
 
-- `0001-add-android-target.patch` — Adds "android" as a supported OS in build script
-- `0002-termux-paths.patch` — Default paths for Termux environment
+- `0001-android-support.patch` — Adds "android" as a supported OS in build script
+- `0002-bun-termux-cwd-fix.patch` — Default paths for Termux environment
 
 ## Applying
 

@@ -247,7 +247,7 @@ ls -lh $TMPDIR/bun-termux-cache/bunfs-libs/
 
 ## 参考
 
-- [bun-termux-loader](https://github.com/kaan-escober/bun-termux-loader)
+- [bun-termux-loader](https://github.com/Hope2333/bun-termux-loader)
 - [Bun Issue #26752](https://github.com/oven-sh/bun/issues/26752)
 - [Bun Issue #8685](https://github.com/oven-sh/bun/issues/8685)
 
