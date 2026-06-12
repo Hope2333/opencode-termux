@@ -195,8 +195,11 @@ workflow_dispatch (manual, with version input)
 
 Matrix builds for: `aarch64`
 
-> **Note**: amd64 (x64) + Android + Termux 的组合极为罕见，几乎没有实际用户场景。
-> 如有需求请自行修改 workflow 配置并构建，项目不主动提供 x64 的 release 资产。
+> **Note**: The combination of amd64 (x64) + Android + Termux is extremely rare with virtually no real-world users.
+> If you're on amd64, use a standard Linux distribution with your system package manager or npm/bun to install opencode directly — no Termux wrapper needed.
+> For those who still need it, modify the workflow config and build yourself; this project does not provide x64 release assets.
+>
+> **armv7**: The 32-bit dependency chain is severely broken with prohibitively high fix costs. This experiment is abandoned.
 
 ---
 
