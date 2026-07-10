@@ -1,16 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib-ci.sh"
+
 OPENCODE_VERSION="${1:?opencode version required}"
 OUT_DIR="${2:?out dir required}"
-ABS_OUT_DIR="$(mkdir -p "$OUT_DIR" && cd "$OUT_DIR" && pwd)"
-mkdir -p "$ABS_OUT_DIR/assets" "$ABS_OUT_DIR/logs" "$ABS_OUT_DIR/status" "$ABS_OUT_DIR/work/opencode"
+ABS_OUT_DIR="$(ci_prepare_out_dir "$OUT_DIR")"
+mkdir -p "$ABS_OUT_DIR/work/opencode"
 
-HOST_BUN="$HOME/.bun/bin/bun"
-if [[ ! -x "$HOST_BUN" ]]; then
-	echo "host bun not found at $HOST_BUN" >&2
-	exit 10
-fi
+ci_require_host_bun
 
 WORK="$ABS_OUT_DIR/work/opencode"
 cd "$WORK"
@@ -65,11 +63,7 @@ if "$HOST_BUN" build "$ENTRY" --compile --target=bun-linux-armv7 --outfile "$ABS
 	status="success"
 	reason="compiled opencode entry with host bun"
 else
-	if grep -q "Unsupported target" "$ABS_OUT_DIR/logs/opencode-bun-compile.txt" 2>/dev/null; then
-		reason="bun compile target bun-linux-armv7 unsupported by current Bun"
-	else
-		reason="opencode compile failed for another reason"
-	fi
+	reason="$(ci_compile_failure_reason "$ABS_OUT_DIR/logs/opencode-bun-compile.txt" "opencode compile failed for another reason")"
 fi
 
 python3 - <<PY

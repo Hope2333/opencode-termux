@@ -1,16 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib-ci.sh"
+
 BUN_VERSION="${1:?bun version required}"
 OUT_DIR="${2:?out dir required}"
-ABS_OUT_DIR="$(mkdir -p "$OUT_DIR" && cd "$OUT_DIR" && pwd)"
-mkdir -p "$ABS_OUT_DIR/assets" "$ABS_OUT_DIR/logs" "$ABS_OUT_DIR/status" "$ABS_OUT_DIR/work"
+ABS_OUT_DIR="$(ci_prepare_out_dir "$OUT_DIR")"
 
-HOST_BUN="$HOME/.bun/bin/bun"
-if [[ ! -x "$HOST_BUN" ]]; then
-	echo "host bun not found at $HOST_BUN" >&2
-	exit 10
-fi
+ci_require_host_bun
 
 "$HOST_BUN" build --help >"$ABS_OUT_DIR/logs/bun-build-help.txt" || true
 
@@ -26,11 +23,7 @@ if "$HOST_BUN" build "$ABS_OUT_DIR/work/hello.ts" --compile --target=bun-linux-a
 	status="success"
 	reason="bun host supports bun-linux-armv7 compile target"
 else
-	if grep -q "Unsupported target" "$ABS_OUT_DIR/logs/bun-compile-command.txt" 2>/dev/null; then
-		reason="bun compile target bun-linux-armv7 unsupported by current Bun"
-	else
-		reason="bun compile failed for another reason"
-	fi
+	reason="$(ci_compile_failure_reason "$ABS_OUT_DIR/logs/bun-compile-command.txt" "bun compile failed for another reason")"
 fi
 
 python3 - <<PY

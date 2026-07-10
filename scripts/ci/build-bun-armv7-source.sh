@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib-ci.sh"
+
 BUN_VERSION="${1:?bun version required}"
 OUT_DIR="${2:?out dir required}"
-ABS_OUT_DIR="$(mkdir -p "$OUT_DIR" && cd "$OUT_DIR" && pwd)"
-mkdir -p "$ABS_OUT_DIR/assets" "$ABS_OUT_DIR/logs" "$ABS_OUT_DIR/status" "$ABS_OUT_DIR/work"
+ABS_OUT_DIR="$(ci_prepare_out_dir "$OUT_DIR")"
 
 WORK="$ABS_OUT_DIR/work/bun-src"
 rm -rf "$WORK"
@@ -12,7 +13,7 @@ mkdir -p "$WORK"
 
 printf '{\n  "status": "started",\n  "bun_version": "%s",\n  "strategy": "cross-compile-matrix"\n}\n' "$BUN_VERSION" >"$ABS_OUT_DIR/status/bun-source-build-status.json"
 
-if ! git clone --depth=1 --branch "bun-v${BUN_VERSION}" https://github.com/oven-sh/bun.git "$WORK" >"$ABS_OUT_DIR/logs/bun-source-git-clone.txt" 2>&1; then
+if ! ci_clone_bun "$BUN_VERSION" "$WORK" "$ABS_OUT_DIR/logs/bun-source-git-clone.txt"; then
 	printf '{\n  "status": "failed",\n  "phase": "git-clone",\n  "reason": "failed to clone bun tag",\n  "bun_version": "%s"\n}\n' "$BUN_VERSION" >"$ABS_OUT_DIR/status/bun-source-build-status.json"
 	exit 41
 fi

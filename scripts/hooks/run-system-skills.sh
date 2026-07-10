@@ -51,25 +51,22 @@ print(m.group(1) if m else "0.0.0")
 PY
 }
 
-version_ge() {
-	python3 - "$1" "$2" <<'PY'
+# version_cmp <ge|le> <a> <b>: succeed when a is >= (ge) or <= (le) b, using
+# semantic version comparison over the first three numeric components.
+version_cmp() {
+	python3 - "$1" "$2" "$3" <<'PY'
 import re,sys
+op,a,b=sys.argv[1],sys.argv[2],sys.argv[3]
 def v(s):
     m=[int(x) for x in re.findall(r'\d+', s)]
     return tuple((m+[0,0,0])[:3])
-raise SystemExit(0 if v(sys.argv[1]) >= v(sys.argv[2]) else 1)
+ok = v(a) >= v(b) if op == "ge" else v(a) <= v(b)
+raise SystemExit(0 if ok else 1)
 PY
 }
 
-version_le() {
-	python3 - "$1" "$2" <<'PY'
-import re,sys
-def v(s):
-    m=[int(x) for x in re.findall(r'\d+', s)]
-    return tuple((m+[0,0,0])[:3])
-raise SystemExit(0 if v(sys.argv[1]) <= v(sys.argv[2]) else 1)
-PY
-}
+version_ge() { version_cmp ge "$1" "$2"; }
+version_le() { version_cmp le "$1" "$2"; }
 
 update_registry() {
 	local plugin_id="$1" event="$2" status="$3" detail="$4" manifest="$5" core_ver="$6" policy="$7" idk="$8" ai="$9" au="${10}"

@@ -21,6 +21,25 @@ print_check() {
 	printf '{"check":%s,"status":%s,"detail":%s}\n' "$(json_escape "$key")" "$(json_escape "$status")" "$(json_escape "$detail")"
 }
 
+json_valid() {
+	python3 -c 'import json,sys;json.load(open(sys.argv[1]))' "$1" >/dev/null 2>&1
+}
+
+# Emit an ok/fail/warn check for a JSON file: ok if present and parseable,
+# fail if present but invalid, warn if missing.
+check_json_file() {
+	local key="$1" file="$2"
+	if [[ -f "$file" ]]; then
+		if json_valid "$file"; then
+			print_check "$key" "ok" "$file"
+		else
+			print_check "$key" "fail" "invalid json: $file"
+		fi
+	else
+		print_check "$key" "warn" "missing: $file"
+	fi
+}
+
 main() {
 	print_check "opencode.bin" "info" "$(command -v opencode || echo missing)"
 	if command -v opencode >/dev/null 2>&1; then
@@ -28,7 +47,7 @@ main() {
 	fi
 
 	if [[ -f "$CFG_FILE" ]]; then
-		if python3 -c 'import json,sys;json.load(open(sys.argv[1]))' "$CFG_FILE" >/dev/null 2>&1; then
+		if json_valid "$CFG_FILE"; then
 			print_check "config.opencode_json" "ok" "$CFG_FILE"
 			python3 - "$CFG_FILE" <<'PY'
 import json,sys
@@ -86,35 +105,9 @@ PY
 		print_check "skills.system.manifest_count" "warn" "system skills dir missing"
 	fi
 
-	if [[ -f "$SKILL_REGISTRY" ]]; then
-		if python3 -c 'import json,sys;json.load(open(sys.argv[1]))' "$SKILL_REGISTRY" >/dev/null 2>&1; then
-			print_check "skills.registry" "ok" "$SKILL_REGISTRY"
-		else
-			print_check "skills.registry" "fail" "invalid json: $SKILL_REGISTRY"
-		fi
-	else
-		print_check "skills.registry" "warn" "missing: $SKILL_REGISTRY"
-	fi
-
-	if [[ -f "$SKILL_BLOCKLIST" ]]; then
-		if python3 -c 'import json,sys;json.load(open(sys.argv[1]))' "$SKILL_BLOCKLIST" >/dev/null 2>&1; then
-			print_check "skills.blocklist" "ok" "$SKILL_BLOCKLIST"
-		else
-			print_check "skills.blocklist" "fail" "invalid json: $SKILL_BLOCKLIST"
-		fi
-	else
-		print_check "skills.blocklist" "warn" "missing: $SKILL_BLOCKLIST"
-	fi
-
-	if [[ -f "$PM_STATE" ]]; then
-		if python3 -c 'import json,sys;json.load(open(sys.argv[1]))' "$PM_STATE" >/dev/null 2>&1; then
-			print_check "plugin_manager.state" "ok" "$PM_STATE"
-		else
-			print_check "plugin_manager.state" "fail" "invalid json: $PM_STATE"
-		fi
-	else
-		print_check "plugin_manager.state" "warn" "missing: $PM_STATE"
-	fi
+	check_json_file "skills.registry" "$SKILL_REGISTRY"
+	check_json_file "skills.blocklist" "$SKILL_BLOCKLIST"
+	check_json_file "plugin_manager.state" "$PM_STATE"
 }
 
 main
