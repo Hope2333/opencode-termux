@@ -17,7 +17,7 @@ REPO ?= Hope2333/opencode-termux
 
 OUTPUT_ROOT := $(if $(ODIR),$(ODIR),$(CURDIR)/packing)
 
-.PHONY: help all runtime stage deb pacman batch clean status steps matrix selfcheck release-upload
+.PHONY: help all runtime stage deb pacman batch clean status steps matrix selfcheck release-upload test
 
 help:
 	@echo "OpenCode Termux build helper"
@@ -146,6 +146,10 @@ status:
 
 selfcheck:
 	./tools/plugin-selfcheck.sh
+
+# Run the shell unit test suite (bats). Fetches a pinned bats-core on demand.
+test:
+	./tests/run.sh
 
 matrix:
 	@VERS='$(VERS)' ODIR='$(ODIR)' TARGET_HOST='$(TARGET_HOST)' TARGET_PORT='$(TARGET_PORT)' TARGET_USER='$(TARGET_USER)' ./tools/upgrade-matrix.sh

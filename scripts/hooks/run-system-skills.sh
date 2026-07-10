@@ -285,4 +285,8 @@ main() {
 	done
 }
 
-main "$@"
+# Run only when executed directly, so the functions above can be sourced
+# (e.g. by unit tests) without triggering hook processing.
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+	main "$@"
+fi

@@ -484,39 +484,47 @@ plugin-manager.sh commands:
 TXT
 }
 
-case "${1:-}" in
-install)
-	shift
-	cmd_install "$@"
-	;;
-update)
-	shift
-	cmd_update "$@"
-	;;
-migrate-installed)
-	shift
-	cmd_migrate_installed "$@"
-	;;
-list-snapshots)
-	shift
-	cmd_list "$@"
-	;;
-rollback)
-	shift
-	cmd_rollback "$@"
-	;;
-patch-export)
-	shift
-	cmd_patch_export "$@"
-	;;
-patch-apply)
-	shift
-	cmd_patch_apply "$@"
-	;;
-verify-config)
-	shift
-	cmd_verify "$@"
-	;;
-"" | -h | --help | help) usage ;;
-*) die "unknown command: $1" ;;
-esac
+main() {
+	case "${1:-}" in
+	install)
+		shift
+		cmd_install "$@"
+		;;
+	update)
+		shift
+		cmd_update "$@"
+		;;
+	migrate-installed)
+		shift
+		cmd_migrate_installed "$@"
+		;;
+	list-snapshots)
+		shift
+		cmd_list "$@"
+		;;
+	rollback)
+		shift
+		cmd_rollback "$@"
+		;;
+	patch-export)
+		shift
+		cmd_patch_export "$@"
+		;;
+	patch-apply)
+		shift
+		cmd_patch_apply "$@"
+		;;
+	verify-config)
+		shift
+		cmd_verify "$@"
+		;;
+	"" | -h | --help | help) usage ;;
+	*) die "unknown command: $1" ;;
+	esac
+}
+
+# Run the CLI only when executed directly, so the functions above can be
+# sourced (e.g. by unit tests) without triggering the dispatch.
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+	main "$@"
+fi
