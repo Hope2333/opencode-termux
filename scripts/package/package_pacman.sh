@@ -17,10 +17,13 @@ PKGREL="${PKGREL:-1}"
 
 # Version: use explicit VERSION if set, else read from runtime
 if [[ -z "${VERSION:-}" && -x "$STAGED_PREFIX/lib/opencode/runtime/opencode" ]]; then
-	VERSION="$($STAGED_PREFIX/lib/opencode/runtime/opencode --version 2>/dev/null || true)"
+	if ! VERSION="$("$STAGED_PREFIX/lib/opencode/runtime/opencode" --version)"; then
+		echo "Error: staged runtime version check failed" >&2
+		exit 1
+	fi
 fi
 [[ -n "$VERSION" ]] || {
-	echo "Error: unable to determine version"
+	echo "Error: unable to determine version" >&2
 	exit 1
 }
 

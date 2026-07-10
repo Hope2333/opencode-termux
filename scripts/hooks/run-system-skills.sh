@@ -15,7 +15,19 @@ REG_DIR="${OPENCODE_HOOK_STATE_DIR:-$PREFIX/var/lib/opencode/hooks}"
 REGISTRY_FILE="${OPENCODE_HOOK_REGISTRY:-$PREFIX/share/opencode/system-skills-registry.json}"
 BLOCKLIST_FILE="${OPENCODE_HOOK_BLOCKLIST:-$SYS_SKILL_DIR/blocklist.json}"
 
-mkdir -p "$(dirname "$HOOK_LOG")" "$REG_DIR" "$(dirname "$REGISTRY_FILE")" 2>/dev/null || true
+if ! mkdir -p "$(dirname "$HOOK_LOG")"; then
+	printf '[opencode-hooks][WARN] cannot create log directory for %s; logging to stderr\n' "$HOOK_LOG" >&2
+	HOOK_LOG="/dev/stderr"
+fi
+if ! mkdir -p "$REG_DIR" "$(dirname "$REGISTRY_FILE")"; then
+	printf '[opencode-hooks][ERROR] cannot create hook state directories\n' >&2
+	if [[ "$STRICT_MODE" == "1" ]]; then
+		exit 1
+	fi
+	exit 0
+fi
+
+PROCESS_WARNED=0
 
 log() {
 	local level="$1"
@@ -31,6 +43,7 @@ run_or_warn() {
 		return 0
 	fi
 	log WARN "$desc: failed"
+	PROCESS_WARNED=1
 	if [[ "$STRICT_MODE" == "1" ]]; then
 		return 1
 	fi
@@ -83,7 +96,7 @@ now=datetime.now(timezone.utc).isoformat()
 try:
     with open(path,'r',encoding='utf-8') as f:
         data=json.load(f)
-except Exception:
+except FileNotFoundError:
     data={"items":{}}
 
 items=data.setdefault("items",{})
@@ -119,8 +132,9 @@ import json,sys
 path,pid,core=sys.argv[1:]
 try:
     data=json.load(open(path))
-except Exception:
-    raise SystemExit(1)
+except Exception as exc:
+    print(f"failed to read blocklist: {exc}", file=sys.stderr)
+    raise SystemExit(2)
 for item in data.get("blocked",[]):
     if item.get("plugin_id")==pid and core in item.get("core_versions",[]):
         print(item.get("reason","blocked by system blocklist"))
@@ -131,8 +145,9 @@ PY
 
 process_manifest() {
 	local mf="$1"
-	local cver line
+	local cver line blocklist_rc
 	local base
+	PROCESS_WARNED=0
 	base="$(basename "$mf")"
 	if [[ "$base" == "blocklist.json" ]]; then
 		return 0
@@ -213,11 +228,19 @@ PY
 		fi
 	fi
 
-	if reason="$(blocked_by_global_blocklist "$plugin_id" "$cver" 2>/dev/null)"; then
+	if reason="$(blocked_by_global_blocklist "$plugin_id" "$cver")"; then
 		log WARN "skip $plugin_id: $reason"
 		update_registry "$plugin_id" "$EVENT" "blocked_global_blocklist" "$reason" "$mf" "$cver" "$policy" "$idk" "$auto_install" "$auto_update"
 		[[ "$STRICT_MODE" == "1" ]] && return 1
 		return 0
+	else
+		blocklist_rc=$?
+		if [[ "$blocklist_rc" -ne 1 ]]; then
+			log WARN "skip $plugin_id: blocklist validation failed"
+			update_registry "$plugin_id" "$EVENT" "blocklist_error" "failed to validate global blocklist" "$mf" "$cver" "$policy" "$idk" "$auto_install" "$auto_update"
+			[[ "$STRICT_MODE" == "1" ]] && return 1
+			return 0
+		fi
 	fi
 
 	if [[ ! -x "$PLUGIN_MANAGER" ]]; then
@@ -239,7 +262,10 @@ PY
 
 	if [[ "$EVENT" == "post_install" && "$auto_install" == "true" ]]; then
 		if [[ "$ENABLE_NETWORK" == "1" ]]; then
-			run_or_warn "install plugin $plugin_id" "$PLUGIN_MANAGER" install "$plugin_id" "$repo"
+			if ! run_or_warn "install plugin $plugin_id" "$PLUGIN_MANAGER" install "$plugin_id" "$repo"; then
+				update_registry "$plugin_id" "$EVENT" "failed" "plugin install failed" "$mf" "$cver" "$policy" "$idk" "$auto_install" "$auto_update"
+				return 1
+			fi
 		else
 			log INFO "auto-install skipped for $plugin_id (network disabled)"
 		fi
@@ -247,14 +273,25 @@ PY
 
 	if [[ "$EVENT" == "post_upgrade" && "$auto_update" == "true" ]]; then
 		if [[ "$ENABLE_NETWORK" == "1" ]]; then
-			run_or_warn "update plugin $plugin_id" "$PLUGIN_MANAGER" update "$plugin_id"
+			if ! run_or_warn "update plugin $plugin_id" "$PLUGIN_MANAGER" update "$plugin_id"; then
+				update_registry "$plugin_id" "$EVENT" "failed" "plugin update failed" "$mf" "$cver" "$policy" "$idk" "$auto_install" "$auto_update"
+				return 1
+			fi
 		else
 			log INFO "auto-update skipped for $plugin_id (network disabled)"
 		fi
 	fi
 
 	if [[ -x "$SELFCHECK" ]]; then
-		run_or_warn "selfcheck after $plugin_id" "$SELFCHECK"
+		if ! run_or_warn "selfcheck after $plugin_id" "$SELFCHECK"; then
+			update_registry "$plugin_id" "$EVENT" "failed" "plugin selfcheck failed" "$mf" "$cver" "$policy" "$idk" "$auto_install" "$auto_update"
+			return 1
+		fi
+	fi
+
+	if [[ "$PROCESS_WARNED" == "1" ]]; then
+		update_registry "$plugin_id" "$EVENT" "warn" "one or more hook actions failed" "$mf" "$cver" "$policy" "$idk" "$auto_install" "$auto_update"
+		return 0
 	fi
 
 	if [[ -n "$marker" ]]; then

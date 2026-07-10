@@ -4,23 +4,39 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
 STAGED_PREFIX="${STAGED_PREFIX:-$ROOT_DIR/artifacts/staged/prefix}"
-ARCH_DEB="${ARCH_DEB:-$(dpkg --print-architecture 2>/dev/null || echo aarch64)}"
 MAINTAINER="${MAINTAINER:-Hope2333(幽零小喵) <u0catmiao@proton.me>}"
 
-command -v dpkg-deb >/dev/null 2>&1 || {
-	echo "Error: dpkg-deb not found"
+command -v dpkg >/dev/null 2>&1 || {
+	echo "Error: dpkg not found" >&2
 	exit 1
 }
+command -v dpkg-deb >/dev/null 2>&1 || {
+	echo "Error: dpkg-deb not found" >&2
+	exit 1
+}
+if [[ -z "${ARCH_DEB:-}" ]]; then
+	ARCH_DEB="$(dpkg --print-architecture)"
+fi
 [[ -x "$STAGED_PREFIX/bin/opencode" ]] || {
-	echo "Error: missing staged launcher"
+	echo "Error: missing staged launcher" >&2
+	exit 1
+}
+[[ -x "$STAGED_PREFIX/lib/opencode/runtime/opencode" ]] || {
+	echo "Error: missing staged runtime" >&2
 	exit 1
 }
 
-# Version: use explicit VERSION if set, else read from Android Bun
-if [[ -z "${VERSION:-}" && -x "$STAGED_PREFIX/lib/opencode/runtime/bun" ]]; then
-	VERSION="$($STAGED_PREFIX/lib/opencode/runtime/bun --version 2>/dev/null || true)"
+# Version: use explicit VERSION if set, else read from the staged runtime.
+if [[ -z "${VERSION:-}" ]]; then
+	if ! VERSION="$("$STAGED_PREFIX/lib/opencode/runtime/opencode" --version)"; then
+		echo "Error: staged runtime version check failed" >&2
+		exit 1
+	fi
 fi
-: "${VERSION:=0.0.0}"
+[[ -n "$VERSION" ]] || {
+	echo "Error: staged runtime returned an empty version" >&2
+	exit 1
+}
 DEB_ROOT="$ROOT_DIR/packaging/dpkg/work"
 OUT_DIR="$ROOT_DIR/packaging/dpkg"
 OUT_FILE="$OUT_DIR/opencode_${VERSION}_${ARCH_DEB}.deb"

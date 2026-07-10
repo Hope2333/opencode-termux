@@ -122,18 +122,18 @@ deb:
 	rm -rf packaging/dpkg/work
 	MAINTAINER='$(PACKAGER_NAME)' ./scripts/package/package_deb.sh
 	@if [ "$(MIX)" = "1" ]; then \
-		mkdir -p "$(OUTPUT_ROOT)" && cp -f packaging/dpkg/opencode_*.deb "$(OUTPUT_ROOT)/" 2>/dev/null || true; \
+		mkdir -p "$(OUTPUT_ROOT)" && cp -f packaging/dpkg/opencode_*.deb "$(OUTPUT_ROOT)/"; \
 	else \
-		mkdir -p "$(OUTPUT_ROOT)/deb" && cp -f packaging/dpkg/opencode_*.deb "$(OUTPUT_ROOT)/deb/" 2>/dev/null || true; \
+		mkdir -p "$(OUTPUT_ROOT)/deb" && cp -f packaging/dpkg/opencode_*.deb "$(OUTPUT_ROOT)/deb/"; \
 	fi
 
 pacman:
 	rm -rf packaging/pacman/pkg packaging/pacman/src
 	PACKAGER_NAME='$(PACKAGER_NAME)' ./scripts/package/package_pacman.sh
 	@if [ "$(MIX)" = "1" ]; then \
-		mkdir -p "$(OUTPUT_ROOT)" && cp -f packaging/pacman/opencode-*.pkg.* "$(OUTPUT_ROOT)/" 2>/dev/null || true; \
+		mkdir -p "$(OUTPUT_ROOT)" && cp -f packaging/pacman/opencode-*.pkg.* "$(OUTPUT_ROOT)/"; \
 	else \
-		mkdir -p "$(OUTPUT_ROOT)/pacman" && cp -f packaging/pacman/opencode-*.pkg.* "$(OUTPUT_ROOT)/pacman/" 2>/dev/null || true; \
+		mkdir -p "$(OUTPUT_ROOT)/pacman" && cp -f packaging/pacman/opencode-*.pkg.* "$(OUTPUT_ROOT)/pacman/"; \
 	fi
 
 status:
@@ -174,6 +174,7 @@ release-upload:
 	@echo "=== Release upload: TAG=$(TAG) VERS=$(VERS) PKG=$(PKG) REPO=$(REPO) ==="
 	$(MAKE) batch VERS='$(VERS)' PKG='$(PKG)' ODIR='/tmp/oc-release-$(TAG)' MIX=1
 	@echo "=== Uploading to release $(TAG) ==="; \
+	upload_failed=0; \
 	if ! gh release view "$(TAG)" --repo "$(REPO)" >/dev/null 2>&1; then \
 		echo "Creating release $(TAG)..."; \
 		gh release create "$(TAG)" --repo "$(REPO)" --title "$(TAG)" --notes "Automated build $$(date -u +%Y-%m-%d)" 2>&1 || exit 1; \
@@ -181,7 +182,8 @@ release-upload:
 	for f in /tmp/oc-release-$(TAG)/opencode_*.deb /tmp/oc-release-$(TAG)/opencode-*.pkg.*; do \
 		if [ -f "$$f" ]; then \
 			echo "  uploading $$(basename $$f)..."; \
-			gh release upload "$(TAG)" "$$f" --repo "$(REPO)" --clobber 2>&1 || true; \
+			if ! gh release upload "$(TAG)" "$$f" --repo "$(REPO)" --clobber 2>&1; then upload_failed=1; fi; \
 		fi; \
 	done; \
+	if [ "$$upload_failed" -ne 0 ]; then echo "Error: one or more release assets failed to upload" >&2; exit 1; fi; \
 	echo "=== Done: https://github.com/$(REPO)/releases/tag/$(TAG) ==="

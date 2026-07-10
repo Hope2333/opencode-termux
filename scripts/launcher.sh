@@ -37,11 +37,14 @@ if [[ ! -x "$OPENCODE_RUNTIME" ]]; then
 	exit 1
 fi
 
-"$OPENCODE_RUNTIME" "$@"
-rc=$?
+if "$OPENCODE_RUNTIME" "$@"; then
+	rc=0
+else
+	rc=$?
+fi
 if [ "$rc" -eq 0 ]; then
 	cleanup_tty_soft
 else
 	cleanup_tty_full
 fi
-exit $rc
+exit "$rc"

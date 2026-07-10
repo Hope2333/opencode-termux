@@ -42,7 +42,10 @@ ensure_root_entry() {
 	root="$(root_of "$name")"
 	dist="$(dist_entry_of "$name")"
 	entry="$(entry_of "$name")"
-	[[ -f "$dist" ]] || die "missing built plugin entry: $dist"
+	if [[ ! -f "$dist" ]]; then
+		printf '[plugin-manager] ERROR: missing built plugin entry: %s\n' "$dist" >&2
+		return 1
+	fi
 	cp -f "$dist" "$entry"
 }
 
@@ -58,7 +61,7 @@ now=datetime.now(timezone.utc).isoformat()
 try:
     with open(path,'r',encoding='utf-8') as f:
         data=json.load(f)
-except Exception:
+except FileNotFoundError:
     data={"items":{}}
 
 items=data.setdefault("items",{})
@@ -97,7 +100,7 @@ git_retry() {
 
 snapshot_latest() {
 	local name="$1"
-	find "$SNAP_DIR" -maxdepth 1 -type f -name "${name}-*" -print 2>/dev/null | sort -r | head -n1 || true
+	find "$SNAP_DIR" -maxdepth 1 -type f -name "${name}-*" -print | sort -r | sed -n '1p'
 }
 
 rollback_if_available() {
@@ -105,13 +108,19 @@ rollback_if_available() {
 	if [[ -n "$snapshot" && -f "$snapshot" ]]; then
 		log "auto-rollback using snapshot=$snapshot"
 		if cmd_rollback "$name" "$snapshot"; then
-			update_state "auto_rollback" "$name" "ok" "rollback_applied" ""
+			if ! update_state "auto_rollback" "$name" "ok" "rollback_applied" ""; then
+				log "failed to record successful auto-rollback for $name"
+			fi
 		else
-			update_state "auto_rollback" "$name" "error" "rollback_failed" ""
+			if ! update_state "auto_rollback" "$name" "error" "rollback_failed" ""; then
+				log "failed to record auto-rollback failure for $name"
+			fi
 		fi
 	else
 		log "auto-rollback skipped: no snapshot available"
-		update_state "auto_rollback" "$name" "warn" "no_snapshot" ""
+		if ! update_state "auto_rollback" "$name" "warn" "no_snapshot" ""; then
+			log "failed to record skipped auto-rollback for $name"
+		fi
 	fi
 }
 
@@ -175,15 +184,25 @@ PY
 build_plugin() {
 	local name="$1" pkg
 	pkg="$(pkg_of "$name")"
-	[[ -f "$pkg/package.json" ]] || die "missing package.json: $pkg"
+	if [[ ! -f "$pkg/package.json" ]]; then
+		printf '[plugin-manager] ERROR: missing package.json: %s\n' "$pkg" >&2
+		return 1
+	fi
 
 	# oh-my-opencode is the default plugin target on Termux. Its upstream build
 	# scripts rely on `bun run`, which can be unreliable under some Termux/glibc
 	# setups. Prefer a Termux-stable path: npm install + tsc emit.
 	if [[ "$name" == "oh-my-opencode" ]]; then
-		need npm
+		if ! command -v npm >/dev/null 2>&1; then
+			printf '[plugin-manager] ERROR: missing command: npm\n' >&2
+			return 1
+		fi
+		if ! command -v node >/dev/null 2>&1; then
+			printf '[plugin-manager] ERROR: missing command: node\n' >&2
+			return 1
+		fi
 		log "oh-my-opencode: pruning android-incompatible deps"
-		python3 - "$pkg/package.json" <<'PY'
+		if ! python3 - "$pkg/package.json" <<'PY'
 import json,sys
 from pathlib import Path
 
@@ -203,18 +222,24 @@ for key in ("dependencies","devDependencies","optionalDependencies"):
 if changed:
     p.write_text(json.dumps(d,ensure_ascii=False,indent=2)+"\n")
 PY
+		then
+			return 1
+		fi
 
-		rm -rf "$pkg/node_modules" "$pkg/package-lock.json" "$pkg/bun.lock" "$pkg/bun.lockb" 2>/dev/null || true
+		rm -rf "$pkg/node_modules" "$pkg/package-lock.json" "$pkg/bun.lock" "$pkg/bun.lockb" || return 1
 		log "oh-my-opencode: npm install (ignore scripts)"
-		(cd "$pkg" && npm install --ignore-scripts --no-audit --no-fund)
+		(cd "$pkg" && npm install --ignore-scripts --no-audit --no-fund) || return 1
 
 		# Keep upstream sources building on Termux even after pruning deps.
-		mkdir -p "$pkg/src"
-		cat >"$pkg/src/shims-termux.d.ts" <<'DTS'
+		mkdir -p "$pkg/src" || return 1
+		if ! cat >"$pkg/src/shims-termux.d.ts" <<'DTS'
 declare module "@ast-grep/napi";
 DTS
+		then
+			return 1
+		fi
 		if [[ -f "$pkg/src/plugin/system-transform.ts" ]]; then
-			cat >"$pkg/src/plugin/system-transform.ts" <<'TS'
+			if ! cat >"$pkg/src/plugin/system-transform.ts" <<'TS'
 export function createSystemTransformHandler(): (
   input: any,
   output: { system: string[] },
@@ -222,28 +247,36 @@ export function createSystemTransformHandler(): (
   return async (): Promise<void> => {}
 }
 TS
+			then
+				return 1
+			fi
 		fi
 
-		[[ -f "$pkg/node_modules/typescript/bin/tsc" ]] || die "typescript not installed correctly (missing: $pkg/node_modules/typescript/bin/tsc)"
+		if [[ ! -f "$pkg/node_modules/typescript/bin/tsc" ]]; then
+			printf '[plugin-manager] ERROR: typescript not installed correctly (missing: %s)\n' "$pkg/node_modules/typescript/bin/tsc" >&2
+			return 1
+		fi
 		log "oh-my-opencode: tsc emit to dist/"
-		node "$pkg/node_modules/typescript/bin/tsc" -p "$pkg/tsconfig.json" --pretty false
+		node "$pkg/node_modules/typescript/bin/tsc" -p "$pkg/tsconfig.json" --pretty false || return 1
 
 		if [[ -f "$pkg/assets/oh-my-opencode.schema.json" ]] && [[ ! -f "$pkg/dist/oh-my-opencode.schema.json" ]]; then
-			mkdir -p "$pkg/dist"
-			cp -f "$pkg/assets/oh-my-opencode.schema.json" "$pkg/dist/oh-my-opencode.schema.json"
+			mkdir -p "$pkg/dist" || return 1
+			cp -f "$pkg/assets/oh-my-opencode.schema.json" "$pkg/dist/oh-my-opencode.schema.json" || return 1
 		fi
 
-		ensure_root_entry "$name"
+		ensure_root_entry "$name" || return 1
 		return 0
 	fi
 
 	_npm_install_fallback() {
 		if ! (cd "$pkg" && npm install); then
 			log "npm install failed; retrying with linux platform compatibility flags"
-			(cd "$pkg" && npm_config_platform=linux npm_config_force=true npm install --force)
+			if ! (cd "$pkg" && npm_config_platform=linux npm_config_force=true npm install --force); then
+				return 1
+			fi
 			if [[ ! -f "$pkg/node_modules/@code-yeongyu/comment-checker/package.json" ]]; then
 				log "linux-platform retry still missing android-unsupported deps; pruning from package.json and retrying"
-				python3 - "$pkg/package.json" <<'PY'
+				if ! python3 - "$pkg/package.json" <<'PY'
 import json,sys
 from pathlib import Path
 
@@ -260,7 +293,10 @@ for key in ("dependencies","devDependencies","optionalDependencies"):
 if changed:
     p.write_text(json.dumps(d,ensure_ascii=False,indent=2)+"\n")
 PY
-				(cd "$pkg" && npm install --force)
+				then
+					return 1
+				fi
+				(cd "$pkg" && npm install --force) || return 1
 			fi
 		fi
 	}
@@ -268,18 +304,60 @@ PY
 	if command -v bun >/dev/null 2>&1 && [[ "${PLUGIN_FORCE_NPM:-0}" != "1" ]]; then
 		if ! (cd "$pkg" && bun install); then
 			log "bun install failed; falling back to npm installer path"
-			need npm
-			_npm_install_fallback
+			if ! command -v npm >/dev/null 2>&1; then
+				printf '[plugin-manager] ERROR: missing command: npm\n' >&2
+				return 1
+			fi
+			_npm_install_fallback || return 1
 		fi
 	else
-		need npm
-		_npm_install_fallback
+		if ! command -v npm >/dev/null 2>&1; then
+			printf '[plugin-manager] ERROR: missing command: npm\n' >&2
+			return 1
+		fi
+		_npm_install_fallback || return 1
 	fi
 
-	if command -v bun >/dev/null 2>&1 && [[ "${PLUGIN_FORCE_NPM:-0}" != "1" ]]; then
-		(cd "$pkg" && (bun run build || bun run compile || npm run build || npm run compile || true))
+	local scripts script build_succeeded=0
+	if ! scripts="$(python3 - "$pkg/package.json" <<'PY'
+import json,sys
+scripts=json.load(open(sys.argv[1])).get("scripts",{})
+for name in ("build","compile"):
+    if name in scripts:
+        print(name)
+PY
+	)"; then
+		return 1
+	fi
+	if [[ -z "$scripts" ]]; then
+		log "no build or compile script; using packaged dist"
 	else
-		(cd "$pkg" && (npm run build || npm run compile || true))
+		if command -v bun >/dev/null 2>&1 && [[ "${PLUGIN_FORCE_NPM:-0}" != "1" ]]; then
+			while IFS= read -r script; do
+				if (cd "$pkg" && bun run "$script"); then
+					build_succeeded=1
+					break
+				fi
+				log "bun run $script failed"
+			done <<<"$scripts"
+		fi
+		if [[ "$build_succeeded" == "0" ]]; then
+			if ! command -v npm >/dev/null 2>&1; then
+				printf '[plugin-manager] ERROR: missing command: npm\n' >&2
+				return 1
+			fi
+			while IFS= read -r script; do
+				if (cd "$pkg" && npm run "$script"); then
+					build_succeeded=1
+					break
+				fi
+				log "npm run $script failed"
+			done <<<"$scripts"
+		fi
+		if [[ "$build_succeeded" != "1" ]]; then
+			printf '[plugin-manager] ERROR: all plugin build scripts failed for %s\n' "$name" >&2
+			return 1
+		fi
 	fi
 	ensure_root_entry "$name"
 }
@@ -294,18 +372,24 @@ cmd_install() {
 	rm -rf "$(root_of "$name")"
 	mkdir -p "$(root_of "$name")"
 	if ! git_retry git clone "$repo" "$(repo_of "$name")"; then
-		update_state "install" "$name" "error" "git_clone_failed" "$repo"
+		if ! update_state "install" "$name" "error" "git_clone_failed" "$repo"; then
+			log "failed to record git clone failure for $name"
+		fi
 		rollback_if_available "$name" "$snapshot"
 		die "git clone failed for $repo"
 	fi
 	cp -a "$(repo_of "$name")" "$(pkg_of "$name")"
 	if ! build_plugin "$name"; then
-		update_state "install" "$name" "error" "build_failed" "$repo"
+		if ! update_state "install" "$name" "error" "build_failed" "$repo"; then
+			log "failed to record build failure for $name"
+		fi
 		rollback_if_available "$name" "$snapshot"
 		die "plugin build failed for $name"
 	fi
 	if ! ensure_file_plugin_config "$name"; then
-		update_state "install" "$name" "error" "config_update_failed" "$repo"
+		if ! update_state "install" "$name" "error" "config_update_failed" "$repo"; then
+			log "failed to record config update failure for $name"
+		fi
 		rollback_if_available "$name" "$snapshot"
 		die "failed to update plugin config for $name"
 	fi
@@ -321,21 +405,27 @@ cmd_update() {
 	[[ -d "$(repo_of "$name")/.git" ]] || die "plugin repo missing; run install first"
 	snapshot_plugin "$name"
 	snapshot="$(snapshot_latest "$name")"
-	repo_url="$(cd "$(repo_of "$name")" && git remote get-url origin 2>/dev/null || true)"
+	repo_url="$(cd "$(repo_of "$name")" && git remote get-url origin)" || die "failed to read plugin origin for $name"
 	if ! (cd "$(repo_of "$name")" && git_retry git fetch --all --tags && git_retry git pull --ff-only); then
-		update_state "update" "$name" "error" "git_update_failed" "$repo_url"
+		if ! update_state "update" "$name" "error" "git_update_failed" "$repo_url"; then
+			log "failed to record git update failure for $name"
+		fi
 		rollback_if_available "$name" "$snapshot"
 		die "git update failed for $name"
 	fi
 	rm -rf "$(pkg_of "$name")"
 	cp -a "$(repo_of "$name")" "$(pkg_of "$name")"
 	if ! build_plugin "$name"; then
-		update_state "update" "$name" "error" "build_failed" "$repo_url"
+		if ! update_state "update" "$name" "error" "build_failed" "$repo_url"; then
+			log "failed to record build failure for $name"
+		fi
 		rollback_if_available "$name" "$snapshot"
 		die "plugin build failed for $name"
 	fi
 	if ! ensure_file_plugin_config "$name"; then
-		update_state "update" "$name" "error" "config_update_failed" "$repo_url"
+		if ! update_state "update" "$name" "error" "config_update_failed" "$repo_url"; then
+			log "failed to record config update failure for $name"
+		fi
 		rollback_if_available "$name" "$snapshot"
 		die "failed to update plugin config for $name"
 	fi
@@ -345,7 +435,7 @@ cmd_update() {
 
 cmd_list() {
 	local name="${1:-$DEFAULT_NAME}"
-	find "$SNAP_DIR" -maxdepth 1 -type f -name "${name}-*" -print 2>/dev/null | sort -r || true
+	find "$SNAP_DIR" -maxdepth 1 -type f -name "${name}-*" -print | sort -r
 }
 
 cmd_rollback() {
