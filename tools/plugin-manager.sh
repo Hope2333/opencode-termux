@@ -446,7 +446,7 @@ cmd_rollback() {
 	rm -rf "$(root_of "$name")"
 	mkdir -p "$PLUG_DIR"
 	if [[ -d "$PLUG_DIR/$name" ]]; then
-		rm -rf "$PLUG_DIR/$name"
+		rm -rf "$PLUG_DIR/${name:?}"
 	fi
 	case "$arc" in
 	*.tar.zst) tar -C "$PLUG_DIR" -I zstd -xf "$arc" ;;

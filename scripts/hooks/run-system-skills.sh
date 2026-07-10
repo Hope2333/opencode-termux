@@ -54,7 +54,7 @@ core_version() {
 	local ver
 	ver="$(opencode --version 2>/dev/null || true)"
 	if [[ -z "$ver" && -x "$PREFIX/lib/opencode/runtime/opencode" ]]; then
-		ver="$($PREFIX/lib/opencode/runtime/opencode --version 2>/dev/null || true)"
+		ver="$("$PREFIX/lib/opencode/runtime/opencode" --version 2>/dev/null || true)"
 	fi
 	python3 - "$ver" <<'PY'
 import re,sys
