@@ -74,8 +74,9 @@ jobs:
             cp "$BIN" "$GITHUB_WORKSPACE/out/bundle/opencode-linux-arm64"
             file "$GITHUB_WORKSPACE/out/bundle/opencode-linux-arm64"
           else
-            echo "Binary not found, trying dist/"
+            echo "Binary not found; dist contents:" >&2
             ls -la dist/ 2>/dev/null || true
+            exit 1
           fi
 
       - name: Download Android Bun for ${{ matrix.arch }}
@@ -93,8 +94,12 @@ jobs:
 
       - name: Clone bun-termux-loader
         run: |
-          git clone --depth 1 "$BUN_TERMUX_LOADER_REPO" out/build/loader 2>&1 || true
-          if [[ -f "out/build/loader/build.py" ]]; then echo "Loader ready"; fi
+          set -euo pipefail
+          git clone --depth 1 "$BUN_TERMUX_LOADER_REPO" out/build/loader
+          [[ -f "out/build/loader/build.py" ]] || {
+            echo "bun-termux-loader is missing build.py" >&2
+            exit 1
+          }
 
       - name: Wrap for Android
         run: |
@@ -102,8 +107,8 @@ jobs:
           BIN="$(pwd)/out/bundle/opencode-linux-arm64"
           LOADER="$(pwd)/out/build/loader"
           if [[ ! -f "$BIN" || ! -f "$LOADER/build.py" ]]; then
-            echo "Binary or loader not available, skipping wrap" >&2
-            exit 0
+            echo "Binary or loader not available" >&2
+            exit 1
           fi
           # Use pre-built wrapper+shim from tools/prebuilt/
           if [[ -f "tools/prebuilt/wrapper" && -f "tools/prebuilt/bunfs_shim.so" ]]; then
@@ -115,7 +120,13 @@ jobs:
             if [[ -f "$TERMUX_BIN" ]]; then
               cp "$TERMUX_BIN" out/bundle/opencode-termux-aarch64
               file out/bundle/opencode-termux-aarch64
+            else
+              echo "Wrapper did not produce $TERMUX_BIN" >&2
+              exit 1
             fi
+          else
+            echo "Pre-built wrapper or shim is missing" >&2
+            exit 1
           fi
 
       - name: Upload artifacts

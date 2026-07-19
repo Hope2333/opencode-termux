@@ -9,12 +9,12 @@ cleanup_tty_full() {
 	if [ -t 1 ]; then
 		printf '\033[?1049l\033[?25h\033[0m' >/dev/tty 2>/dev/null || true
 	fi
-	command -v stty >/dev/null 2>&1 && stty sane 2>/dev/null || true
-	command -v tput >/dev/null 2>&1 && tput rmcup >/dev/null 2>&1 || true
+	if command -v stty >/dev/null 2>&1; then stty sane 2>/dev/null || true; fi
+	if command -v tput >/dev/null 2>&1; then tput rmcup >/dev/null 2>&1 || true; fi
 }
 
 cleanup_tty_soft() {
-	command -v stty >/dev/null 2>&1 && stty sane 2>/dev/null || true
+	if command -v stty >/dev/null 2>&1; then stty sane 2>/dev/null || true; fi
 	if [ -t 1 ]; then
 		printf '\033[?25h\033[0m' >/dev/tty 2>/dev/null || true
 	fi
@@ -37,11 +37,14 @@ if [[ ! -x "$OPENCODE_RUNTIME" ]]; then
 	exit 1
 fi
 
-"$OPENCODE_RUNTIME" "$@"
-rc=$?
+if "$OPENCODE_RUNTIME" "$@"; then
+	rc=0
+else
+	rc=$?
+fi
 if [ "$rc" -eq 0 ]; then
 	cleanup_tty_soft
 else
 	cleanup_tty_full
 fi
-exit $rc
+exit "$rc"
