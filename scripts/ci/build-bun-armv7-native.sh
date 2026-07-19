@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib-ci.sh"
+
 BUN_VERSION="${1:?bun version required}"
 OUT_DIR="${2:?out dir required}"
-ABS_OUT_DIR="$(mkdir -p "$OUT_DIR" && cd "$OUT_DIR" && pwd)"
-mkdir -p "$ABS_OUT_DIR/assets" "$ABS_OUT_DIR/logs" "$ABS_OUT_DIR/status" "$ABS_OUT_DIR/work"
+ABS_OUT_DIR="$(ci_prepare_out_dir "$OUT_DIR")"
 
 ARCH_RAW="$(uname -m || true)"
 if ! echo "$ARCH_RAW" | grep -Eiq 'armv7|armv6|arm'; then
@@ -16,7 +17,7 @@ WORK="$ABS_OUT_DIR/work/bun-native-src"
 rm -rf "$WORK"
 mkdir -p "$WORK"
 
-if ! git clone --depth=1 --branch "bun-v${BUN_VERSION}" https://github.com/oven-sh/bun.git "$WORK" >"$ABS_OUT_DIR/logs/bun-native-git-clone.txt" 2>&1; then
+if ! ci_clone_bun "$BUN_VERSION" "$WORK" "$ABS_OUT_DIR/logs/bun-native-git-clone.txt"; then
   printf '{\n  "status": "failed",\n  "reason": "failed to clone bun tag",\n  "bun_version": "%s"\n}\n' "$BUN_VERSION" > "$ABS_OUT_DIR/status/bun-native-build-status.json"
   exit 52
 fi
