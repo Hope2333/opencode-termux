@@ -98,6 +98,9 @@ try:
         data=json.load(f)
 except FileNotFoundError:
     data={"items":{}}
+except json.JSONDecodeError as exc:
+    print(f"[opencode-hooks][WARN] resetting corrupt registry {path}: {exc}", file=sys.stderr)
+    data={"items":{}}
 
 items=data.setdefault("items",{})
 item=items.get(plugin_id,{})

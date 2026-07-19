@@ -63,6 +63,9 @@ try:
         data=json.load(f)
 except FileNotFoundError:
     data={"items":{}}
+except json.JSONDecodeError as exc:
+    print(f"[plugin-manager] WARN: resetting corrupt state file {path}: {exc}", file=sys.stderr)
+    data={"items":{}}
 
 items=data.setdefault("items",{})
 entry=items.get(name,{})
@@ -100,6 +103,7 @@ git_retry() {
 
 snapshot_latest() {
 	local name="$1"
+	[[ -d "$SNAP_DIR" ]] || return 0
 	find "$SNAP_DIR" -maxdepth 1 -type f -name "${name}-*" -print | sort -r | sed -n '1p'
 }
 
@@ -435,6 +439,7 @@ cmd_update() {
 
 cmd_list() {
 	local name="${1:-$DEFAULT_NAME}"
+	[[ -d "$SNAP_DIR" ]] || return 0
 	find "$SNAP_DIR" -maxdepth 1 -type f -name "${name}-*" -print | sort -r
 }
 
