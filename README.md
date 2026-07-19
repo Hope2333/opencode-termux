@@ -26,7 +26,7 @@ apt update
 apt install -y glibc openssl-glibc
 
 # Then install opencode
-apt install -y /path/to/opencode_<version>_aarch64.deb
+dpkg -i /path/to/opencode_<version>_aarch64.deb
 ```
 
 ### Path B: pacman (secondary)
@@ -122,7 +122,7 @@ See `docs/native-android-research.md` for full research details.
 apt install -y glibc-repo
 apt update
 apt install -y glibc openssl-glibc
-apt install -y /path/to/opencode_<version>_aarch64.deb
+dpkg -i /path/to/opencode_<version>_aarch64.deb
 
 # Path B: pacman
 pacman -Syu
