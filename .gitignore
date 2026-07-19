@@ -27,6 +27,7 @@ package/bin/opencode
 # Project metadata
 .ai/
 .sisyphus/
+.omo/
 
 # Vendored test runner (fetched on demand by tests/bootstrap.sh)
 tests/vendor/
