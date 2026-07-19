@@ -70,6 +70,7 @@ $cmd
 EOF
 }
 
+main() {
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
 	cat <<EOF
 Usage:
@@ -116,3 +117,10 @@ done
 ssh_exec "set -euo pipefail; echo === downgrade latest to first ===; apt install -y $first_name; $PKG_NAME --version || true; echo === reinstall latest ===; apt install -y --reinstall $last_name; $PKG_NAME --version || true; echo === final state ===; dpkg -l | grep -E '^(ii|hi)\\s+($PKG_NAME|glibc|openssl-glibc|glibc-runner)' || true; echo MATRIX_DONE"
 
 log "matrix complete; remote log: $logfile"
+}
+
+# Run only when executed directly, so the functions above can be sourced
+# (e.g. by unit tests) without triggering the remote matrix run.
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+	main "$@"
+fi
