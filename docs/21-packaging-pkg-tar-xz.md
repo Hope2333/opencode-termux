@@ -16,7 +16,7 @@
 
 ## 目录建议
 ```text
-packaging/pacman/
+packing/pacman/
 ├─ bun/
 └─ opencode/
 ```

@@ -37,8 +37,8 @@ fi
 	echo "Error: staged runtime returned an empty version" >&2
 	exit 1
 }
-DEB_ROOT="$ROOT_DIR/packaging/dpkg/work"
-OUT_DIR="$ROOT_DIR/packaging/dpkg"
+DEB_ROOT="$ROOT_DIR/packing/dpkg/work"
+OUT_DIR="$ROOT_DIR/packing/dpkg"
 OUT_FILE="$OUT_DIR/opencode_${VERSION}_${ARCH_DEB}.deb"
 
 rm -rf "$DEB_ROOT"

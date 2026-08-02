@@ -1,6 +1,6 @@
 # opencode-termux Docs (Canonical)
 
-This directory is the single source of truth for the current Termux packaging/runtime workflow.
+This directory is the single source of truth for the current Termux packing/runtime workflow.
 
 ## Start here
 
@@ -48,7 +48,7 @@ This directory is the single source of truth for the current Termux packaging/ru
 
 ## Known pitfalls
 
-- Old generated `artifacts/staged`, `packaging/dpkg/work`, `packaging/pacman/src` can contain stale runtime versions
+- Old generated `artifacts/staged`, `packing/dpkg/work`, `packing/pacman/src` can contain stale runtime versions
 - `sv status opencode-web` in Termux should use full service path (`$PREFIX/var/service/opencode-web`)
 - `opencode web` under runit may restart-loop and accumulate `.*-0000*.so` files if startup crashes
 - **statx seccomp crash**: Android's seccomp filter blocks `statx()` syscall → SIGSYS → SIGSEGV. The statx shim (`libstatx-shim.so`) is automatically compiled during staging and preloaded via launcher. Disable with `OPENCODE_DISABLE_STATX_SHIM=1`.

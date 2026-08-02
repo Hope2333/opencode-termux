@@ -121,7 +121,7 @@ project/
 │  ├─ build/                      # 构建脚本
 │  ├─ package/                    # 打包脚本
 │  └─ common.sh                   # 公共函数
-├─ packaging/
+├─ packing/
 │  ├─ deb/                        # Debian 打包暂存
 │  └─ pacman/                     # Pacman 打包暂存
 ├─ sources/

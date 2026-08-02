@@ -26,7 +26,7 @@ Package post-install prints registration and verification commands.
 To improve plugin safety across core upgrades, package mode now supports a system-skill manifest + hook runner flow:
 
 - Manifests location in source tree:
-  - `packaging/manifests/system-skills/*.json`
+  - `packing/manifests/system-skills/*.json`
 - Installed location:
   - `$PREFIX/lib/opencode/system-skills/*.json`
 - Hook runner (installed):

@@ -44,7 +44,7 @@ find_deb() {
 	for c in \
 		"$ODIR/${PKG_NAME}_${ver}_aarch64.deb" \
 		"$ODIR/${PKG_NAME}_${ver}_arm64.deb" \
-		"$REPO_DIR/packaging/dpkg/${PKG_NAME}_${ver}_aarch64.deb"; do
+		"$REPO_DIR/packing/dpkg/${PKG_NAME}_${ver}_aarch64.deb"; do
 		[[ -f "$c" ]] && {
 			printf '%s' "$c"
 			return 0

@@ -5,7 +5,7 @@
 
 ## NAVIGATION ANCHORS
 - Start at `README.md` (canonical "Start here" + classification map).
-- Use numbered flow for lifecycle context: `00`/`01` (scope+env) → `11`/`12`/`13` (build internals) → `20`/`21`/`22` (packaging/service) → `30` (verification matrix) → `99`/`incidents` (failures).
+- Use numbered flow for lifecycle context: `00`/`01` (scope+env) → `11`/`12`/`13` (build internals) → `20`/`21`/`22` (packing/service) → `30` (verification matrix) → `99`/`incidents` (failures).
 
 ## WHERE TO LOOK
 | Question | Document | Notes |

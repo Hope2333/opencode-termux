@@ -13,9 +13,9 @@ opencode-1.14.*
 opencode-linux-arm64-*.tgz
 
 # Build work directories
-packaging/dpkg/work/
-packaging/pacman/pkg/
-packaging/pacman/src/
+packing/dpkg/work/
+packing/pacman/pkg/
+packing/pacman/src/
 .work/
 
 # Session artifacts / temp test files

@@ -1,11 +1,11 @@
 # PACKAGING KNOWLEDGE BASE
 
 ## OVERVIEW
-`packaging/` mixes source templates/manifests with generated package outputs. Keep edits confined to source-of-truth files.
+`packing/` mixes source templates/manifests with generated package outputs. Keep edits confined to source-of-truth files.
 
 ## STRUCTURE
 ```text
-packaging/
+packing/
 ├── deb/DEBIAN/control                # template metadata (source-of-truth)
 ├── pacman/PKGBUILD*                  # template/build scripts (source-of-truth)
 ├── pacman/select_pkgbuild.sh         # architecture selector

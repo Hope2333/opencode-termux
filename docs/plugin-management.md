@@ -2,7 +2,7 @@
 
 For Termux, user-friendly plugin management should be based on **local-plugin file URLs**, not direct package-name plugin install.
 
-Main packaging/build route for external plugins now lives in:
+Main packing/build route for external plugins now lives in:
 
 - `https://github.com/Hope2333/opencode-plugins-termux`
 

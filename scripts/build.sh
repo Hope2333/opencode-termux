@@ -54,8 +54,8 @@ fi
 if [[ -f "$ROOT_DIR/scripts/hooks/run-system-skills.sh" ]]; then
 	install -m 755 "$ROOT_DIR/scripts/hooks/run-system-skills.sh" "$PREFIX_DIR/lib/opencode/tools/run-system-skills.sh"
 fi
-if [[ -d "$ROOT_DIR/packaging/manifests/system-skills" ]]; then
-	cp -a "$ROOT_DIR/packaging/manifests/system-skills/." "$PREFIX_DIR/lib/opencode/system-skills/"
+if [[ -d "$ROOT_DIR/packing/manifests/system-skills" ]]; then
+	cp -a "$ROOT_DIR/packing/manifests/system-skills/." "$PREFIX_DIR/lib/opencode/system-skills/"
 fi
 
 DOCS_LIST="${DOCS_LIST:-$ROOT_DIR/docs/bundle-list.txt}"

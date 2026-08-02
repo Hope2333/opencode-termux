@@ -39,7 +39,7 @@ if [[ -f "$CACHE_BIN" ]]; then
 	fi
 	[[ -n "$runtime_version" ]] || die "cached runtime returned an empty version: $CACHE_BIN"
 	log "version: $runtime_version"
-	rm -rf "$ROOT_DIR/artifacts/staged" "$ROOT_DIR/packaging/dpkg/work" "$ROOT_DIR/packaging/pacman/src"
+	rm -rf "$ROOT_DIR/artifacts/staged" "$ROOT_DIR/packing/dpkg/work" "$ROOT_DIR/packing/pacman/src"
 	log "DONE"
 	exit 0
 fi
@@ -77,5 +77,5 @@ fi
 [[ -n "$runtime_version" ]] || die "wrapped runtime returned an empty version"
 log "version: $runtime_version"
 
-rm -rf "$ROOT_DIR/artifacts/staged" "$ROOT_DIR/packaging/dpkg/work" "$ROOT_DIR/packaging/pacman/src"
+rm -rf "$ROOT_DIR/artifacts/staged" "$ROOT_DIR/packing/dpkg/work" "$ROOT_DIR/packing/pacman/src"
 log "DONE"
