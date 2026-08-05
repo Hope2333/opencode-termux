@@ -7,6 +7,7 @@ This directory is the single source of truth for the current Termux packing/runt
 - `execution-checklist.md` — install/test runbook (default Termux apt first, pacman path second)
 - `skills-index.md` — concise index for prompts + quick fixes
 - `13-opencode-runtime-build.md` — canonical runtime build path (official `opencode-linux-arm64` + bun-termux-loader)
+- `40-v2-adaptation.md` — upstream v2 adaptation: v2 beta/tag + dist-tag routing, Bun-ELF vs future Node path, packaging form awareness
 - `20-packaging-deb.md` / `21-packaging-pkg-tar-xz.md` — package layout and build outputs
 - `22-termux-services-opencode-web.md` — service behavior and web mode notes
 - `30-ci-local-build-matrix.md` — local/CI validation matrix

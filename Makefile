@@ -30,6 +30,7 @@ help:
 	@echo "Primary commands:"
 	@echo "  make all VER=1.2.10 PKG=both"
 	@echo "  make all VER=latest PKG=pacman"
+	@echo "  make all VER=beta PKG=both      # v2 beta (opencode-linux-arm64@beta)"
 	@echo "  make all VER=1.2.10 PKG=both ODIR=~/oct-out"
 	@echo "  make all VER=1.2.10 PKG=both ODIR=~/oct-out MIX=1"
 	@echo "  make runtime VER=latest"
@@ -43,9 +44,10 @@ help:
 	@echo "  make batch VERS='1.1.[1-20]' PKG=pacman ODIR=~/oct-out MIX=1"
 	@echo
 	@echo "Version resolution in tools/produce-local.sh:"
-	@echo "  1) explicit version argument"
-	@echo "  2) latest npm version if omitted"
-	@echo "  3) GitHub release fallback if npm version unavailable"
+	@echo "  1) explicit version argument (e.g. 1.18.13, 0.0.0-beta-202608050826)"
+	@echo "  2) npm dist-tag (beta, tui-v2, latest; default: latest)"
+	@echo "  3) runtime-form auto-detected: Bun ELF -> loader wrap, non-ELF -> Node"
+	@echo "     (v1 + v2 beta use the Bun ELF path; future v2 GA uses the Node path)"
 	@echo
 	@echo "Output policy:"
 	@echo "  - Default root: ./packing"

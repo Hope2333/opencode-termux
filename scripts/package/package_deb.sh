@@ -46,6 +46,18 @@ mkdir -p "$DEB_ROOT/DEBIAN" "$DEB_ROOT$PREFIX" "$OUT_DIR"
 chmod 755 "$DEB_ROOT" "$DEB_ROOT/DEBIAN"
 cp -a "$STAGED_PREFIX/." "$DEB_ROOT$PREFIX/"
 
+# Runtime form detection: bun-elf (loader-wrapped, glibc) vs node-js (v2 GA).
+RUNTIME_FORM="bun-elf"
+if [[ -f "$STAGED_PREFIX/lib/opencode/runtime/opencode" ]] && ! file "$STAGED_PREFIX/lib/opencode/runtime/opencode" | grep -q 'ELF'; then
+	RUNTIME_FORM="node-js"
+fi
+RUNTIME_DEPENDS="glibc, openssl-glibc, bash, ncurses"
+RUNTIME_DESC="glibc (bun-termux-loader wrapped)"
+if [[ "$RUNTIME_FORM" == "node-js" ]]; then
+	RUNTIME_DEPENDS="bash, nodejs"
+	RUNTIME_DESC="node.js"
+fi
+
 cat >"$DEB_ROOT/DEBIAN/control" <<EOF
 Package: opencode
 Version: $VERSION
@@ -54,8 +66,9 @@ Maintainer: $MAINTAINER
 Section: utils
 Priority: optional
 Description: OpenCode AI coding assistant for Termux
-Depends: bash, ncurses
+Depends: $RUNTIME_DEPENDS
 EOF
+
 
 INSTALLED_SIZE=$(du -sk "$DEB_ROOT" | cut -f1)
 echo "Installed-Size: $INSTALLED_SIZE" >>"$DEB_ROOT/DEBIAN/control"
@@ -65,13 +78,14 @@ cat >"$DEB_ROOT/DEBIAN/postinst" <<'POSTINST'
 set -e
 echo "OpenCode for Termux installed"
 echo "Run: opencode --version"
-echo "Runtime: glibc (bun-termux-loader wrapped)"
+echo "Runtime: __RUNTIME_DESC__"
 HOOK_RUNNER="/data/data/com.termux/files/usr/lib/opencode/tools/run-system-skills.sh"
 if [[ -x "$HOOK_RUNNER" ]]; then
   OPENCODE_HOOK_STRICT=0 OPENCODE_HOOK_ENABLE_NETWORK=0 "$HOOK_RUNNER" post_install || true
 fi
 exit 0
 POSTINST
+sed -i "s/__RUNTIME_DESC__/$RUNTIME_DESC/" "$DEB_ROOT/DEBIAN/postinst"
 chmod 755 "$DEB_ROOT/DEBIAN/postinst"
 
 cat >"$DEB_ROOT/DEBIAN/prerm" <<'PRERM'

@@ -111,3 +111,24 @@ error: no embedded Bun runtime (missing BUNWRAP1)
 - https://github.com/oven-sh/bun
 - https://github.com/Hope2333/bun-termux-loader
 - https://github.com/thdxr/bun (patch 分支)
+
+---
+
+## v2 适配近期经验（2026-08-05，feat/v2-adaptation）
+
+### 上游 v2 现状
+- `2.0` 分支停滞（2026-04-13）；活跃开发在 `dev`（每日提交）。
+- npm dist-tag：`beta`（每日轮换）、`tui-v2`（快照）、`latest`（v1 1.18.13）。
+- v2 beta 仍是 **Bun ELF** → 复用现有 bun-termux-loader+glibc 包装管线。
+- 未来 v2 GA 切 Node.js（snapshot-node-logic 等 dist-tag 为 Node 化快照，仍是安装壳）。
+
+### nodejs 形态实测结论
+- opencode-ai npm 壳（Node spawn 驱动）在 Termux 装不通：postinstall 报 Could not find package opencode-android-arm64。
+- 正确路径：produce-local.sh 直接拉 opencode-linux-arm64 + wrap（v1/v2 beta），或未来 v2 GA 走 node-js staging。
+- node-js 分支已用 fake non-ELF entry 全程验证：检测→staging→v2-dist chunks→依赖切 nodejs。
+
+### 构建/打包坑
+- npm 大 tarball 下载需 --fetch-retries=5（ECONNABORTED 瞬时中断）。
+- pacman pkgver 不允许连字符：用 _pkgver + pkgver=${_pkgver//-/.} 转换。
+- bun-elf 依赖：glibc openssl-glibc bash ncurses；node-js 形态切 nodejs bash。
+- beta 版本号 < v1 时 pacman 视为 downgrade（预期行为）。

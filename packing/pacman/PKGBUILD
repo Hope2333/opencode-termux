@@ -1,11 +1,18 @@
 pkgname=opencode
-pkgver=1.2.10
+_pkgver=1.2.10
+pkgver=${_pkgver//-/.}  # makepkg forbids hyphens; convert for package filename
 pkgrel=1
 pkgdesc='OpenCode for Termux from local staged prefix'
 arch=('aarch64')
 url='https://github.com/anomalyco/opencode'
 license=('MIT')
-options=('!strip' '!debug')
+options=('!strip' '!debug' '!lto')
+
+# depends is injected dynamically by package_pacman.sh based on runtime form.
+# - bun-elf: glibc openssl-glibc bash ncurses (loader-wrapped runtime)
+# - node-js: nodejs bash
+depends=()
+
 
 makedepends=()
 source=()

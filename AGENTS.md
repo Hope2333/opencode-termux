@@ -22,7 +22,7 @@ opencode-termux/
 | Task | Location | Notes |
 |---|---|---|
 | Build orchestration | `Makefile`, `tools/make-opencode` | `make` is source of truth; wrapper maps CLI flags to make vars |
-| Prepare runtime artifact | `tools/produce-local.sh` | resolves version, wraps runtime, cleans stale generated dirs |
+| Prepare runtime artifact | `tools/produce-local.sh` | resolves version (v1/V2 dist-tag beta/tui-v2), auto-detects Bun-ELF vs Node runtime, wraps/stages, cleans stale dirs; see `docs/40-v2-adaptation.md` |
 | Stage install tree | `scripts/build.sh`, `scripts/common.sh` | writes staged prefix + build metadata |
 | Build DEB package | `scripts/package/package_deb.sh`, `packing/deb/DEBIAN/control` | postinst hook calls system-skill runner |
 | Build pacman package | `scripts/package/package_pacman.sh`, `packing/pacman/PKGBUILD*` | dynamic pkgver/pkgrel rewrite + makepkg flow |

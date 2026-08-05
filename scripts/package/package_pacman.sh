@@ -41,8 +41,20 @@ cp /data/data/com.termux/files/usr/etc/makepkg.conf "$TMP_MAKEPKG_CONF"
 printf "\nPACKAGER=%q\n" "$PACKAGER_NAME" >>"$TMP_MAKEPKG_CONF"
 
 cp "$ROOT_DIR/packing/pacman/PKGBUILD" "$TMP_PKGBUILD"
-sed -i "s/^pkgver=.*/pkgver=$VERSION/" "$TMP_PKGBUILD"
+sed -i "s/^_pkgver=.*/_pkgver=$VERSION/" "$TMP_PKGBUILD"
 sed -i "s/^pkgrel=.*/pkgrel=$PKGREL/" "$TMP_PKGBUILD"
+
+# Runtime form: bun-elf (loader-wrapped) vs node-js (v2 GA). Inject depends.
+RUNTIME_FORM="bun-elf"
+if [[ -f "$STAGED_PREFIX/lib/opencode/runtime/opencode" ]] && ! file "$STAGED_PREFIX/lib/opencode/runtime/opencode" | grep -q 'ELF'; then
+	RUNTIME_FORM="node-js"
+fi
+RUNTIME_DEPENDS="('glibc' 'openssl-glibc' 'bash' 'ncurses')"
+if [[ "$RUNTIME_FORM" == "node-js" ]]; then
+	RUNTIME_DEPENDS="('nodejs' 'bash')"
+fi
+sed -i "s/^depends=()/depends=$RUNTIME_DEPENDS/" "$TMP_PKGBUILD"
+
 
 STAGED_PREFIX="$STAGED_PREFIX" REPO_ROOT="$ROOT_DIR" makepkg --config "$TMP_MAKEPKG_CONF" -f --noconfirm -p "$TMP_PKGBUILD"
 

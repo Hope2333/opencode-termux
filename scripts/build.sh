@@ -37,6 +37,14 @@ else
 	fail "no runtime found at $RUNTIME_INPUT"
 fi
 
+# Node.js dist (future v2 GA): adjacent chunks live in v2-dist/ — copy them next to the entry.
+V2_DIST="$ROOT_DIR/artifacts/opencode/runtime/v2-dist"
+if [[ -d "$V2_DIST" ]]; then
+	ensure_dir "$PREFIX_DIR/lib/opencode/runtime/v2-dist"
+	cp -a "$V2_DIST/." "$PREFIX_DIR/lib/opencode/runtime/v2-dist/"
+	log "installed Node.js v2 dist chunks"
+fi
+
 # Optional: OpenCode JS bundle (built on CI, run via Android Bun)
 BUNDLE_INPUT="${OPENCODE_BUNDLE_INPUT:-$ROOT_DIR/artifacts/opencode/runtime/bundle.js}"
 if [[ -f "$BUNDLE_INPUT" ]]; then
@@ -76,11 +84,20 @@ if [[ -f "$DOCS_LIST" ]]; then
 	done <"$DOCS_LIST"
 fi
 
-# Compile statx-seccomp shim for Android/Termux compatibility
+# Record runtime form in build metadata for packaging decisions.
+# bun-elf  -> android-only (bun-termux-loader wrapped, glibc).
+# node-js -> portable Node.js distribution (future v2 GA).
+RUNTIME_FORM="bun-elf"
+if [[ -f "$PREFIX_DIR/lib/opencode/runtime/opencode" ]] && ! file "$PREFIX_DIR/lib/opencode/runtime/opencode" | grep -q 'ELF'; then
+	RUNTIME_FORM="node-js"
+fi
+RUNTIME_MODE="android-only"
+[[ "$RUNTIME_FORM" == "node-js" ]] && RUNTIME_MODE="node"
 write_build_meta "$ROOT_DIR/artifacts/opencode/build.meta" \
 	"component=opencode" \
 	"prefix=$PREFIX_DIR" \
-	"runtime_mode=android-only" \
-	"runtime_path=$PREFIX_DIR/lib/opencode/runtime/bun"
+	"runtime_form=$RUNTIME_FORM" \
+	"runtime_mode=$RUNTIME_MODE" \
+	"runtime_path=$PREFIX_DIR/lib/opencode/runtime/opencode"
 
 log "staged build ready: $PREFIX_DIR"
