@@ -1,0 +1,11 @@
+{
+  "ver": "1.3.13",
+  "date": "2026-08-20",
+  "runtime": "artifacts/transplant/1.3.13/opencode-native",
+  "status": "C1-FALSIFIED",
+  "note": "官方 android Bun 底座证伪：产物为纯 Bun 解释器模式，不可作为 opencode 运行（见 docs/transplant.md）。实测 --version 打印 Bun 版本 1.3.14（exit 0），serve/run 报 'error loading current directory / error: An internal error occurred (CouldntReadCurrentDirectory)'。smoke_ms/goal_ms 为纯 Bun 解释器 --version 启动耗时（bench 未失败故如实记录），非 opencode 启动，仅作参考不可作验收；rss_mb 置 null：serve 立即失败进程退出，RSS 采样 0kB 无意义",
+  "smoke_ms": 44,
+  "goal_ms": 19,
+  "rss_mb": null,
+  "wrapper_baseline": { "smoke_ms": 2675, "goal_ms": 3047, "rss_mb": 364 }
+}
