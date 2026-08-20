@@ -8,7 +8,7 @@ RUNTIME_DIR="$ROOT_DIR/artifacts/opencode/runtime"
 OPENCODE_OUT="$RUNTIME_DIR/opencode-termux"
 INPUT_VER="${1:-}"
 
-log() { printf '[produce] %s\n' "$*"; }
+log() { printf '[produce] %s\n' "$*" >&2; }
 die() { printf '[produce] ERROR: %s\n' "$*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || die "missing: $1"; }
 
@@ -57,7 +57,7 @@ RAW="package/bin/opencode"
 # Wrap with bun-termux-loader
 if [[ ! -f "$LOADER_DIR/build.py" ]]; then
 	log "cloning bun-termux-loader"
-	if ! git clone --depth 1 https://github.com/Hope2333/bun-termux-loader "$EXTRACT/loader"; then
+	if ! git clone -q --depth 1 https://github.com/Hope2333/bun-termux-loader "$EXTRACT/loader"; then
 		die "clone failed"
 	fi
 	LOADER_DIR="$EXTRACT/loader"
