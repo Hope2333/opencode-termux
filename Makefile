@@ -158,10 +158,24 @@ test:
 matrix:
 	@VERS='$(VERS)' ODIR='$(ODIR)' TARGET_HOST='$(TARGET_HOST)' TARGET_PORT='$(TARGET_PORT)' TARGET_USER='$(TARGET_USER)' ./tools/upgrade-matrix.sh
 
+# transplant: build native android binary via transplant pipeline
+# (tools/transplant/transplant.py, zero-glibc native-android path)
+# Output: artifacts/transplant/<ver>/opencode-native + report.json
+transplant:
+	@if [ -z "$(VER)" ]; then \
+		echo "Error: VER is empty. Example: make transplant VER=1.3.13"; \
+		exit 1; \
+	fi
+	@echo "==> transplant VER=$(VER)"
+	python3 tools/transplant/transplant.py all --ver $(VER) --tgz $${TMPDIR:-/tmp}/$$(npm pack opencode-linux-arm64@$(VER) --pack-destination $${TMPDIR:-/tmp} 2>/dev/null | tail -n1)
+transplant: VER?= latest
+
 clean:
 	rm -rf artifacts/staged packing/dpkg/work packing/pacman/pkg packing/pacman/src
 	@echo "Clean complete"
 
+# NOTE: release-upload will gain a transplant prerequisite (native-android
+# binary per version) — actual ordering wired in todo 18.
 # ── Release upload (not shown in help) ──────────────────────────────────
 # Automates: batch build → upload all assets to existing or new release tag.
 # Usage:
