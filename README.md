@@ -203,6 +203,45 @@ Matrix builds for: `aarch64`
 
 ---
 
+## Native-android 分支（实验）
+
+`native-android` 是拓展分支，承载 transplant 管线（`tools/transplant/transplant.py`），
+目标是零 glibc 的原生 Android 运行路径。当前状态：**C1 路线已被证伪**。
+
+### C1 证伪现状
+
+C1 路线 = 用官方预编译 android Bun（v1.3.14，Bionic 直跑）作为底座，与 opencode 的
+module graph 拼接成单个可 execve 的 ELF。经三重证据证伪，官方 android Bun **无法承载
+grafted module graph**：
+
+1. **ELF 入口缺失**（compiled-app 模式不存在）：android bun 1.3.14 的 entry 落在
+   `.text` 起始（纯解释器模式），拼接产物不会进入"加载内嵌 JS"路径。
+2. **standalone 检测代码缺失**：`---- Bun! ----` 标记虽存在于 `.rodata`，但代码中
+   对它的引用为 0，拼接产物无法被识别为 standalone。
+3. **无触发开关**：`bun build --compile` 在 Android 上报 `Cannot read directory
+   "/data/": AccessDenied`（Bun 源码硬编码从 `/` 扫描，Android 权限限制无法绕过）。
+
+唯一 workaround = Zig/C++ 级修改（guysoft 自编译 Bun 路线）。完整证据链见
+`docs/transplant.md`。
+
+### transplant 命令速查
+
+```bash
+# 一键管线（extract→detect→convert→patch→assemble→verify）
+make transplant VER=1.3.13
+
+# 回归（golden-file，fixtures 需先 scripts/fetch-fixtures.sh 预下载）
+make transplant-check
+```
+
+### watcher 集成
+
+`tools/watcher/` 提供独立原生 watcher 守护模块（`watcher.c`，NDK inotify 递归监听）
++ 插件侧 shim（`shim.js`），解决上游 `@parcel/watcher` 在 Termux 上加载失败导致的
+完全无文件监听问题。详见 `docs/transplant.md` 附录。
+
+---
+
 ## Repository layout
 
 ```

@@ -12,6 +12,7 @@ This directory is the single source of truth for the current Termux packing/runt
 - `30-ci-local-build-matrix.md` — local/CI validation matrix
 - `incidents/2026-02-23-opencode-web-termux-so-avalanche.md` — `.so` snowball restart-storm RCA note
 - `local-production.md` — local final packaging policy and boundaries
+- `transplant.md` — native-android transplant pipeline + C1 falsification status
 - `plugin-management.md` — plugin install/update/rollback commands
 - `ci-prebuild-armv7.md` — Phase A armv7-only CI prebuild handoff scope
 - `plugin-packaging-design.md` — package-manager-driven plugin model for apt/pacman
