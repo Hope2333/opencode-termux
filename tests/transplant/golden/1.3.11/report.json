@@ -1,0 +1,72 @@
+{
+  "ver": "1.3.11",
+  "layout": 52,
+  "steps": {
+    "extract": {
+      "ver": "1.3.11",
+      "file_size": 160944212,
+      "host_bun_size": 98736456,
+      "module_graph_size": 62207748,
+      "byte_count": 62207700,
+      "mod_ptr_offset": 62178844,
+      "mod_ptr_length": 28808,
+      "entry_point_id": 0,
+      "argv": [
+        62207652,
+        47
+      ],
+      "flags": 3,
+      "module_graph": "module-graph.bin",
+      "host_bun": "host-bun.bin",
+      "sha256": "56344d65a82aec5f94b02748e222e4e38491d0d4cf8607f0e9c1fbb788ba178b"
+    },
+    "detect": {
+      "bun_version": "1.3.11",
+      "layout": 52,
+      "module_count": 554,
+      "offsets": {
+        "byte_count": 62207700,
+        "modules_ptr": {
+          "offset": 62178844,
+          "length": 28808
+        },
+        "argv": [
+          62207652,
+          47
+        ],
+        "flags": 3
+      },
+      "file_size": 160944212,
+      "host_bun_size": 98736456,
+      "module_graph_size": 62207748,
+      "source": "tests/transplant/fixtures/tgz/opencode-linux-arm64-1.3.11.tgz"
+    },
+    "convert": {
+      "skipped": true,
+      "reason": "layout already 52B"
+    },
+    "patch": {
+      "hit_count": 0,
+      "warnings": [
+        "patch guysoft-1-undici-case: no hit for '__reExport(exports_Undici, undici)'; skipped"
+      ],
+      "config": "/data/data/com.termux/files/home/develop/opencode-termux/tools/transplant/config/patches.json"
+    },
+    "assemble": {
+      "bun": "/data/data/com.termux/files/home/develop/opencode-termux/artifacts/transplant/android-bun/bun",
+      "bun_size": 89796776,
+      "graph_size": 62207748,
+      "file_size": 152004532,
+      "expected_total": 152004532,
+      "sha256": "d82504b25d455b50d913be5b6239ad7f7b926ba8f69daf5775de391fb9386bee"
+    },
+    "verify": {
+      "execve_result": "1.3.14",
+      "exit_code": 0,
+      "stdout": "1.3.14",
+      "stderr": "",
+      "expect_version": "1.3.14",
+      "assert_ok": true
+    }
+  }
+}

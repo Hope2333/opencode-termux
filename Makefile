@@ -17,7 +17,7 @@ REPO ?= Hope2333/opencode-termux
 
 OUTPUT_ROOT := $(if $(ODIR),$(ODIR),$(CURDIR)/packing)
 
-.PHONY: help all runtime stage deb pacman batch clean status steps matrix selfcheck release-upload test
+.PHONY: help all runtime stage deb pacman batch clean status steps matrix selfcheck release-upload test transplant-check
 
 help:
 	@echo "OpenCode Termux build helper"
@@ -169,6 +169,11 @@ transplant:
 	@echo "==> transplant VER=$(VER)"
 	python3 tools/transplant/transplant.py all --ver $(VER) --tgz $${TMPDIR:-/tmp}/$$(npm pack opencode-linux-arm64@$(VER) --pack-destination $${TMPDIR:-/tmp} 2>/dev/null | tail -n1)
 transplant: VER?= latest
+
+# transplant-check: golden regression across layout families
+# (tests/transplant/test_golden.py; fixtures pre-downloaded by scripts/fetch-fixtures.sh)
+transplant-check:
+	python3 tests/transplant/test_golden.py --fixtures-dir tests/transplant/fixtures/tgz
 
 clean:
 	rm -rf artifacts/staged packing/dpkg/work packing/pacman/pkg packing/pacman/src

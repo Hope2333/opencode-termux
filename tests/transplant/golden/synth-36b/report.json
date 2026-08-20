@@ -1,0 +1,78 @@
+{
+  "ver": "synth-36b",
+  "layout": 52,
+  "steps": {
+    "extract": {
+      "ver": "synth-36b",
+      "file_size": 160929396,
+      "host_bun_size": 98737096,
+      "module_graph_size": 62192292,
+      "byte_count": 62192244,
+      "mod_ptr_offset": 62191476,
+      "mod_ptr_length": 720,
+      "entry_point_id": 0,
+      "argv": [
+        62192196,
+        47
+      ],
+      "flags": 3,
+      "module_graph": "module-graph.bin",
+      "host_bun": "host-bun.bin",
+      "sha256": "7552ade1a2d2bfdb98e48d851d861de2804f0984256d20e3a6b739e1a2c2fda6"
+    },
+    "detect": {
+      "bun_version": "1.3.11",
+      "layout": 36,
+      "module_count": 20,
+      "offsets": {
+        "byte_count": 62192244,
+        "modules_ptr": {
+          "offset": 62191476,
+          "length": 720
+        },
+        "argv": [
+          62192196,
+          47
+        ],
+        "flags": 3
+      },
+      "file_size": 160929396,
+      "host_bun_size": 98737096,
+      "module_graph_size": 62192292,
+      "source": "tests/transplant/fixtures/tgz/opencode-linux-arm64-synth-36b.tgz"
+    },
+    "convert": {
+      "src_layout": 36,
+      "dst_layout": 52,
+      "n": 20,
+      "delta": 320,
+      "old_byte_count": 62192244,
+      "new_byte_count": 62192564,
+      "old_mod_len": 720,
+      "new_mod_len": 1040,
+      "old_argv0": 62192196,
+      "new_argv0": 62192516,
+      "old_graph_size": 62192292,
+      "new_graph_size": 62192612
+    },
+    "patch": {
+      "hit_count": 0,
+      "warnings": [
+        "no patch ranges match version synth-36b; patch step no-op"
+      ],
+      "config": "/data/data/com.termux/files/home/develop/opencode-termux/tools/transplant/config/patches.json"
+    },
+    "assemble": {
+      "bun": "/data/data/com.termux/files/home/develop/opencode-termux/artifacts/transplant/android-bun/bun",
+      "bun_size": 89796776,
+      "graph_size": 62192612,
+      "file_size": 151989396,
+      "expected_total": 151989396,
+      "sha256": "38b67cb0ec48405ae017dd7542f4a750a24477bea574e3a6bf115f3befdd2781"
+    },
+    "verify": {
+      "execve_result": "skipped (--no-execve)",
+      "skipped": true
+    }
+  }
+}

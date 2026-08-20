@@ -1,0 +1,72 @@
+{
+  "ver": "1.3.13",
+  "layout": 52,
+  "steps": {
+    "extract": {
+      "ver": "1.3.13",
+      "file_size": 160956844,
+      "host_bun_size": 98736456,
+      "module_graph_size": 62220380,
+      "byte_count": 62220332,
+      "mod_ptr_offset": 62191476,
+      "mod_ptr_length": 28808,
+      "entry_point_id": 0,
+      "argv": [
+        62220284,
+        47
+      ],
+      "flags": 3,
+      "module_graph": "module-graph.bin",
+      "host_bun": "host-bun.bin",
+      "sha256": "108758cb71a87edfe5971b1ed105ea8ba55860aa920695e2f8ce184c9b6c8089"
+    },
+    "detect": {
+      "bun_version": "1.3.11",
+      "layout": 52,
+      "module_count": 554,
+      "offsets": {
+        "byte_count": 62220332,
+        "modules_ptr": {
+          "offset": 62191476,
+          "length": 28808
+        },
+        "argv": [
+          62220284,
+          47
+        ],
+        "flags": 3
+      },
+      "file_size": 160956844,
+      "host_bun_size": 98736456,
+      "module_graph_size": 62220380,
+      "source": "/data/data/com.termux/files/usr/tmp/opencode-linux-arm64-1.3.13.tgz"
+    },
+    "convert": {
+      "skipped": true,
+      "reason": "layout already 52B"
+    },
+    "patch": {
+      "hit_count": 0,
+      "warnings": [
+        "patch guysoft-1-undici-case: no hit for '__reExport(exports_Undici, undici)'; skipped"
+      ],
+      "config": "/data/data/com.termux/files/home/develop/opencode-termux/tools/transplant/config/patches.json"
+    },
+    "assemble": {
+      "bun": "/data/data/com.termux/files/home/develop/opencode-termux/artifacts/transplant/android-bun/bun",
+      "bun_size": 89796776,
+      "graph_size": 62220380,
+      "file_size": 152017164,
+      "expected_total": 152017164,
+      "sha256": "ffaa66de8b37619dda17f808e934a9c108cdcba342d425ccbab5567878d4468e"
+    },
+    "verify": {
+      "execve_result": "1.3.14",
+      "exit_code": 0,
+      "stdout": "1.3.14",
+      "stderr": "",
+      "expect_version": "1.3.14",
+      "assert_ok": true
+    }
+  }
+}
