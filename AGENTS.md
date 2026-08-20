@@ -1,8 +1,7 @@
 # PROJECT KNOWLEDGE BASE
 
-**Generated:** 2026-03-05T13:10:53Z  
-**Commit:** 1b92c1e  
-**Branch:** main
+**Generated:** 2026-06-12  
+**Branch:** pure-android
 
 ## OVERVIEW
 Termux-first OpenCode build/packaging workspace. Mainline release path is local Termux build (`tools/produce-local.sh` + `scripts/*`), while GitHub Actions armv7 workflow is diagnostic/handoff, not final runtime release.
@@ -13,7 +12,7 @@ opencode-termux/
 ├── Makefile                    # top-level orchestration (all/batch/selfcheck/matrix)
 ├── scripts/                    # staging, packaging, hook runners, CI helper scripts
 ├── tools/                      # operator-facing CLIs (make wrapper, plugin lifecycle, matrix)
-├── packaging/                  # package templates + manifests (mixed with generated outputs)
+├── packing/                  # package templates + manifests (mixed with generated outputs)
 ├── docs/                       # canonical runbooks, architecture notes, incident records
 ├── artifacts/                  # generated runtime/staging outputs (disposable)
 └── .github/workflows/          # CI handoff workflows
@@ -25,9 +24,9 @@ opencode-termux/
 | Build orchestration | `Makefile`, `tools/make-opencode` | `make` is source of truth; wrapper maps CLI flags to make vars |
 | Prepare runtime artifact | `tools/produce-local.sh` | resolves version, wraps runtime, cleans stale generated dirs |
 | Stage install tree | `scripts/build.sh`, `scripts/common.sh` | writes staged prefix + build metadata |
-| Build DEB package | `scripts/package/package_deb.sh`, `packaging/deb/DEBIAN/control` | postinst hook calls system-skill runner |
-| Build pacman package | `scripts/package/package_pacman.sh`, `packaging/pacman/PKGBUILD*` | dynamic pkgver/pkgrel rewrite + makepkg flow |
-| System-skill hook behavior | `scripts/hooks/run-system-skills.sh`, `packaging/manifests/system-skills/*.json` | strict/network flags default to safe mode |
+| Build DEB package | `scripts/package/package_deb.sh`, `packing/deb/DEBIAN/control` | postinst hook calls system-skill runner |
+| Build pacman package | `scripts/package/package_pacman.sh`, `packing/pacman/PKGBUILD*` | dynamic pkgver/pkgrel rewrite + makepkg flow |
+| System-skill hook behavior | `scripts/hooks/run-system-skills.sh`, `packing/manifests/system-skills/*.json` | strict/network flags default to safe mode |
 | Plugin lifecycle | `tools/plugin-manager.sh`, `tools/plugin-selfcheck.sh`, `docs/plugin-management.md` | local file plugin path + snapshot rollback model |
 | Upgrade/downgrade simulation | `tools/upgrade-matrix.sh`, `docs/execution-checklist.md` | machine2 lifecycle validation with cached deb artifacts |
 | CI armv7 handoff | `.github/workflows/prebuild-armv7.yml`, `scripts/ci/*` | attempt-based build evidence, not final Termux release path |
@@ -46,16 +45,16 @@ opencode-termux/
 - Shell scripts use strict mode (`set -euo pipefail`) and fail-fast checks for required binaries/files.
 - Runtime/package scripts rely on uppercase env knobs (`VER`, `VERS`, `PKG`, `ODIR`, `MIX`, `STAGED_PREFIX`, `PACKAGER_NAME`).
 - Hook execution is explicit and safe-by-default (`OPENCODE_HOOK_STRICT=0`, `OPENCODE_HOOK_ENABLE_NETWORK=0`) in package lifecycle paths.
-- Packaging sources live under `packaging/*` templates; versioned package files are generated artifacts.
+- Packaging sources live under `packing/*` templates; versioned package files are generated artifacts.
 
 ## ANTI-PATTERNS (THIS PROJECT)
 - Do not use musl/proot as official Termux final runtime path (`README.md`, `docs/local-production.md`).
 - Do not treat CI armv7 handoff artifacts as final release binaries.
-- Do not edit generated outputs (`artifacts/`, `packaging/dpkg/work/`, `packaging/pacman/pkg/`, versioned `.deb` / `.pkg.tar.xz`).
+- Do not edit generated outputs (`artifacts/`, `packing/dpkg/work/`, `packing/pacman/pkg/`, versioned `.deb` / `.pkg.tar.xz`).
 - Do not run staging/packaging scripts against shared or wrong prefixes: several flows use destructive `rm -rf` cleanup.
 
 ## UNIQUE STYLES
-- Packaging and hook flows are manifest-driven (`packaging/manifests/system-skills/*.json`) with idempotency + registry updates.
+- Packaging and hook flows are manifest-driven (`packing/manifests/system-skills/*.json`) with idempotency + registry updates.
 - Plugin management is Termux-biased toward local `file://.../index.js` registration instead of bare plugin name mode.
 - CI armv7 jobs emit JSON status artifacts (`status/*.json`) and logs for diagnosis-first iteration.
 
@@ -78,5 +77,5 @@ make matrix VERS='1.2.9 1.2.10' TARGET_HOST=192.168.1.22 TARGET_USER=u0_a258
 ```
 
 ## NOTES
-- `packing/` (default outputs) and `packaging/` (templates/manifests) are different; keep them conceptually separate.
+- `packing/` (default outputs) and `packing/` (templates/manifests) are different; keep them conceptually separate.
 - When adding new workflow-critical scripts, update both `docs/README.md` navigation and this root map.

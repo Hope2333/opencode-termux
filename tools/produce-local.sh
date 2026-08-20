@@ -1,172 +1,81 @@
 #!/data/data/com.termux/files/usr/bin/bash
+# tools/produce-local.sh — Build OpenCode for Termux
+# Downloads from npm + wraps with bun-termux-loader
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+RUNTIME_DIR="$ROOT_DIR/artifacts/opencode/runtime"
+OPENCODE_OUT="$RUNTIME_DIR/opencode-termux"
 INPUT_VER="${1:-}"
 
-log() { printf '[produce-local] %s\n' "$*" >&2; }
-die() {
-	printf '[produce-local] ERROR: %s\n' "$*" >&2
-	exit 1
-}
-need() { command -v "$1" >/dev/null 2>&1 || die "missing command: $1"; }
-
-resolve_version() {
-	if [[ -n "$INPUT_VER" ]]; then
-		printf '%s' "$INPUT_VER"
-		return 0
-	fi
-	local latest
-	latest="$(npm view opencode-linux-arm64 version 2>/dev/null || true)"
-	[[ -n "$latest" ]] || die "unable to resolve latest opencode-linux-arm64 version; pass explicit version as first argument"
-	printf '%s' "$latest"
-}
-
-VER="$(resolve_version)"
-WORK_BASE="${WORK_BASE:-$ROOT_DIR/.work}"
-WORK_DIR="${WORK_DIR:-$WORK_BASE/opencode-$VER}"
-KEEP_WORK="${KEEP_WORK:-0}"
-RUNTIME_DIR="$ROOT_DIR/artifacts/opencode/runtime"
-RUNTIME_OUT="$RUNTIME_DIR/opencode-termux"
-UPSTREAM_TGZ="opencode-linux-arm64-$VER.tgz"
-UPSTREAM_BIN="$WORK_DIR/package/bin/opencode"
-GITHUB_URL="https://github.com/anomalyco/opencode/releases/download/v${VER}/opencode-linux-arm64.tar.gz"
-
-LOADER_VENDOR="$ROOT_DIR/third-party/bun-termux-loader"
-LOADER_URL="${BUN_TERMUX_LOADER_URL:-https://github.com/Hope2333/bun-termux-loader}"
-
-resolve_loader_repo() {
-	# 1. Explicit env override
-	if [[ -n "${BUN_TERMUX_LOADER:-}" ]]; then
-		if [[ -f "$BUN_TERMUX_LOADER/build.py" ]]; then
-			printf '%s' "$BUN_TERMUX_LOADER"
-			return 0
-		fi
-		return 1
-	fi
-
-	# 2. Project-internal third-party (preferred auto-clone target)
-	if [[ -f "$LOADER_VENDOR/build.py" ]]; then
-		printf '%s' "$LOADER_VENDOR"
-		return 0
-	fi
-
-	# 3. External common paths (existing user setups)
-	local c
-	for c in "$HOME/bun-termux-loader" "$HOME/develop/bun-termux-loader"; do
-		if [[ -f "$c/build.py" ]]; then
-			printf '%s' "$c"
-			return 0
-		fi
-	done
-
-	# 4. Auto-clone into project-internal third-party
-	log "bun-termux-loader not found locally, cloning into third-party/"
-	if ! command -v git >/dev/null 2>&1; then
-		return 1
-	fi
-	rm -rf "$LOADER_VENDOR"
-	git clone --depth 1 "$LOADER_URL" "$LOADER_VENDOR" 2>&1 || return 1
-	if [[ ! -f "$LOADER_VENDOR/build.py" ]]; then
-		log "warning: cloned repo missing build.py, cleaning up"
-		rm -rf "$LOADER_VENDOR"
-		return 1
-	fi
-	printf '%s' "$LOADER_VENDOR"
-}
-
-download_upstream_binary() {
-	local npm_ok=0
-	log "downloading upstream package from npm (preferred)"
-	if npm pack "opencode-linux-arm64@$VER" >/dev/null 2>&1 && [[ -f "$UPSTREAM_TGZ" ]]; then
-		tar -xzf "$UPSTREAM_TGZ"
-		if [[ -x "$UPSTREAM_BIN" ]]; then
-			npm_ok=1
-		fi
-	fi
-
-	if [[ "$npm_ok" -eq 1 ]]; then
-		log "using npm package source for version $VER"
-		return 0
-	fi
-
-	log "npm package for version $VER not available, falling back to GitHub release binary"
-	local gh_tgz="$WORK_DIR/opencode-linux-arm64-github-$VER.tar.gz"
-	if command -v curl >/dev/null 2>&1; then
-		curl -fL "$GITHUB_URL" -o "$gh_tgz" || die "github fallback download failed: $GITHUB_URL"
-	elif command -v wget >/dev/null 2>&1; then
-		wget -O "$gh_tgz" "$GITHUB_URL" || die "github fallback download failed: $GITHUB_URL"
-	else
-		die "missing curl/wget for github fallback download"
-	fi
-
-	mkdir -p "$WORK_DIR/package/bin"
-	tar -xzf "$gh_tgz" -C "$WORK_DIR" || true
-
-	local candidate=""
-	for c in "$WORK_DIR/opencode-linux-arm64" "$WORK_DIR/opencode"; do
-		if [[ -x "$c" ]]; then
-			candidate="$c"
-			break
-		fi
-	done
-
-	if [[ -z "$candidate" ]]; then
-		candidate="$(find "$WORK_DIR" -maxdepth 3 -type f \( -name 'opencode' -o -name 'opencode-*' \) -perm -u+x 2>/dev/null | head -n1 || true)"
-	fi
-
-	[[ -n "$candidate" && -x "$candidate" ]] || die "github fallback unpacked but upstream binary not found"
-	cp "$candidate" "$UPSTREAM_BIN"
-	log "using GitHub release source for version $VER (candidate: $candidate)"
-}
+log() { printf '[produce] %s\n' "$*"; }
+die() { printf '[produce] ERROR: %s\n' "$*" >&2; exit 1; }
+need() { command -v "$1" >/dev/null 2>&1 || die "missing: $1"; }
 
 need npm
-need tar
-need file
-need python3
+if [[ -z "$INPUT_VER" ]]; then
+	if ! INPUT_VER="$(npm view opencode-linux-arm64 version)"; then
+		die "failed to resolve latest opencode-linux-arm64 version"
+	fi
+fi
+[[ -n "$INPUT_VER" ]] || die "no version specified"
+VER="$INPUT_VER"
 
-LOADER_REPO="$(resolve_loader_repo || true)"
-[[ -n "$LOADER_REPO" ]] || die "bun-termux-loader not found and auto-clone failed (need build.py)"
+CACHE_DIR="${CACHE_DIR:-$HOME/.cache/opencode-termux}"
+LOADER_DIR="/data/data/com.termux/files/home/bun-termux-loader"
+EXTRACT="${TMPDIR:-$PREFIX/tmp}/produce-$$"
+mkdir -p "$RUNTIME_DIR" "$CACHE_DIR" "$EXTRACT"
+trap 'rm -rf "$EXTRACT"' EXIT
 
-log "version=$VER"
-log "work_base=$WORK_BASE"
-log "work_dir=$WORK_DIR"
-log "loader_repo=$LOADER_REPO"
+log "opencode v$VER"
 
-mkdir -p "$WORK_BASE"
-rm -rf "$WORK_DIR"
-mkdir -p "$WORK_DIR"
-cd "$WORK_DIR"
-
-download_upstream_binary
-
-log "upstream fingerprint"
-file "$UPSTREAM_BIN"
-
-mkdir -p "$RUNTIME_DIR"
-log "wrapping upstream binary for Termux/Android"
-(cd "$LOADER_REPO" && python3 build.py "$UPSTREAM_BIN" --wrapper ./wrapper)
-[[ -f "$WORK_DIR/package/bin/opencode-termux" ]] || die "wrapped runtime not generated"
-install -m 755 "$WORK_DIR/package/bin/opencode-termux" "$RUNTIME_OUT"
-
-log "wrapped runtime verification"
-file "$RUNTIME_OUT"
-"$RUNTIME_OUT" --version
-
-log "cleaning generated outputs to avoid stale contamination"
-rm -rf "$ROOT_DIR/artifacts/staged" "$ROOT_DIR/packaging/dpkg/work" "$ROOT_DIR/packaging/pacman/src"
-
-if [[ "$KEEP_WORK" != "1" ]]; then
-	log "cleaning temporary work directory"
-	rm -rf "$WORK_DIR"
+# Check cache
+CACHE_BIN="$CACHE_DIR/opencode-$VER"
+if [[ -f "$CACHE_BIN" ]]; then
+	log "cache hit"
+	install -m 755 "$CACHE_BIN" "$OPENCODE_OUT"
+	if ! runtime_version="$("$OPENCODE_OUT" --version)"; then
+		die "cached runtime failed version check: $CACHE_BIN"
+	fi
+	[[ -n "$runtime_version" ]] || die "cached runtime returned an empty version: $CACHE_BIN"
+	log "version: $runtime_version"
+	rm -rf "$ROOT_DIR/artifacts/staged" "$ROOT_DIR/packing/dpkg/work" "$ROOT_DIR/packing/pacman/src"
+	log "DONE"
+	exit 0
 fi
 
-cat <<MSG
-[produce-local] Runtime prepared successfully:
-  $RUNTIME_OUT
+# Download from npm
+cd "$EXTRACT"
+log "downloading opencode-linux-arm64@$VER from npm"
+if ! npm pack "opencode-linux-arm64@$VER" >/dev/null; then
+	die "npm pack failed"
+fi
+tar -xzf opencode-linux-arm64-*.tgz
+RAW="package/bin/opencode"
+[[ -f "$RAW" && -x "$RAW" ]] || die "binary not found"
 
-Next steps (repo-specific):
-  1) build staged tree from this runtime
-  2) package deb/pacman
-  3) verify staged/deb/pacman runtime versions are all $VER
-MSG
+# Wrap with bun-termux-loader
+if [[ ! -f "$LOADER_DIR/build.py" ]]; then
+	log "cloning bun-termux-loader"
+	if ! git clone --depth 1 https://github.com/Hope2333/bun-termux-loader "$EXTRACT/loader"; then
+		die "clone failed"
+	fi
+	LOADER_DIR="$EXTRACT/loader"
+fi
+
+log "wrapping for Termux"
+python3 "$LOADER_DIR/build.py" "$RAW" --wrapper "$LOADER_DIR/wrapper" --shim "$LOADER_DIR/bunfs_shim.so" 2>&1 | tail -3
+WRAPPED="${RAW}-termux"
+[[ -f "$WRAPPED" ]] || die "wrapping failed"
+
+install -m 755 "$WRAPPED" "$OPENCODE_OUT"
+install -m 755 "$WRAPPED" "$CACHE_BIN"
+log "done: $(file "$OPENCODE_OUT" | cut -d: -f2)"
+if ! runtime_version="$("$OPENCODE_OUT" --version)"; then
+	die "wrapped runtime failed version check"
+fi
+[[ -n "$runtime_version" ]] || die "wrapped runtime returned an empty version"
+log "version: $runtime_version"
+
+rm -rf "$ROOT_DIR/artifacts/staged" "$ROOT_DIR/packing/dpkg/work" "$ROOT_DIR/packing/pacman/src"
+log "DONE"

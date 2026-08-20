@@ -11,9 +11,13 @@ MORE ?=
 ODIR ?=
 MIX ?= 0
 
+# Release upload target variables
+TAG ?= Push$(shell date +%y%m%d)
+REPO ?= Hope2333/opencode-termux
+
 OUTPUT_ROOT := $(if $(ODIR),$(ODIR),$(CURDIR)/packing)
 
-.PHONY: help all runtime stage deb pacman batch clean status steps matrix selfcheck
+.PHONY: help all runtime stage deb pacman batch clean status steps matrix selfcheck release-upload test
 
 help:
 	@echo "OpenCode Termux build helper"
@@ -75,12 +79,14 @@ steps:
 	@echo "Mix(flatten): $(MIX)"
 
 all: clean runtime stage
-	@if [ "$(PKG)" = "deb" ]; then \
-		$(MAKE) deb; \
+	@V="$(VER)"; \
+	if [ "$$V" = "latest" ]; then V=""; fi; \
+	if [ "$(PKG)" = "deb" ]; then \
+		$(MAKE) deb VERSION=$$V; \
 	elif [ "$(PKG)" = "pacman" ]; then \
-		$(MAKE) pacman; \
+		$(MAKE) pacman VERSION=$$V; \
 	else \
-		$(MAKE) deb && $(MAKE) pacman; \
+		$(MAKE) deb VERSION=$$V && $(MAKE) pacman VERSION=$$V; \
 	fi
 
 batch:
@@ -113,21 +119,25 @@ stage:
 	./scripts/build.sh
 
 deb:
-	rm -rf packaging/dpkg/work
+	rm -rf packing/dpkg/work
 	MAINTAINER='$(PACKAGER_NAME)' ./scripts/package/package_deb.sh
-	@if [ "$(MIX)" = "1" ]; then \
-		mkdir -p "$(OUTPUT_ROOT)" && cp -f packaging/dpkg/opencode_*.deb "$(OUTPUT_ROOT)/" 2>/dev/null || true; \
-	else \
-		mkdir -p "$(OUTPUT_ROOT)/deb" && cp -f packaging/dpkg/opencode_*.deb "$(OUTPUT_ROOT)/deb/" 2>/dev/null || true; \
+	@if [ "$(OUTPUT_ROOT)" != "$(CURDIR)/packing" ]; then \
+		if [ "$(MIX)" = "1" ]; then \
+			mkdir -p "$(OUTPUT_ROOT)" && cp -f packing/dpkg/opencode_*.deb "$(OUTPUT_ROOT)/"; \
+		else \
+			mkdir -p "$(OUTPUT_ROOT)/deb" && cp -f packing/dpkg/opencode_*.deb "$(OUTPUT_ROOT)/deb/"; \
+		fi; \
 	fi
 
 pacman:
-	rm -rf packaging/pacman/pkg packaging/pacman/src
+	rm -rf packing/pacman/pkg packing/pacman/src
 	PACKAGER_NAME='$(PACKAGER_NAME)' ./scripts/package/package_pacman.sh
-	@if [ "$(MIX)" = "1" ]; then \
-		mkdir -p "$(OUTPUT_ROOT)" && cp -f packaging/pacman/opencode-*.pkg.* "$(OUTPUT_ROOT)/" 2>/dev/null || true; \
-	else \
-		mkdir -p "$(OUTPUT_ROOT)/pacman" && cp -f packaging/pacman/opencode-*.pkg.* "$(OUTPUT_ROOT)/pacman/" 2>/dev/null || true; \
+	@if [ "$(OUTPUT_ROOT)" != "$(CURDIR)/packing" ]; then \
+		if [ "$(MIX)" = "1" ]; then \
+			mkdir -p "$(OUTPUT_ROOT)" && cp -f packing/pacman/opencode-*.pkg.* "$(OUTPUT_ROOT)/"; \
+		else \
+			mkdir -p "$(OUTPUT_ROOT)/pacman" && cp -f packing/pacman/opencode-*.pkg.* "$(OUTPUT_ROOT)/pacman/"; \
+		fi; \
 	fi
 
 status:
@@ -141,9 +151,47 @@ status:
 selfcheck:
 	./tools/plugin-selfcheck.sh
 
+# Run the shell unit test suite (bats). Fetches a pinned bats-core on demand.
+test:
+	./tests/run.sh
+
 matrix:
 	@VERS='$(VERS)' ODIR='$(ODIR)' TARGET_HOST='$(TARGET_HOST)' TARGET_PORT='$(TARGET_PORT)' TARGET_USER='$(TARGET_USER)' ./tools/upgrade-matrix.sh
 
 clean:
-	rm -rf artifacts/staged packaging/dpkg/work packaging/pacman/pkg packaging/pacman/src
+	rm -rf artifacts/staged packing/dpkg/work packing/pacman/pkg packing/pacman/src
 	@echo "Clean complete"
+
+# ── Release upload (not shown in help) ──────────────────────────────────
+# Automates: batch build → upload all assets to existing or new release tag.
+# Usage:
+#   make release-upload TAG=Push260522 VERS='1.15.[1-7]'
+#   make release-upload TAG=Push260522 VERS='1.15.[1-7]' PKG=deb
+#   make release-upload VERS='1.2.[10-20]' REPO=Hope2333/opencode-termux
+#
+# Defaults:
+#   TAG     = Push<YYMMDD> (auto-generated)
+#   VERS    = (required)
+#   PKG     = both
+#   REPO    = Hope2333/opencode-termux
+release-upload:
+	@if [ -z "$(VERS)" ]; then \
+		echo "Error: VERS is required. Example: make release-upload VERS='1.15.[1-7]' TAG=Push260522"; \
+		exit 1; \
+	fi
+	@echo "=== Release upload: TAG=$(TAG) VERS=$(VERS) PKG=$(PKG) REPO=$(REPO) ==="
+	$(MAKE) batch VERS='$(VERS)' PKG='$(PKG)' ODIR='/tmp/oc-release-$(TAG)' MIX=1
+	@echo "=== Uploading to release $(TAG) ==="; \
+	upload_failed=0; \
+	if ! gh release view "$(TAG)" --repo "$(REPO)" >/dev/null 2>&1; then \
+		echo "Creating release $(TAG)..."; \
+		gh release create "$(TAG)" --repo "$(REPO)" --title "$(TAG)" --notes "Automated build $$(date -u +%Y-%m-%d)" 2>&1 || exit 1; \
+	fi; \
+	for f in /tmp/oc-release-$(TAG)/opencode_*.deb /tmp/oc-release-$(TAG)/opencode-*.pkg.*; do \
+		if [ -f "$$f" ]; then \
+			echo "  uploading $$(basename $$f)..."; \
+			if ! gh release upload "$(TAG)" "$$f" --repo "$(REPO)" --clobber 2>&1; then upload_failed=1; fi; \
+		fi; \
+	done; \
+	if [ "$$upload_failed" -ne 0 ]; then echo "Error: one or more release assets failed to upload" >&2; exit 1; fi; \
+	echo "=== Done: https://github.com/$(REPO)/releases/tag/$(TAG) ==="

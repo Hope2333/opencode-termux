@@ -13,9 +13,9 @@ opencode-1.14.*
 opencode-linux-arm64-*.tgz
 
 # Build work directories
-packaging/dpkg/work/
-packaging/pacman/pkg/
-packaging/pacman/src/
+packing/dpkg/work/
+packing/pacman/pkg/
+packing/pacman/src/
 .work/
 
 # Session artifacts / temp test files
@@ -24,9 +24,10 @@ f1.bin
 f2.bin
 package/bin/opencode
 
-# Vendored third-party dependencies (auto-cloned)
-third-party/
-
 # Project metadata
 .ai/
 .sisyphus/
+.omo/
+
+# Vendored test runner (fetched on demand by tests/bootstrap.sh)
+tests/vendor/

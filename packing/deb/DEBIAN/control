@@ -5,5 +5,3 @@ Maintainer: Hope2333(幽零小喵) <u0catmiao@proton.me>
 Section: utils
 Priority: optional
 Description: Open source coding agent for Termux with TTY+lock cleanup
-Depends: glibc, openssl-glibc, bash, ncurses
-Suggests: glibc-runner

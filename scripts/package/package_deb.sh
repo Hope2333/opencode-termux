@@ -4,25 +4,41 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
 STAGED_PREFIX="${STAGED_PREFIX:-$ROOT_DIR/artifacts/staged/prefix}"
-ARCH_DEB="${ARCH_DEB:-$(dpkg --print-architecture 2>/dev/null || echo aarch64)}"
 MAINTAINER="${MAINTAINER:-Hope2333(幽零小喵) <u0catmiao@proton.me>}"
 
+command -v dpkg >/dev/null 2>&1 || {
+	echo "Error: dpkg not found" >&2
+	exit 1
+}
 command -v dpkg-deb >/dev/null 2>&1 || {
-	echo "Error: dpkg-deb not found"
+	echo "Error: dpkg-deb not found" >&2
+	exit 1
+}
+if [[ -z "${ARCH_DEB:-}" ]]; then
+	ARCH_DEB="$(dpkg --print-architecture)"
+fi
+[[ -x "$STAGED_PREFIX/bin/opencode" ]] || {
+	echo "Error: missing staged launcher" >&2
 	exit 1
 }
 [[ -x "$STAGED_PREFIX/lib/opencode/runtime/opencode" ]] || {
-	echo "Error: missing staged runtime"
-	exit 1
-}
-[[ -x "$STAGED_PREFIX/bin/opencode" ]] || {
-	echo "Error: missing staged launcher"
+	echo "Error: missing staged runtime" >&2
 	exit 1
 }
 
-VERSION="${VERSION:-$($STAGED_PREFIX/lib/opencode/runtime/opencode --version 2>/dev/null || echo 0.0.0)}"
-DEB_ROOT="$ROOT_DIR/packaging/dpkg/work"
-OUT_DIR="$ROOT_DIR/packaging/dpkg"
+# Version: use explicit VERSION if set, else read from the staged runtime.
+if [[ -z "${VERSION:-}" ]]; then
+	if ! VERSION="$("$STAGED_PREFIX/lib/opencode/runtime/opencode" --version)"; then
+		echo "Error: staged runtime version check failed" >&2
+		exit 1
+	fi
+fi
+[[ -n "$VERSION" ]] || {
+	echo "Error: staged runtime returned an empty version" >&2
+	exit 1
+}
+DEB_ROOT="$ROOT_DIR/packing/dpkg/work"
+OUT_DIR="$ROOT_DIR/packing/dpkg"
 OUT_FILE="$OUT_DIR/opencode_${VERSION}_${ARCH_DEB}.deb"
 
 rm -rf "$DEB_ROOT"
@@ -37,9 +53,8 @@ Architecture: $ARCH_DEB
 Maintainer: $MAINTAINER
 Section: utils
 Priority: optional
-Description: OpenCode CLI for Termux
-Depends: glibc, openssl-glibc, bash, ncurses
-Suggests: glibc-runner
+Description: OpenCode AI coding assistant for Termux
+Depends: bash, ncurses
 EOF
 
 INSTALLED_SIZE=$(du -sk "$DEB_ROOT" | cut -f1)
@@ -50,7 +65,7 @@ cat >"$DEB_ROOT/DEBIAN/postinst" <<'POSTINST'
 set -e
 echo "OpenCode for Termux installed"
 echo "Run: opencode --version"
-echo "Optional fallback compatibility tools: pkg install glibc-runner"
+echo "Runtime: glibc (bun-termux-loader wrapped)"
 HOOK_RUNNER="/data/data/com.termux/files/usr/lib/opencode/tools/run-system-skills.sh"
 if [[ -x "$HOOK_RUNNER" ]]; then
   OPENCODE_HOOK_STRICT=0 OPENCODE_HOOK_ENABLE_NETWORK=0 "$HOOK_RUNNER" post_install || true

@@ -1,35 +1,23 @@
-# OpenCode Patches
+# Patches for OpenCode Android support
 
-This directory contains patches applied to OpenCode for Termux compatibility.
+These patches modify the upstream OpenCode source (`github.com/anomalyco/opencode`)
+to support Android/Termux as a build target.
 
-## Active Patches
+## Patch files
 
-### 001-launcher-tty-cleanup
+- `0001-android-support.patch` — Adds "android" as a supported OS in build script
+- `0002-bun-termux-cwd-fix.patch` — Default paths for Termux environment
 
-**File:** `launcher-tty-cleanup.patch`
-**Applies to:** `packages/opencode/bin/opencode`
-**Purpose:** Add TTY cleanup, lock cleanup, and plugin cache repair
+## Applying
 
-Changes:
-- `ensure_stdio_tty()` - Bind stdio to /dev/tty
-- `cleanup_state_locks()` - Remove stale lock files
-- `cleanup_broken_cached_modules()` - Repair corrupted plugin cache
-- Set `OPENCODE_DISABLE_DEFAULT_PLUGINS=1` by default
+```bash
+cd opencode-source
+git apply ../patches/*.patch
+bun install
+bun run build --target=linux-arm64  # produces opencode-linux-arm64
+```
 
-### 002-disable-default-plugins
+## Building for Termux
 
-**File:** None (environment variable)
-**Applies to:** Launcher
-**Purpose:** Disable builtin plugin installation
-
-Reason: `opencode-anthropic-auth` installation fails with EACCES on Termux.
-
-## Applying Patches
-
-Patches are embedded in the PKGBUILD during build. No manual application needed.
-
-## Creating New Patches
-
-1. Make changes to source in `sources/opencode/`
-2. Generate patch: `git diff > patches/NNN-name.patch`
-3. Add patch info to this README
+The patches produce a standard `bun build --compile` output. The binary is then
+wrapped for Android using bun-termux-loader (in CI or locally).

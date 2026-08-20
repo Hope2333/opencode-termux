@@ -1,0 +1,151 @@
+# Build OpenCode for Android
+# 1. Clone upstream source → apply patches → bun build --compile
+# 2. Download Android Bun
+# 3. Wrap with bun-termux-loader (pre-built aarch64 wrapper)
+# 4. Package as .deb / .pkg.tar.xz
+
+name: Build OpenCode for Android
+
+on:
+  workflow_dispatch:
+    inputs:
+      opencode_ref:
+        description: "Upstream branch/tag (default: dev)"
+        required: false
+        default: "dev"
+      opencode_version:
+        description: "Version tag for output (e.g. 1.15.7)"
+        required: false
+        default: ""
+
+env:
+  BUN_ANDROID_VER: "1.3.14"
+  BUN_TERMUX_LOADER_REPO: "https://github.com/Hope2333/bun-termux-loader"
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        arch: [aarch64, x64]
+      fail-fast: false
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU for aarch64
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq qemu-user-static binfmt-support
+          sudo update-binfmts --enable qemu-aarch64 2>/dev/null || true
+
+      - name: Prepare directories
+        run: mkdir -p out/bundle out/status out/build
+
+      - name: Install Bun (Linux)
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Clone upstream + apply patches
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch "${{ github.event.inputs.opencode_ref || 'dev' }}" \
+            https://github.com/anomalyco/opencode.git out/build/opencode-source 2>&1 || exit 1
+          cd out/build/opencode-source
+          if [[ -d "$GITHUB_WORKSPACE/patches" ]]; then
+            for p in "$GITHUB_WORKSPACE/patches/"*.patch; do
+              if [[ -f "$p" ]]; then
+                echo "Applying: $(basename $p)"
+                git apply "$p" 2>&1 || echo "Warning: patch failed (may already be applied)"
+              fi
+            done
+          fi
+
+      - name: Build OpenCode binary
+        run: |
+          set -euo pipefail
+          cd out/build/opencode-source
+          bun install 2>&1 | tail -3
+          # Build for linux-arm64 (output: opencode-linux-arm64)
+          cd packages/opencode
+          bun run build --target=linux-arm64 2>&1 | tail -10
+          # Locate output
+          BIN="$(find ../.. -name "opencode-linux-arm64" -type f 2>/dev/null | head -1 || true)"
+          if [[ -n "$BIN" ]]; then
+            cp "$BIN" "$GITHUB_WORKSPACE/out/bundle/opencode-linux-arm64"
+            file "$GITHUB_WORKSPACE/out/bundle/opencode-linux-arm64"
+          else
+            echo "Binary not found; dist contents:" >&2
+            ls -la dist/ 2>/dev/null || true
+            exit 1
+          fi
+
+      - name: Download Android Bun for ${{ matrix.arch }}
+        continue-on-error: true
+        run: |
+          URL="https://github.com/oven-sh/bun/releases/download/bun-v$BUN_ANDROID_VER/bun-linux-${{ matrix.arch }}-android.zip"
+          curl -fL "$URL" -o out/bundle/bun-android.zip || exit 0
+          mkdir -p out/bun-tmp && unzip -o out/bundle/bun-android.zip -d out/bun-tmp/
+          B="$(find out/bun-tmp/ -name 'bun' -type f | head -1)"
+          if [[ -n "$B" ]]; then
+            cp "$B" out/bundle/bun-linux-android && chmod +x out/bundle/bun-linux-android
+            file out/bundle/bun-linux-android
+          fi
+          rm -rf out/bun-tmp
+
+      - name: Clone bun-termux-loader
+        run: |
+          set -euo pipefail
+          git clone --depth 1 "$BUN_TERMUX_LOADER_REPO" out/build/loader
+          [[ -f "out/build/loader/build.py" ]] || {
+            echo "bun-termux-loader is missing build.py" >&2
+            exit 1
+          }
+
+      - name: Wrap for Android
+        run: |
+          set -euo pipefail
+          BIN="$(pwd)/out/bundle/opencode-linux-arm64"
+          LOADER="$(pwd)/out/build/loader"
+          if [[ ! -f "$BIN" || ! -f "$LOADER/build.py" ]]; then
+            echo "Binary or loader not available" >&2
+            exit 1
+          fi
+          # Use pre-built wrapper+shim from tools/prebuilt/
+          if [[ -f "tools/prebuilt/wrapper" && -f "tools/prebuilt/bunfs_shim.so" ]]; then
+            cp tools/prebuilt/wrapper "$LOADER/wrapper"
+            cp tools/prebuilt/bunfs_shim.so "$LOADER/bunfs_shim.so"
+            python3 "$LOADER/build.py" "$BIN" --wrapper "$LOADER/wrapper" --shim "$LOADER/bunfs_shim.so" 2>&1
+            # Find output (naming: input + "-termux")
+            TERMUX_BIN="${BIN}-termux"
+            if [[ -f "$TERMUX_BIN" ]]; then
+              cp "$TERMUX_BIN" out/bundle/opencode-termux-aarch64
+              file out/bundle/opencode-termux-aarch64
+            else
+              echo "Wrapper did not produce $TERMUX_BIN" >&2
+              exit 1
+            fi
+          else
+            echo "Pre-built wrapper or shim is missing" >&2
+            exit 1
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencode-android-${{ matrix.arch }}
+          path: out/bundle/
+          retention-days: 30
+
+      - name: Write status
+        run: |
+          python3 -c "
+          import json, os
+          from pathlib import Path
+          bundle = Path('out/bundle')
+          assets = sorted([str(p.relative_to(Path('out'))) for p in bundle.rglob('*') if p.is_file()]) if bundle.exists() else []
+          Path('out/status/build-status.json').write_text(json.dumps({
+            'arch': '${{ matrix.arch }}',
+            'status': 'completed',
+            'artifacts': assets,
+          }, indent=2)+'\n')
+          "

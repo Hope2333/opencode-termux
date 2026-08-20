@@ -12,7 +12,7 @@ This repo intentionally disables GitHub Actions for release builds because the v
 
 - Wrapped runtime: `artifacts/opencode/runtime/opencode-termux`
 - Staged tree: `artifacts/staged/...`
-- Package work dirs (generated, disposable): `packaging/deb/work`, `packaging/pacman/src`
+- Package work dirs (generated, disposable): `packing/dpkg/work`, `packing/pacman/src`
 
 ## Rules
 

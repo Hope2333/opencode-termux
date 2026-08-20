@@ -5,6 +5,12 @@ TARGET_HOST="${TARGET_HOST:-192.168.1.22}"
 TARGET_PORT="${TARGET_PORT:-8022}"
 TARGET_USER="${TARGET_USER:-u0_a258}"
 TARGET_HOME="/data/data/com.termux/files/home"
+# SSH auth/hardening knobs (override via env):
+#   TARGET_PASSWORD    password for sshpass (default preserves legacy behavior)
+#   SSH_STRICT_HOST_KEY StrictHostKeyChecking mode; 'accept-new' detects key
+#                       changes (MITM) after first trust, unlike the old 'no'
+TARGET_PASSWORD="${TARGET_PASSWORD:-0}"
+SSH_STRICT_HOST_KEY="${SSH_STRICT_HOST_KEY:-accept-new}"
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ODIR="${ODIR:-$REPO_DIR/packing/deb}"
 VERS="${VERS:-}"
@@ -38,7 +44,7 @@ find_deb() {
 	for c in \
 		"$ODIR/${PKG_NAME}_${ver}_aarch64.deb" \
 		"$ODIR/${PKG_NAME}_${ver}_arm64.deb" \
-		"$REPO_DIR/packaging/dpkg/${PKG_NAME}_${ver}_aarch64.deb"; do
+		"$REPO_DIR/packing/dpkg/${PKG_NAME}_${ver}_aarch64.deb"; do
 		[[ -f "$c" ]] && {
 			printf '%s' "$c"
 			return 0
@@ -50,8 +56,9 @@ find_deb() {
 validate_deb_payload() {
 	local deb_file="$1"
 	local listing
-	listing="$(dpkg-deb -c "$deb_file" 2>/dev/null || true)"
-	[[ -n "$listing" ]] || die "cannot read deb payload: $deb_file"
+	if ! listing="$(dpkg-deb -c "$deb_file")"; then
+		die "cannot read deb payload: $deb_file"
+	fi
 	if ! printf '%s\n' "$listing" | grep -q '/usr/lib/opencode/runtime/opencode$'; then
 		die "invalid deb payload (missing /usr/lib/opencode/runtime/opencode): $deb_file"
 	fi
@@ -59,11 +66,12 @@ validate_deb_payload() {
 
 ssh_exec() {
 	local cmd="$1"
-	sshpass -p 0 ssh -o StrictHostKeyChecking=no -p "$TARGET_PORT" "$TARGET_USER@$TARGET_HOST" "bash -s" <<EOF
+	SSHPASS="$TARGET_PASSWORD" sshpass -e ssh -o StrictHostKeyChecking="$SSH_STRICT_HOST_KEY" -p "$TARGET_PORT" "$TARGET_USER@$TARGET_HOST" "bash -s" <<EOF
 $cmd
 EOF
 }
 
+main() {
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
 	cat <<EOF
 Usage:
@@ -83,8 +91,9 @@ mapfile -t versions < <(expand_versions)
 debs=()
 remote_names=()
 for v in "${versions[@]}"; do
-	d="$(find_deb "$v" || true)"
-	[[ -n "$d" ]] || die "missing cached deb for version $v under ODIR=$ODIR"
+	if ! d="$(find_deb "$v")"; then
+		die "missing cached deb for version $v under ODIR=$ODIR"
+	fi
 	validate_deb_payload "$d"
 	debs+=("$d")
 	remote_names+=("$TARGET_HOME/$(basename "$d")")
@@ -92,21 +101,28 @@ done
 
 for d in "${debs[@]}"; do
 	log "copying cached artifact: $d"
-	sshpass -p 0 scp -P "$TARGET_PORT" -o StrictHostKeyChecking=no "$d" "$TARGET_USER@$TARGET_HOST:$TARGET_HOME/"
+	SSHPASS="$TARGET_PASSWORD" sshpass -e scp -P "$TARGET_PORT" -o StrictHostKeyChecking="$SSH_STRICT_HOST_KEY" "$d" "$TARGET_USER@$TARGET_HOST:$TARGET_HOME/"
 done
 
 first_name="${remote_names[0]}"
 last_name="${remote_names[${#remote_names[@]} - 1]}"
 logfile="$TARGET_HOME/${PKG_NAME}-upgrade-matrix-$(date +%Y%m%d-%H%M%S).log"
 
-ssh_exec "set -euo pipefail; dpkg --audit >/dev/null 2>&1 || true; apt -f install -y >/dev/null 2>&1 || true; exec > >(tee -a $logfile) 2>&1; echo LOG=$logfile; echo === baseline install ===; apt install -y $first_name; $PKG_NAME --version || true"
-ssh_exec "set -euo pipefail; hr=/data/data/com.termux/files/usr/lib/opencode/tools/run-system-skills.sh; if [[ -x \"\$hr\" ]]; then OPENCODE_HOOK_STRICT=0 OPENCODE_HOOK_ENABLE_NETWORK=0 \"\$hr\" post_install || true; fi"
+ssh_exec "set -euo pipefail; if ! dpkg --audit >/dev/null 2>&1; then echo 'Warning: dpkg audit reported issues' >&2; fi; if ! apt -f install -y >/dev/null 2>&1; then echo 'Warning: dependency repair failed' >&2; fi; exec > >(tee -a $logfile) 2>&1; echo LOG=$logfile; echo === baseline install ===; apt install -y $first_name; $PKG_NAME --version"
+ssh_exec "set -euo pipefail; hr=/data/data/com.termux/files/usr/lib/opencode/tools/run-system-skills.sh; if [[ -x \"\$hr\" ]]; then OPENCODE_HOOK_STRICT=0 OPENCODE_HOOK_ENABLE_NETWORK=0 \"\$hr\" post_install; fi"
 
 for n in "${remote_names[@]}"; do
-	ssh_exec "set -euo pipefail; echo === upgrade/install $(basename "$n") ===; apt install -y $n; $PKG_NAME --version || true; $PKG_NAME run hi >/dev/null 2>&1 || true"
-	ssh_exec "set -euo pipefail; hr=/data/data/com.termux/files/usr/lib/opencode/tools/run-system-skills.sh; if [[ -x \"\$hr\" ]]; then OPENCODE_HOOK_STRICT=0 OPENCODE_HOOK_ENABLE_NETWORK=0 \"\$hr\" post_upgrade || true; fi"
+	ssh_exec "set -euo pipefail; echo === upgrade/install $(basename "$n") ===; apt install -y $n; $PKG_NAME --version; if ! $PKG_NAME run hi >/dev/null 2>&1; then echo 'Warning: smoke command failed' >&2; fi"
+	ssh_exec "set -euo pipefail; hr=/data/data/com.termux/files/usr/lib/opencode/tools/run-system-skills.sh; if [[ -x \"\$hr\" ]]; then OPENCODE_HOOK_STRICT=0 OPENCODE_HOOK_ENABLE_NETWORK=0 \"\$hr\" post_upgrade; fi"
 done
 
-ssh_exec "set -euo pipefail; echo === downgrade latest to first ===; apt install -y $first_name; $PKG_NAME --version || true; echo === reinstall latest ===; apt install -y --reinstall $last_name; $PKG_NAME --version || true; echo === final state ===; dpkg -l | grep -E '^(ii|hi)\\s+($PKG_NAME|glibc|openssl-glibc|glibc-runner)' || true; echo MATRIX_DONE"
+ssh_exec "set -euo pipefail; echo === downgrade latest to first ===; apt install -y $first_name; $PKG_NAME --version; echo === reinstall latest ===; apt install -y --reinstall $last_name; $PKG_NAME --version; echo === final state ===; if ! dpkg -l | grep -E '^(ii|hi)\\s+($PKG_NAME|glibc|openssl-glibc|glibc-runner)'; then echo 'Warning: expected package rows were not found' >&2; fi; echo MATRIX_DONE"
 
 log "matrix complete; remote log: $logfile"
+}
+
+# Run only when executed directly, so the functions above can be sourced
+# (e.g. by unit tests) without triggering the remote matrix run.
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+	main "$@"
+fi

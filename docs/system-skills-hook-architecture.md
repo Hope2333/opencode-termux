@@ -17,11 +17,11 @@ This document defines the package-mode system skill and hook model used to reduc
 - System skill manifests:
   - `$PREFIX/lib/opencode/system-skills/*.json`
 - Source manifests in repo:
-  - `packaging/manifests/system-skills/*.json`
+  - `packing/manifests/system-skills/*.json`
 
 ## Current manifest model
 
-Example: `packaging/manifests/system-skills/omo.json`
+Example: `packing/manifests/system-skills/omo.json`
 
 Key fields:
 

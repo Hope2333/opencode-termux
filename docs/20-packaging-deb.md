@@ -12,7 +12,7 @@
 
 ## 目录（staging）
 ```text
-packaging/deb/
+packing/deb/
 ├─ bun/
 │  ├─ DEBIAN/control
 │  ├─ DEBIAN/postinst

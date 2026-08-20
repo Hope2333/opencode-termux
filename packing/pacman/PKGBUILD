@@ -7,8 +7,6 @@ url='https://github.com/anomalyco/opencode'
 license=('MIT')
 options=('!strip' '!debug')
 
-depends=('glibc' 'openssl-glibc' 'bash' 'ncurses')
-optdepends=('glibc-runner: compatibility helper shell/tools for troubleshooting glibc binaries')
 makedepends=()
 source=()
 sha256sums=()
@@ -40,7 +38,6 @@ package() {
 post_install() {
   echo "OpenCode for Termux installed"
   echo "Run: opencode --version"
-  echo "Optional fallback compatibility tools: pkg install glibc-runner"
   local hook_runner="${PREFIX:-/data/data/com.termux/files/usr}/lib/opencode/tools/run-system-skills.sh"
   if [[ -x "$hook_runner" ]]; then
     OPENCODE_HOOK_STRICT=0 OPENCODE_HOOK_ENABLE_NETWORK=0 "$hook_runner" post_install || true

@@ -1,0 +1,28 @@
+# Shell unit tests (bats)
+#
+# Scope note: this workflow runs unit tests for the build/packaging shell
+# helpers only. Per .github/ACTIONS_DISABLED.md it does NOT build, wrap, or
+# publish final Termux runtime/packages — final packaging authority stays on
+# real Termux devices.
+
+name: Unit Tests
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  bats:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show environment
+        run: |
+          bash --version | head -1
+          python3 --version
+
+      - name: Run shell unit tests
+        run: ./tests/run.sh

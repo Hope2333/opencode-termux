@@ -14,7 +14,7 @@
 | anomalyco/opencode | #10504 | 二进制兼容性问题 | loader 解决 glibc/bionic 兼容 |
 | oven-sh/bun | #26752 | `--compile` 对 `/proc/self/exe` 语义敏感 | loader 包装后强制 marker 检查 |
 | oven-sh/bun | #8685 | Bun on Termux 仍有兼容边界 | 保留 glibc/loader 路径与回归测试 |
-| kaan-escober/bun-termux-loader | - | userspace exec 解决方案 | 核心依赖，持续同步 |
+| Hope2333/bun-termux-loader | - | userspace exec 解决方案 | 核心依赖，持续同步 |
 
 ---
 
@@ -109,5 +109,5 @@ error: no embedded Bun runtime (missing BUNWRAP1)
 
 - https://github.com/anomalyco/opencode
 - https://github.com/oven-sh/bun
-- https://github.com/kaan-escober/bun-termux-loader
+- https://github.com/Hope2333/bun-termux-loader
 - https://github.com/thdxr/bun (patch 分支)

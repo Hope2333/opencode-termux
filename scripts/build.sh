@@ -8,7 +8,6 @@ OPENCODE_SRC_DIR="${OPENCODE_SRC_DIR:-$ROOT_DIR/sources/opencode/repo}"
 OUT_DIR="${OPENCODE_OUT_DIR:-$ROOT_DIR/artifacts/staged}"
 PREFIX_DIR="${OPENCODE_PREFIX_DIR:-$OUT_DIR/prefix}"
 RUNTIME_INPUT="${OPENCODE_RUNTIME_INPUT:-$ROOT_DIR/artifacts/opencode/runtime/opencode-termux}"
-RUNTIME_FALLBACK_INPUT="${OPENCODE_RUNTIME_FALLBACK_INPUT:-$ROOT_DIR/artifacts/opencode/runtime/opencode}"
 
 ensure_dir "$PREFIX_DIR/lib/opencode/runtime"
 ensure_dir "$PREFIX_DIR/bin"
@@ -29,14 +28,20 @@ else
 	log "source tree not found; continuing runtime-only staging"
 fi
 
+# Install wrapped OpenCode binary (the real OpenCode app)
 if [[ -f "$RUNTIME_INPUT" ]]; then
 	install -m 755 "$RUNTIME_INPUT" "$PREFIX_DIR/lib/opencode/runtime/opencode"
-	RUNTIME_MODE="release-loader"
-elif [[ -f "$RUNTIME_FALLBACK_INPUT" ]]; then
-	install -m 755 "$RUNTIME_FALLBACK_INPUT" "$PREFIX_DIR/lib/opencode/runtime/opencode"
-	RUNTIME_MODE="release-raw"
+	log "installed OpenCode app binary"
+	RUNTIME_MODE="opencode-wrapped"
 else
-	fail "runtime not found: $RUNTIME_INPUT or $RUNTIME_FALLBACK_INPUT"
+	fail "no runtime found at $RUNTIME_INPUT"
+fi
+
+# Optional: OpenCode JS bundle (built on CI, run via Android Bun)
+BUNDLE_INPUT="${OPENCODE_BUNDLE_INPUT:-$ROOT_DIR/artifacts/opencode/runtime/bundle.js}"
+if [[ -f "$BUNDLE_INPUT" ]]; then
+	install -m 644 "$BUNDLE_INPUT" "$PREFIX_DIR/lib/opencode/bundle.js"
+	log "installed OpenCode JS bundle"
 fi
 
 install -m 755 "$ROOT_DIR/scripts/launcher.sh" "$PREFIX_DIR/bin/opencode"
@@ -49,8 +54,8 @@ fi
 if [[ -f "$ROOT_DIR/scripts/hooks/run-system-skills.sh" ]]; then
 	install -m 755 "$ROOT_DIR/scripts/hooks/run-system-skills.sh" "$PREFIX_DIR/lib/opencode/tools/run-system-skills.sh"
 fi
-if [[ -d "$ROOT_DIR/packaging/manifests/system-skills" ]]; then
-	cp -a "$ROOT_DIR/packaging/manifests/system-skills/." "$PREFIX_DIR/lib/opencode/system-skills/"
+if [[ -d "$ROOT_DIR/packing/manifests/system-skills" ]]; then
+	cp -a "$ROOT_DIR/packing/manifests/system-skills/." "$PREFIX_DIR/lib/opencode/system-skills/"
 fi
 
 DOCS_LIST="${DOCS_LIST:-$ROOT_DIR/docs/bundle-list.txt}"
@@ -72,30 +77,10 @@ if [[ -f "$DOCS_LIST" ]]; then
 fi
 
 # Compile statx-seccomp shim for Android/Termux compatibility
-# See: tools/statx-shim.c — returns ENOSYS so glibc falls back to stat/fstatat
-# The shim is self-contained (no libc calls), so any C compiler works.
-STATX_SHIM_SRC="$ROOT_DIR/tools/statx-shim.c"
-STATX_SHIM_DST="$PREFIX_DIR/lib/opencode/lib/libstatx-shim.so"
-if [[ -f "$STATX_SHIM_SRC" ]]; then
-	log "compiling statx seccomp shim"
-	ensure_dir "$PREFIX_DIR/lib/opencode/lib"
-	if command -v gcc >/dev/null 2>&1; then
-		gcc -shared -fPIC -o "$STATX_SHIM_DST" "$STATX_SHIM_SRC" || {
-			log "warning: statx shim compilation failed, skipping"
-		}
-	elif command -v cc >/dev/null 2>&1; then
-		cc -shared -fPIC -o "$STATX_SHIM_DST" "$STATX_SHIM_SRC" || {
-			log "warning: statx shim compilation failed, skipping"
-		}
-	else
-		log "warning: no C compiler found, statx shim not built"
-	fi
-fi
-
 write_build_meta "$ROOT_DIR/artifacts/opencode/build.meta" \
 	"component=opencode" \
 	"prefix=$PREFIX_DIR" \
-	"runtime_mode=$RUNTIME_MODE" \
-	"runtime_path=$PREFIX_DIR/lib/opencode/runtime/opencode"
+	"runtime_mode=android-only" \
+	"runtime_path=$PREFIX_DIR/lib/opencode/runtime/bun"
 
 log "staged build ready: $PREFIX_DIR"

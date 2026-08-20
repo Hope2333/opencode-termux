@@ -121,7 +121,7 @@ project/
 │  ├─ build/                      # 构建脚本
 │  ├─ package/                    # 打包脚本
 │  └─ common.sh                   # 公共函数
-├─ packaging/
+├─ packing/
 │  ├─ deb/                        # Debian 打包暂存
 │  └─ pacman/                     # Pacman 打包暂存
 ├─ sources/
@@ -145,8 +145,7 @@ project/
 ### 上游仓库
 - https://github.com/oven-sh/bun
 - https://github.com/anomalyco/opencode
-- https://github.com/kaan-escober/bun-termux-loader
-- https://github.com/thdxr/bun (patch 分支)
+- https://github.com/Hope2333/bun-termux-loader
 
 ### 关键 Issue
 - [opencode #12515](https://github.com/anomalyco/opencode/issues/12515) - Termux 安装失败
