@@ -19,9 +19,9 @@ Record layouts:
      string-data area, which is untouched by the conversion)
 
 Conversion algorithm (review-fixed, BLOCKER-2 resolved):
-    36->52: keep 4 StringPointers, append 2 zero StringPointers, keep 3 u8,
-            append 1 zero u8, drop the pad byte  -> +16 B per record
-    52->36: keep first 4 StringPointers, keep first 3 u8, append 1 pad byte
+     36->52: keep 4 StringPointers, append 2 zero StringPointers,
+             keep all 4 u8 (36B record stores 4 u8 at offsets 32-35) -> +16 B per record
+     52->36: keep first 4 StringPointers, keep all 4 u8 (52B stores 4 u8 at 48-51)
             -> -16 B per record
 
 Offsets updates:
@@ -118,16 +118,14 @@ def convert_records(records: bytes, src: int, dst: int) -> bytes:
             rec = records[i : i + RECORD_36]
             out += rec[0:32]  # 4 StringPointers
             out += b"\x00" * 16  # 2 zero StringPointers
-            out += rec[32:35]  # 3 u8
-            out += b"\x00"  # 1 zero u8 (pad byte of the 36B record is dropped)
+            out += rec[32:36]  # 4 u8 (36B record stores all 4 u8 at offsets 32-35)
         return bytes(out)
     # src == RECORD_52 and dst == RECORD_36
     out = bytearray()
     for i in range(0, len(records), RECORD_52):
         rec = records[i : i + RECORD_52]
         out += rec[0:32]  # first 4 StringPointers
-        out += rec[32:35]  # first 3 u8
-        out += b"\x00"  # 1 pad byte
+        out += rec[48:52]  # 4 u8 (flags live at offset 48-51 in a 52B record)
     return bytes(out)
 
 
