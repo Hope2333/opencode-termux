@@ -280,7 +280,78 @@ def convert_graph(data: bytes, target: int) -> tuple[bytes, dict]:
 
 
 # ---------------------------------------------------------------- patch
-def patch_graph(graph: bytes, cfg: Path) -> tuple[bytes, dict]:
+def _semver_key(ver: str) -> tuple:
+    """'1.3.13' -> (1, 3, 13); tolerate suffixes ('1.3.13-beta' -> (1, 3, 13))."""
+    key = []
+    for tok in str(ver).split("."):
+        digits = ""
+        for ch in tok:
+            if ch.isdigit():
+                digits += ch
+            else:
+                break
+        key.append(int(digits) if digits else 0)
+    return tuple(key)
+
+def _select_patches(raw, ver: str | None, cfg: Path, info: dict) -> list:
+    """Resolve patches.json into the patch list for `ver`.
+
+    New schema: {"schema_version": 1, "ranges": [{min, max, bun_layout,
+    patches: [...]}]} — ranges are matched by semantic version (min <= ver
+    <= max). Legacy flat forms (a bare list, or {"patches": [...]}) are
+    still accepted and applied unconditionally.
+    """
+    if isinstance(raw, list):
+        return raw
+    if not isinstance(raw, dict):
+        raise TransplantError(
+            f"patches.json {cfg}: expected an object or a list of patches"
+        )
+    if "ranges" in raw:
+        schema_version = raw.get("schema_version", 1)
+        if not isinstance(schema_version, int) or schema_version < 1:
+            raise TransplantError(
+                f"patches.json {cfg}: unsupported schema_version {schema_version!r}"
+            )
+        ranges = raw["ranges"]
+        if not isinstance(ranges, list) or not ranges:
+            raise TransplantError(
+                f"patches.json {cfg}: 'ranges' must be a non-empty list"
+            )
+        selected = []
+        for r in ranges:
+            if not isinstance(r, dict) or "patches" not in r:
+                raise TransplantError(
+                    f"patches.json {cfg}: each range needs a 'patches' list"
+                )
+            rmin = r.get("min")
+            rmax = r.get("max")
+            if ver is not None:
+                vk = _semver_key(ver)
+                if rmin is not None and vk < _semver_key(rmin):
+                    continue
+                if rmax is not None and vk > _semver_key(rmax):
+                    continue
+            for pt in r["patches"]:
+                if isinstance(pt, dict):
+                    pt = dict(pt)
+                    pt.setdefault("range", f"{rmin}-{rmax}")
+                    pt.setdefault("bun_layout", r.get("bun_layout"))
+                selected.append(pt)
+        if ver is not None and not selected:
+            info["warnings"].append(
+                f"no patch ranges match version {ver}; patch step no-op"
+            )
+        return selected
+    patches = raw.get("patches", raw)
+    if not isinstance(patches, list):
+        raise TransplantError(
+            f"patches.json {cfg}: expected a list of patches "
+            f"(or {{'patches': [...]}})"
+        )
+    return patches
+
+def patch_graph(graph: bytes, cfg: Path, ver: str | None = None) -> tuple[bytes, dict]:
     """Apply equal-length string_data replacements from patches.json.
 
     Returns (possibly-new graph bytes, info dict). A missing config file or a
@@ -296,14 +367,9 @@ def patch_graph(graph: bytes, cfg: Path) -> tuple[bytes, dict]:
     except json.JSONDecodeError as e:
         raise TransplantError(f"invalid patches.json {cfg}: {e}") from e
 
-    patches = raw.get("patches", raw) if isinstance(raw, dict) else raw
-    if not isinstance(patches, list):
-        raise TransplantError(
-            f"patches.json {cfg}: expected a list of patches "
-            f"(or {{'patches': [...]}})"
-        )
-
+    patches = _select_patches(raw, ver, cfg, info)
     p = parse_graph(graph)
+    string_data_end = p["mod_off"]
     string_data_end = p["mod_off"]
     data = bytearray(graph)
     hits = 0
@@ -448,7 +514,7 @@ def cmd_patch(args) -> int:
         die(f"module graph not found: {graph} (run extract first)")
     cfg = Path(args.config) if args.config else config_dir() / "patches.json"
     data = graph.read_bytes()
-    new_data, info = patch_graph(data, cfg)
+    new_data, info = patch_graph(data, cfg, ver=args.ver)
     if new_data != data:
         graph.write_bytes(new_data)
     update_report(out_dir, "patch", info)
@@ -555,7 +621,7 @@ def cmd_all(args) -> int:
     # 4. patch
     print("== patch ==")
     graph_bytes = graph.read_bytes()
-    patched, patch_info = patch_graph(graph_bytes, config_dir() / "patches.json")
+    patched, patch_info = patch_graph(graph_bytes, config_dir() / "patches.json", ver=args.ver)
     if patched != graph_bytes:
         graph.write_bytes(patched)
     report["steps"]["patch"] = patch_info

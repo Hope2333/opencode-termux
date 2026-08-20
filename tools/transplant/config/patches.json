@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "ranges": [
+    {
+      "min": "1.0.0",
+      "max": "1.3.99",
+      "bun_layout": "52",
+      "patches": [
+        {
+          "name": "guysoft-1-undici-case",
+          "search": "__reExport(exports_Undici, undici)",
+          "replace": "__reExport(exports_Undici, Undici)",
+          "region": "string_data"
+        }
+      ]
+    }
+  ],
+  "locked_versions_schema": {
+    "description": "Optional registry of versions that must be pinned to a layout",
+    "locked": [
+      { "ver": "string", "reason": "string", "detected_layout": "36|52|unknown" }
+    ]
+  }
+}
