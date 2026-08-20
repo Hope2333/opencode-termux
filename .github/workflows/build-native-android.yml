@@ -1,0 +1,111 @@
+# Build Native Android OpenCode via transplant pipeline
+#
+# Diagnostic/handoff workflow (attempt-based evidence, NOT a release path):
+#   1. npm pack opencode-linux-arm64@<ver>
+#   2. Download official android Bun (target from tools/transplant/config/bun-bind.json)
+#   3. Run tools/transplant/transplant.py all --no-execve
+#      (x86 build host cannot exec aarch64 ELF; produces binary + report only)
+#   4. Golden regression (tests/transplant/test_golden.py)
+#   5. Upload artifacts/transplant/ + write status/*.json (attempt evidence)
+#
+# Final runtime acceptance happens on a real Termux aarch64 device, not here.
+
+name: Build Native Android (transplant)
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "opencode version (e.g. 1.3.13)"
+        required: false
+        default: "1.3.13"
+
+env:
+  BUN_BIND_JSON: tools/transplant/config/bun-bind.json
+
+jobs:
+  transplant:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare directories
+        run: |
+          mkdir -p out/status out/logs work
+          python3 --version
+          npm --version
+
+      - name: Resolve android Bun target from bun-bind.json
+        id: bun
+        run: |
+          BUN_VER="$(python3 -c 'import json;print(json.load(open("tools/transplant/config/bun-bind.json"))["target"])')"
+          echo "bun_ver=$BUN_VER" >> "$GITHUB_OUTPUT"
+          echo "bound bun target: $BUN_VER"
+
+      - name: Probe latest android Bun (diagnostic, non-blocking)
+        continue-on-error: true
+        run: |
+          bash scripts/ci/probe-latest-bun.sh --offline
+          bash scripts/ci/probe-latest-bun.sh 2>&1 | tail -8 || true
+
+      - name: Download opencode tgz
+        run: |
+          VER="${{ github.event.inputs.version }}"
+          npm pack "opencode-linux-arm64@$VER" --pack-destination work/
+          ls -la work/
+
+      - name: Download android Bun (bun-bind.json target)
+        run: |
+          BUN_VER="${{ steps.bun.outputs.bun_ver }}"
+          URL="https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VER}/bun-linux-aarch64-android.zip"
+          mkdir -p artifacts/transplant/android-bun
+          curl -fL "$URL" -o artifacts/transplant/android-bun/bun-linux-aarch64-android.zip
+          ls -la artifacts/transplant/android-bun/
+
+      - name: Run transplant pipeline (--no-execve)
+        run: |
+          VER="${{ github.event.inputs.version }}"
+          TGZ="$(ls work/opencode-linux-arm64-*.tgz | head -1)"
+          python3 tools/transplant/transplant.py all --ver "$VER" --tgz "$TGZ" --no-execve
+          ls -la artifacts/transplant/"$VER"/
+
+      - name: Ensure golden fixtures
+        run: |
+          if [ -z "$(ls -A tests/transplant/fixtures/tgz/ 2>/dev/null)" ]; then
+            echo "fixtures missing; fetching..."
+            bash scripts/fetch-fixtures.sh
+          else
+            echo "fixtures present:"
+            ls tests/transplant/fixtures/tgz/
+          fi
+
+      - name: Run golden regression
+        run: |
+          python3 tests/transplant/test_golden.py --fixtures-dir tests/transplant/fixtures/tgz
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: transplant-${{ github.event.inputs.version }}
+          path: artifacts/transplant/
+          retention-days: 30
+
+      - name: Write status (attempt-based evidence)
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          ver = "${{ github.event.inputs.version }}"
+          out = Path("artifacts/transplant") / ver
+          report = json.loads((out / "report.json").read_text()) if (out / "report.json").is_file() else {}
+          assets = sorted(str(p.relative_to(Path("artifacts"))) for p in out.rglob("*") if p.is_file())
+          Path("out/status/transplant-attempt.json").write_text(json.dumps({
+            "status": "completed",
+            "ver": ver,
+            "attempt": "evidence-only (not a release)",
+            "execve_result": report.get("steps", {}).get("verify", {}).get("execve_result", "n/a"),
+            "layout": report.get("layout"),
+            "artifacts": assets,
+          }, indent=2) + "\n")
+          PY
+          cat out/status/transplant-attempt.json
