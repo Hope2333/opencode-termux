@@ -16,6 +16,7 @@
  * CLI:
  *   watcher <root> [--debounce-ms N] [--max-depth D]
  *   watcher --help
+ *   watcher --version
  *
  * Build (NDK static preferred):
  *   cc -O2 -static -o watcher watcher.c
@@ -40,6 +41,7 @@
 
 #define DEFAULT_DEBOUNCE_MS 50
 #define DEFAULT_MAX_DEPTH   32
+#define WATCHER_VERSION     "0.1.0"
 #define EVENT_BUF_SIZE      (64 * 1024)
 
 /* Everything we care about, incl. close_write for editor-save semantics. */
@@ -353,7 +355,8 @@ static void usage(FILE *out) {
         "  root             directory to watch (required)\n"
         "  --debounce-ms N  debounce window in ms (default %d)\n"
         "  --max-depth D    max recursion depth, follows symlinks (default %d)\n"
-        "  --help           show this help and exit\n",
+        "  --help           show this help and exit\n"
+        "  --version        show version and exit\n",
         DEFAULT_DEBOUNCE_MS, DEFAULT_MAX_DEPTH);
 }
 
@@ -365,6 +368,9 @@ int main(int argc, char **argv) {
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
             usage(stdout);
+            return 0;
+        } else if (strcmp(argv[i], "--version") == 0 || strcmp(argv[i], "-V") == 0) {
+            printf("watcher %s\n", WATCHER_VERSION);
             return 0;
         } else if (strcmp(argv[i], "--debounce-ms") == 0 && i + 1 < argc) {
             debounce_ms = atoi(argv[++i]);
