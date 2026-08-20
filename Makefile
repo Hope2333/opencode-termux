@@ -14,6 +14,10 @@ MIX ?= 0
 # Release upload target variables
 TAG ?= Push$(shell date +%y%m%d)
 REPO ?= Hope2333/opencode-termux
+NATIVE ?=
+VER_IS_SET = $(filter-out file default,$(origin VER))
+NATIVE_VER = $(if $(VER_IS_SET),$(VER),$(VERS))
+NATIVE_DIR = artifacts/transplant/$(NATIVE_VER)
 
 OUTPUT_ROOT := $(if $(ODIR),$(ODIR),$(CURDIR)/packing)
 
@@ -187,24 +191,42 @@ clean:
 #   make release-upload TAG=Push260522 VERS='1.15.[1-7]'
 #   make release-upload TAG=Push260522 VERS='1.15.[1-7]' PKG=deb
 #   make release-upload VERS='1.2.[10-20]' REPO=Hope2333/opencode-termux
+#   make release-upload TAG=Push260901 NATIVE=1 VER=1.3.13   # + native assets
 #
 # Defaults:
 #   TAG     = Push<YYMMDD> (auto-generated)
-#   VERS    = (required)
+#   VERS    = (required for wrapper batch; may be omitted when NATIVE=1 + VER)
 #   PKG     = both
 #   REPO    = Hope2333/opencode-termux
+#   NATIVE  = (empty) — set to 1 to also upload native-android transplant
+#             assets (opencode-native + report.json + watcher pkg) for a
+#             single version (VER, or VERS when it is a single version).
+#             Fails fast (exit 1) when artifacts/transplant/<ver> is missing
+#             or empty (anti-empty-release).
 release-upload:
-	@if [ -z "$(VERS)" ]; then \
+	@if [ -z "$(VERS)" ] && [ -z "$(VER_IS_SET)" ]; then \
 		echo "Error: VERS is required. Example: make release-upload VERS='1.15.[1-7]' TAG=Push260522"; \
 		exit 1; \
 	fi
-	@echo "=== Release upload: TAG=$(TAG) VERS=$(VERS) PKG=$(PKG) REPO=$(REPO) ==="
-	$(MAKE) batch VERS='$(VERS)' PKG='$(PKG)' ODIR='/tmp/oc-release-$(TAG)' MIX=1
+	@if [ "$(NATIVE)" = "1" ]; then \
+		if [ ! -f "$(NATIVE_DIR)/opencode-native" ] || [ -z "$$(ls -A $(NATIVE_DIR) 2>/dev/null)" ]; then \
+			echo "Error: NATIVE=1 but $(NATIVE_DIR) is missing or empty (anti-empty-release)" >&2; \
+			exit 1; \
+		fi; \
+		echo "NATIVE assets found: $(NATIVE_DIR)/opencode-native + report.json + watcher pkg"; \
+	fi
+	@echo "=== Release upload: TAG=$(TAG) VERS=$(VERS) VER=$(VER) PKG=$(PKG) REPO=$(REPO) NATIVE=$(NATIVE) ==="
+	@if [ -n "$(VERS)" ]; then \
+		$(MAKE) batch VERS='$(VERS)' PKG='$(PKG)' ODIR='/tmp/oc-release-$(TAG)' MIX=1; \
+	fi
 	@echo "=== Uploading to release $(TAG) ==="; \
 	upload_failed=0; \
 	if ! gh release view "$(TAG)" --repo "$(REPO)" >/dev/null 2>&1; then \
 		echo "Creating release $(TAG)..."; \
 		gh release create "$(TAG)" --repo "$(REPO)" --title "$(TAG)" --notes "Automated build $$(date -u +%Y-%m-%d)" 2>&1 || exit 1; \
+	else \
+		echo "Release $(TAG) exists; rebinding tag to HEAD via gh api (HTTPS, SSH 22 blocked)..."; \
+		gh api -X PATCH "repos/$(REPO)/git/refs/tags/$(TAG)" -f sha="$$(git rev-parse HEAD)" >/dev/null 2>&1 || echo "  (tag rebind skipped: API refused or already current)"; \
 	fi; \
 	for f in /tmp/oc-release-$(TAG)/opencode_*.deb /tmp/oc-release-$(TAG)/opencode-*.pkg.*; do \
 		if [ -f "$$f" ]; then \
@@ -212,5 +234,14 @@ release-upload:
 			if ! gh release upload "$(TAG)" "$$f" --repo "$(REPO)" --clobber 2>&1; then upload_failed=1; fi; \
 		fi; \
 	done; \
+	if [ "$(NATIVE)" = "1" ]; then \
+		cp "$(NATIVE_DIR)/opencode-native" "/tmp/oc-release-$(TAG)/opencode-$(NATIVE_VER)-aarch64-android-native"; \
+		cp "$(NATIVE_DIR)/report.json" "/tmp/oc-release-$(TAG)/opencode-$(NATIVE_VER)-report.json"; \
+		tar czf "/tmp/oc-release-$(TAG)/opencode-$(NATIVE_VER)-watcher.tar.gz" -C tools/watcher watcher shim.js install.sh; \
+		for f in "/tmp/oc-release-$(TAG)/opencode-$(NATIVE_VER)-aarch64-android-native" "/tmp/oc-release-$(TAG)/opencode-$(NATIVE_VER)-report.json" "/tmp/oc-release-$(TAG)/opencode-$(NATIVE_VER)-watcher.tar.gz"; do \
+			echo "  uploading $$(basename $$f)..."; \
+			if ! gh release upload "$(TAG)" "$$f" --repo "$(REPO)" --clobber 2>&1; then upload_failed=1; fi; \
+		done; \
+	fi; \
 	if [ "$$upload_failed" -ne 0 ]; then echo "Error: one or more release assets failed to upload" >&2; exit 1; fi; \
 	echo "=== Done: https://github.com/$(REPO)/releases/tag/$(TAG) ==="
