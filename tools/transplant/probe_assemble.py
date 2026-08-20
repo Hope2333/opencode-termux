@@ -27,12 +27,28 @@ ZIP_MEMBER = "bun-linux-aarch64-android/bun"
 TAIL_LEN = 8  # trailing u64 total byte count
 
 # Native module markers to inventory inside the module graph.
-NATIVE_PATTERNS = [
+# NOTE: avoid greedy `[A-Za-z0-9._/-]+` prefixes — on 62 MB of module graph
+# they cause catastrophic backtracking (minutes+). Match the suffix only and
+# expand backwards manually (O(n)).
+NATIVE_SUFFIXES = [
+    re.compile(rb"\.node"),
+    re.compile(rb"\.so(?:\.[0-9]+)*"),
+]
+PREFIX_PATTERNS = [
     re.compile(rb"@opentui/[A-Za-z0-9._/-]+"),
     re.compile(rb"@parcel/[A-Za-z0-9._/-]+"),
-    re.compile(rb"[A-Za-z0-9._/-]+\.node"),
-    re.compile(rb"[A-Za-z0-9._/-]+\.so(?:\.[0-9]+)*"),
 ]
+PATH_CHARS = frozenset(
+    b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._/-"
+)
+
+
+def _expand_path(data: bytes, end: int) -> bytes:
+    """Expand backwards from a suffix match to capture the full path string."""
+    start = end
+    while start > 0 and data[start - 1] in PATH_CHARS:
+        start -= 1
+    return data[start:end]
 
 
 def die(msg: str) -> None:
@@ -88,15 +104,22 @@ def verify_tail(out_path: Path, expected_total: int) -> None:
 
 
 def inventory_native(graph: Path, out_txt: Path) -> list:
-    """Scan module graph for native module filename strings."""
+    """Scan module graph for native module filename strings (O(n), no backtracking)."""
     data = graph.read_bytes()
     found = set()
-    for pat in NATIVE_PATTERNS:
+
+    # Suffix-anchored matches: expand backwards to capture the full path.
+    for pat in NATIVE_SUFFIXES:
         for m in pat.finditer(data):
-            s = m.group(0).decode("utf-8", "replace")
-            # Keep only plausible module paths (contain a separator or known prefix).
-            if "/" in s or s.startswith(("@opentui", "@parcel")):
+            s = _expand_path(data, m.start()).decode("utf-8", "replace")
+            if "/" in s:
                 found.add(s)
+
+    # Known-prefix matches (fast, anchored on the prefix).
+    for pat in PREFIX_PATTERNS:
+        for m in pat.finditer(data):
+            found.add(m.group(0).decode("utf-8", "replace"))
+
     ordered = sorted(found)
     out_txt.parent.mkdir(parents=True, exist_ok=True)
     out_txt.write_text("\n".join(ordered) + ("\n" if ordered else ""), encoding="utf-8")
