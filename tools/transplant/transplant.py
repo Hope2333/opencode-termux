@@ -564,6 +564,16 @@ def cmd_verify(args) -> int:
     binary = Path(args.binary) if args.binary else out_dir / "opencode-native"
     expect = args.expect_version or DEFAULT_BUN_VERSION
     info = verify_step(binary, expect)
+    if args.bun_version:
+        got = info["stdout"]
+        if info["exit_code"] != 0 or got != args.bun_version:
+            raise TransplantError(
+                f"bun-version assertion failed: expected {args.bun_version!r}, "
+                f"got exit_code={info['exit_code']} stdout={got!r} (binary: {binary})"
+            )
+        info["bun_version"] = args.bun_version
+        info["bun_version_assert_ok"] = True
+        print(f"BUN VERSION ASSERT PASS: {got!r} == {args.bun_version!r}")
     update_report(out_dir, "verify", info)
     print(f"verify: exit={info['exit_code']} stdout={info['stdout']!r}")
     print(f"ASSERT PASS: version string {info['expect_version']!r} present in stdout")
@@ -711,6 +721,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--ver", required=True, help="opencode version, e.g. 1.3.13")
     p.add_argument("--binary", default=None, help="binary path (default: artifacts/transplant/<ver>/opencode-native)")
     p.add_argument("--expect-version", default=None, help=f"expected version string in stdout (default: {DEFAULT_BUN_VERSION})")
+    p.add_argument("--bun-version", default=None, help="assert execve stdout version string equals this exact bun version (default: no bun-version assertion)")
     p.set_defaults(func=cmd_verify)
 
     p = sub.add_parser(
