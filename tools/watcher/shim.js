@@ -243,18 +243,24 @@ function main() {
     }
   }
 
+  let restartTimer = null
+
   const start = () => {
-    const child = spawnWatcher(opts, log, onEvent)
-    child.on("exit", (code, signal) => {
+    const proc = spawnWatcher(opts, log, onEvent)
+    proc.on("exit", (code, signal) => {
       if (shuttingDown) {
         log(`[exit] watcher exited (code=${code} signal=${signal}); shutting down, no restart`)
         return
       }
       restarts += 1
       log(`[restart] watcher exited (code=${code} signal=${signal}); restart #${restarts} in ${RESTART_BACKOFF_MS}ms`)
-      setTimeout(start, RESTART_BACKOFF_MS)
+      // Track the restarted process: write it back to the outer `child`
+      // so a later shutdown() kills the live watcher, not the dead one.
+      restartTimer = setTimeout(() => {
+        child = start()
+      }, RESTART_BACKOFF_MS)
     })
-    return child
+    return proc
   }
 
   let child = start()
@@ -262,6 +268,12 @@ function main() {
   const shutdown = (sig) => {
     if (shuttingDown) return
     shuttingDown = true
+    // Cancel any pending auto-restart, otherwise a SIGTERM landing inside
+    // the backoff window would spawn a fresh watcher right before exit(0).
+    if (restartTimer !== null) {
+      clearTimeout(restartTimer)
+      restartTimer = null
+    }
     log(`[shutdown] received ${sig}; terminating watcher`)
     child.kill("SIGTERM")
     // Give the watcher a moment to flush, then hard-kill and exit.
