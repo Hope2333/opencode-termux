@@ -206,28 +206,32 @@ Matrix builds for: `aarch64`
 ## Native-android 分支（实验）
 
 `native-android` 是拓展分支，承载 transplant 管线（`tools/transplant/transplant.py`），
-目标是零 glibc 的原生 Android 运行路径。当前状态：**C1 路线已被证伪**。
+目标是零 glibc 的原生 Android 运行路径。当前状态：**C1 路线已复活**。
 
-### C1 证伪现状
+### C1 已复活
 
 C1 路线 = 用官方预编译 android Bun（v1.3.14，Bionic 直跑）作为底座，与 opencode 的
-module graph 拼接成单个可 execve 的 ELF。经三重证据证伪，官方 android Bun **无法承载
-grafted module graph**：
+module graph 拼接成单个可 execve 的 ELF。此前曾被判"三重证伪"，现已推翻——真因是
+assemble 从未 patch `.bun` 节的 `BUN_COMPILED.size`（standalone 检测链在 android bun
+中完整存在）。
 
-1. **ELF 入口缺失**（compiled-app 模式不存在）：android bun 1.3.14 的 entry 落在
-   `.text` 起始（纯解释器模式），拼接产物不会进入"加载内嵌 JS"路径。
-2. **standalone 检测代码缺失**：`---- Bun! ----` 标记虽存在于 `.rodata`，但代码中
-   对它的引用为 0，拼接产物无法被识别为 standalone。
-3. **无触发开关**：`bun build --compile` 在 Android 上报 `Cannot read directory
-   "/data/": AccessDenied`（Bun 源码硬编码从 `/` 扫描，Android 权限限制无法绕过）。
+复活手术（`tools/transplant/revive_patch.py`，commit `57ddee1`）两处关键修正：
 
-唯一 workaround = Zig/C++ 级修改（guysoft 自编译 Bun 路线）。完整证据链见
-`docs/transplant.md`。
+1. patch 点 = `.bun` 节起始 `0x5568000`（getter 返回节起始直接解引用），非 +8；
+2. android bun 是 PIE，检测链把该值当绝对指针——直写 vaddr 会 SIGSEGV，须向
+   `.rela.dyn` 追加 `R_AARCH64_RELATIVE` 重定位（r_offset=0x5568000 type=1027
+   addend=payload vaddr），ASLR 安全。
+
+实测 `artifacts/transplant/1.3.13/opencode-native-revived --version` → `1.3.13`
+（exit=0）。遗留问题：#4 `serve` 报 `Configuration is invalid`（配置 schema 版本
+差异）、#1 启动 1965ms（目标 <300ms）、#7 冷启 2423ms（目标 <2s，graph 全量解析慢）。
+完整证据链与手术细节见 `docs/transplant.md`。
 
 ### transplant 命令速查
 
 ```bash
-# 一键管线（extract→detect→convert→patch→assemble→verify）
+# 一键管线（extract→detect→convert→patch→assemble→revive→verify）
+# 现产 opencode-native-revived（可直接运行）
 make transplant VER=1.3.13
 
 # 回归（golden-file，fixtures 需先 scripts/fetch-fixtures.sh 预下载）

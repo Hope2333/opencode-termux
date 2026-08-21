@@ -9,13 +9,18 @@ convert_layout.py / probe_assemble.py) into one argparse CLI:
     convert   36<->52 module-graph record conversion
     patch     equal-length string_data replacements from config/patches.json
     assemble  android Bun download + concatenation + execve probe
+    revive    C1 revival surgery: graft module graph onto android Bun ELF
+              (BUN_COMPILED.size publish; delegates to revive_patch.py)
     verify    re-run execve asserting version string consistency
     all       one-shot pipeline: extract -> detect -> (convert if 36)
-              -> patch -> assemble -> verify
+              -> patch -> assemble -> revive (unless --no-revive) -> verify
 
 Output: artifacts/transplant/<ver>/opencode-native + report.json
         {ver, layout, steps:{extract:{sha256}, detect:{...}, convert:{...},
-         patch:{hit_count}, assemble:{sha256}, verify:{execve_result}}}
+         patch:{hit_count}, assemble:{sha256},
+          revive:{status, patched_size, reloc_count}, verify:{execve_result}}}
+Revived binary: artifacts/transplant/<ver>/opencode-native-revived
+(standalone mode: --version prints the opencode version, e.g. 1.3.13).
 
 Zero third-party dependencies: python3 stdlib only.
 """
@@ -58,6 +63,7 @@ from probe_assemble import (  # noqa: E402
 
 DEFAULT_BUN_VERSION = "1.3.14"
 VERSION_RE = re.compile(r"\d+\.\d+\.\d+")
+REVIVE_SCRIPT = Path(__file__).resolve().parent / "revive_patch.py"
 
 
 class TransplantError(Exception):
@@ -456,6 +462,54 @@ def verify_step(binary: Path, expect_version: str) -> dict:
 
 
 # ---------------------------------------------------------------- commands
+
+# ---------------------------------------------------------------- revive
+def revive_step(bun: Path, graph: Path, out: Path) -> dict:
+    """C1 revival surgery: delegate to revive_patch.py (subprocess reuse).
+
+    Grafts the module graph onto the android Bun ELF and patches BUN_COMPILED
+    so the runtime enters standalone mode (loads the grafted graph) instead of
+    falling back to interpreter mode. Report info: status/patched_size/reloc_count.
+    """
+    if not REVIVE_SCRIPT.is_file():
+        raise TransplantError(f"revive script not found: {REVIVE_SCRIPT}")
+    if not bun.is_file():
+        raise TransplantError(f"android bun ELF not found: {bun}")
+    if not graph.is_file():
+        raise TransplantError(f"module graph not found: {graph}")
+    proc = subprocess.run(
+        [sys.executable, str(REVIVE_SCRIPT),
+         "--bun", str(bun), "--graph", str(graph), "--out", str(out)],
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+    if proc.returncode != 0:
+        raise TransplantError(
+            f"revive surgery failed (exit {proc.returncode}): "
+            f"{proc.stderr.strip() or proc.stdout.strip()}"
+        )
+    info = {
+        "status": "ok",
+        "bun": str(bun),
+        "graph": str(graph),
+        "out": str(out),
+        "patched_size": out.stat().st_size,
+        "reloc_count": None,
+    }
+    # revive_patch.py always prints the extended rela table line on success:
+    # "rela table: ... -> ...(n=N) += RELATIVE off=... addend=..."
+    m = re.search(r"\(n=(\d+)\) \+= RELATIVE", proc.stdout)
+    if not m:
+        raise TransplantError(
+            f"revive surgery succeeded but rela-table line missing from output; "
+            f"stdout:\n{proc.stdout}"
+        )
+    info["reloc_count"] = int(m.group(1))
+    info["sha256"] = sha256_file(out)
+    return info
+
+
 def cmd_extract(args) -> int:
     tgz = Path(args.tgz)
     out_dir = Path(args.out) if args.out else ver_dir(args.ver)
@@ -580,6 +634,21 @@ def cmd_verify(args) -> int:
     return 0
 
 
+def cmd_revive(args) -> int:
+    out_dir = ver_dir(args.ver)
+    bun = (Path(args.bun) if args.bun else download_bun(
+        repo_root() / "artifacts" / "transplant" / "android-bun"
+    ))
+    graph = Path(args.graph) if args.graph else out_dir / "module-graph.bin"
+    out = Path(args.out) if args.out else out_dir / "opencode-native-revived"
+    info = revive_step(bun, graph, out)
+    update_report(out_dir, "revive", info)
+    print(f"revive: status=ok patched_size={info['patched_size']} "
+          f"reloc_count={info['reloc_count']}")
+    print(f"revive: wrote {out} sha256={info['sha256'][:16]}...")
+    return 0
+
+
 def cmd_all(args) -> int:
     ver = args.ver
     tgz = Path(args.tgz)
@@ -657,7 +726,22 @@ def cmd_all(args) -> int:
     report["steps"]["assemble"] = assemble_info
     print(f"  opencode-native sha256={assemble_info['sha256'][:16]}...")
 
-    # 6. verify
+
+    # 6. revive (C1 revival surgery; skip with --no-revive)
+    revived_path = out_dir / "opencode-native-revived"
+    revived_ok = False
+    if args.no_revive:
+        report["steps"]["revive"] = {"status": "skipped"}
+        print("== revive == skipped (--no-revive)")
+    else:
+        print("== revive ==")
+        revive_info = revive_step(bun_elf, graph, revived_path)
+        report["steps"]["revive"] = revive_info
+        revived_ok = True
+        print(f"  opencode-native-revived sha256={revive_info['sha256'][:16]}... "
+              f"(patched_size={revive_info['patched_size']}, "
+              f"reloc_count={revive_info['reloc_count']})")
+    # 7. verify (revived binary expects opencode ver; raw concat expects bun ver)
     print("== verify ==")
     if args.no_execve:
         report["steps"]["verify"] = {
@@ -666,7 +750,11 @@ def cmd_all(args) -> int:
         }
         print("  execve skipped (--no-execve)")
     else:
-        verify_info = verify_step(out_path, DEFAULT_BUN_VERSION)
+        if revived_ok:
+            verify_target, expect_ver = revived_path, args.ver
+        else:
+            verify_target, expect_ver = out_path, DEFAULT_BUN_VERSION
+        verify_info = verify_step(verify_target, expect_ver)
         report["steps"]["verify"] = verify_info
         print(f"  execve_result={verify_info['execve_result']!r}")
 
@@ -725,12 +813,24 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_verify)
 
     p = sub.add_parser(
+        "revive",
+        help="C1 revival surgery: graft module graph onto android Bun ELF (standalone mode)",
+    )
+    p.add_argument("--ver", required=True, help="opencode version, e.g. 1.3.13")
+    p.add_argument("--bun", default=None, help="android bun ELF path (default: cached download, same source as assemble)")
+    p.add_argument("--graph", default=None, help="module graph path (default: artifacts/transplant/<ver>/module-graph.bin)")
+    p.add_argument("--out", default=None, help="output ELF path (default: artifacts/transplant/<ver>/opencode-native-revived)")
+    p.set_defaults(func=cmd_revive)
+
+
+    p = sub.add_parser(
         "all",
-        help="one-shot pipeline: extract -> detect -> (convert if 36) -> patch -> assemble -> verify",
+        help="one-shot pipeline: extract -> detect -> (convert if 36) -> patch -> assemble -> revive -> verify",
     )
     p.add_argument("--ver", required=True, help="opencode version, e.g. 1.3.13")
     p.add_argument("--tgz", required=True, help="path to opencode-linux-arm64-<ver>.tgz")
     p.add_argument("--no-execve", action="store_true", help="skip the execve step (CI: produce binary + report only)")
+    p.add_argument("--no-revive", action="store_true", help="skip the revive step (raw concat binary only)")
     p.set_defaults(func=cmd_all)
 
     return ap

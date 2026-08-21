@@ -1,31 +1,69 @@
 # transplant — native-android 移植操作手册
 
-> [!WARNING] 状态横幅：C1 路线（官方 android Bun 底座）**已被证伪**
+> [!IMPORTANT] 状态横幅：C1 路线**已复活**（revive 手术实证成功）
 >
 > **C1 路线 = 用官方预编译 android Bun（v1.3.14，89.8MB，Bionic 直跑）作为底座，
 > 与 opencode 的 module graph 拼接成单个可 execve 的 ELF**（docs/performance-optimization.md §1.2/§4.1）。
-> 经三重证据证伪，此路线**不可行**：
 >
-> 1. **ELF 入口缺失（compiled-app 模式不存在）**：android bun 1.3.14 的 entry `0x1F00200`
->    落在 `.text` 起始（纯解释器模式），而 RX base 为 `0x0`；对照 glibc host-bun 1.3.11 的
->    entry `0x2A5B300` 恰好等于 RX base（compiled-app 模式）。拼接产物以解释器模式启动，
->    不会进入"加载内嵌 JS"路径。
-> 2. **standalone 检测代码缺失**：compiled-app 模式入口字节 `e50300aa e10340f9`
->    在 android bun 中 **0 次出现**；`---- Bun! ----` 标记虽存在于 android bun 的 `.rodata`，
->    但代码中对它的引用为 0（`isStandalone` 检测函数缺失）——拼接产物无法被识别为 standalone。
-> 3. **无触发开关**：env/flag/CLI 均无手段让 android bun 进入 standalone 模式；
->    `bun build --compile` 在 Android 上报 `Cannot read directory "/data/": AccessDenied`
->    （Bun 源码硬编码从 `/` 扫描，Android 权限限制无法绕过）。
->
-> 无参运行打印 `bun <command>` 用法（纯解释器）；`run`/`serve` 报 `CouldntReadCurrentDirectory`。
-> 与本仓库早前结论（`docs/native-android-research.md`，2026-05）一致。
->
-> **唯一 workaround = Zig/C++ 级修改**：补 compiled-app 入口 + standalone 检测逻辑 =
-> guysoft 自编译 Bun 路线（`docs/performance-optimization.md` §1.1 上游方案）。
->
-> **本手册描述的工具链（probe/transplant 管线）仍有效**——可正常产出并自验拼接 ELF，
-> 但产物为**纯 Bun 解释器模式**（如 `artifacts/transplant/1.3.13/opencode-native`，
-> 152,017,164B），**不可作为 opencode 运行**，仅可用于布局/格式研究。
+> **当前结论：可行。** 管线已集成 `revive` 步骤
+> （extract→detect→convert(if 36)→patch→assemble→**revive**→verify），实测
+> `artifacts/transplant/1.3.13/opencode-native-revived --version` → `1.3.13`（exit=0；
+> 手术实现 `tools/transplant/revive_patch.py`，commit `57ddee1`）。
+> 早前的"三重证伪"结论**已被推翻**——真因是 assemble 从未 patch `.bun` 节的
+> `BUN_COMPILED.size`，而 standalone 检测链在 android bun 中**完整存在**
+> （证伪历史留档见 §0.1，手术细节见 §0.2，遗留问题见 §0.3）。
+
+## 0.1 证伪历史（已被推翻，仅留档）
+
+以下为早前得出的"三重证伪"证据，当时据此判定 C1 不可行。**该结论已被复活手术推翻**，
+保留于此作为"为什么之前认为不可行"的记录：
+
+1. **ELF 入口缺失（compiled-app 模式不存在）**：android bun 1.3.14 的 entry `0x1F00200`
+   落在 `.text` 起始（纯解释器模式），而 RX base 为 `0x0`；对照 glibc host-bun 1.3.11 的
+   entry `0x2A5B300` 恰好等于 RX base（compiled-app 模式）。拼接产物以解释器模式启动，
+   不会进入"加载内嵌 JS"路径。
+2. **standalone 检测代码缺失**：compiled-app 模式入口字节 `e50300aa e10340f9`
+   在 android bun 中 **0 次出现**；`---- Bun! ----` 标记虽存在于 android bun 的 `.rodata`，
+   但代码中对它的引用为 0（`isStandalone` 检测函数缺失）——拼接产物无法被识别为 standalone。
+3. **无触发开关**：env/flag/CLI 均无手段让 android bun 进入 standalone 模式；
+   `bun build --compile` 在 Android 上报 `Cannot read directory "/data/": AccessDenied`
+   （Bun 源码硬编码从 `/` 扫描，Android 权限限制无法绕过）。
+
+当时的表象：无参运行打印 `bun <command>` 用法（纯解释器）；`run`/`serve` 报
+`CouldntReadCurrentDirectory`。
+
+**推翻要点**：上述现象的真因不在 android Bun 底座——standalone 检测链完整存在，
+只是拼接产物中 `BUN_COMPILED.size` 字段从未被 assemble 写入正确值，检测链读到 0
+即按解释器模式回退。"检测代码缺失"系误判。
+
+## 0.2 复活手术（revive）
+
+两处关键修正（`tools/transplant/revive_patch.py`，由 `transplant.py revive` 子命令 /
+`all` 流水线第 6 步调用，`--no-revive` 可跳过）：
+
+1. **patch 点 = `.bun` 节起始 `0x5568000`，而非 +8**：Bun 的 getter 返回节起始后
+   直接解引用读取 size，patch 偏移必须落在节起始。
+2. **PIE + ASLR 安全写法**：android bun 是 PIE，检测链把该值当**绝对指针**解引用——
+   直接写 vaddr 会在运行期 SIGSEGV。须向 `.rela.dyn` 追加一条
+   `R_AARCH64_RELATIVE` 重定位（`r_offset=0x5568000`、type=`1027`、
+   `addend=payload vaddr`），由动态链接器加载时完成重定位，ASLR 安全。
+
+术后验证：`opencode-native-revived --version` → `1.3.13`，exit=0。
+
+## 0.3 遗留问题
+
+| 编号 | 问题 | 说明 |
+|---|---|---|
+| #4 | `serve` 报 `Configuration is invalid` | 配置 schema 版本差异所致，见下方「serve 故障排查注记」 |
+| #1 | 启动 1965ms，超出 <300ms 目标 | module graph 全量解析慢 |
+| #7 | 冷启动 2423ms，超出 <2s 目标 | module graph 全量解析慢 |
+
+### serve 故障排查注记（"Configuration is invalid"）
+
+常见根因是**配置 schema 版本差异**：1.3.13 不接受 `"lsp": true`（布尔），只认
+`false` 或对象表；1.18.x 才接受布尔 `true`。隔离 `XDG_CONFIG_HOME` /
+`XDG_DATA_HOME` 可复现验证。另注意：首次启动全新 data 目录需预留 sqlite
+migration 时间（>6s），勿误判为挂死。
 
 ## 1. 前置条件
 
@@ -35,7 +73,7 @@
 | `npm` | `npm pack opencode-linux-arm64@<VER>` 获取上游 tgz | `npm --version` |
 | 网络 | npm 下载 + GitHub 下载 android Bun（`bun-v1.3.14/bun-linux-aarch64-android.zip`） | — |
 
-输出固定落 `artifacts/transplant/<ver>/`（`opencode-native` + `report.json`），
+输出固定落 `artifacts/transplant/<ver>/`（`opencode-native` + `opencode-native-revived` + `report.json`），
 产物属生成物，按 AGENTS.md 反模式约定**不提交 git、不手工编辑**。
 
 ## 2. 三命令速查
@@ -44,10 +82,10 @@
 # ① 单步 probe（手动排查用），子命令：extract / detect / convert / patch / assemble / verify / all
 python3 tools/transplant/transplant.py detect --mg artifacts/transplant/1.3.13/module-graph.bin
 
-# ② 一键管线（extract→detect→convert(if 36)→patch→assemble→verify）
+# ② 一键管线（extract→detect→convert(if 36)→patch→assemble→revive→verify）
 python3 tools/transplant/transplant.py all --ver 1.3.13 --tgz /tmp/opencode-linux-arm64-1.3.13.tgz
 
-# ③ make 入口（内部自动 npm pack 到 $TMPDIR）
+# ③ make 入口（内部自动 npm pack 到 $TMPDIR；现产 opencode-native-revived）
 make transplant VER=1.3.13
 
 # 回归（golden-file，fixtures 需先 scripts/fetch-fixtures.sh 预下载）
@@ -114,7 +152,7 @@ tag → 比对 assets 是否含 aarch64-android.zip → 与 `target` 不同则�
 |---|---|---|
 | **版本不兼容锁定** | 目标版本落入 probe 未覆盖区间（布局 `unknown`）或 execve 失败，且相邻版本（1.3.12/1.3.10 → 1.2.x）逐一确认版本特异性 | 登记 `config/patches.json` 的 `locked_versions`（ver/reason/detected_layout），管线**明确报错拒绝产出**，绝不静默拼接未验证二进制 |
 | **布局转换失败** | 36→52 转换后 execve 失败或 `detect_layout` 复核非 52 | 登记"转换不兼容锁定"，报错含版本 + 布局 + 失败原因，写 `locked_versions` |
-| **execve 失败** | `./opencode-native --version` 非 0 或 stderr 首行异常 | 保留原始输入供诊断（不删 bun/图）；对照 C1 证伪现状核对——若为 android Bun 底座本身（解释器模式/standalone 缺失），属已知证伪结论，升级走 guysoft 自编译 Bun 路线 |
+| **execve 失败** | `./opencode-native --version` 非 0 或 stderr 首行异常 | 保留原始输入供诊断（不删 bun/图）；先确认是否执行了 revive 步（未 revive 的 `opencode-native` 为解释器模式，属预期行为）；revive 后仍失败再对照 §0.2 排查 patch 点与重定位表 |
 | **patch 无命中** | `hit_count == 0` | warning 入 report，非失败（等长 patch 为可选优化） |
 | **`--compile` 阻断** | `bun build --compile` 报 `/data/` AccessDenied | 已知硬限制（Bun 源码硬编码），无 workaround；不走此路 |
 
@@ -124,26 +162,28 @@ tag → 比对 assets 是否含 aarch64-android.zip → 与 `target` 不同则�
 A: 源码编译是 guysoft 路线（`docs/performance-optimization.md` §1.1、`docs/native-android-research.md`），
 工作量级 = 修改 Bun 的 Zig/C++ 构建系统 + WebKit/JavaScriptCore 集成，且需逐个打 Bionic 兼容补丁
 （zig sigaction 152B→直调、.tbss 64B 对齐、seccomp 拦截缺失 syscall、JSC usePollingTraps 等，
-见 performance-optimization.md §4.3）。C1 证伪恰恰证明：**光换官方 android Bun 底座不够**——
-android Bun 缺少 compiled-app 入口与 standalone 检测，唯一出路就是 Zig/C++ 级补全
-（补 compiled-app 入口 + standalone 检测），即回到 guysoft 自编译 Bun 路线。
+见 performance-optimization.md §4.3）。C1 曾被判证伪，但复活手术（§0.2）证明：
+**无需 Zig/C++ 级修改**——ELF 层 patch `BUN_COMPILED.size` + 向 `.rela.dyn` 追加
+`R_AARCH64_RELATIVE` 重定位，即可让官方 android Bun 底座承载 grafted module graph。
+源码编译路线仅当需要深度改造底座时才考虑。
 
 **Q: 那 probe/transplant 管线白做了吗？**
 A: 不白做。管线是**格式研究基础设施**：extract/detect/convert/patch/assemble 全套能力
 对任何 future 底座（guysoft 自编译 Bun、上游修复后的 android Bun）都直接复用——
-拼接、等长 patch、布局转换、golden 回归与验证清单与底座无关。当前产物
-（`artifacts/transplant/<ver>/opencode-native`）为纯 Bun 解释器模式，**仅作研究用**。
+拼接、等长 patch、布局转换、golden 回归与验证清单与底座无关。未 revive 的产物
+（`artifacts/transplant/<ver>/opencode-native`）为纯 Bun 解释器模式，作研究/对照用；
+经 revive 的 `opencode-native-revived` 可直接作为 opencode 运行（§0.2）。
 
 **Q: 哪些版本已验证？**
-A: 诚实边界：已实证的是 **1.3.13** 的完整管线与 1.3.14 android Bun 的证伪证据
-（见状态横幅与 `docs/performance-optimization.md` §1.2/§2）。probe 未覆盖的版本一律标
+A: 诚实边界：已实证的是 **1.3.13** 的完整管线（含 revive 复活，`--version` exit=0，
+见状态横幅与 §0.2）。probe 未覆盖的版本一律标
 **"待验证"**，落入未覆盖区间即按 §4 失败预案锁定报错，不产出未验证二进制。
 
 ## 6. 引用（不复制报告全文）
 
 - 目标架构 / 自动化方案 / 补丁集 / 7 项验证清单：`docs/performance-optimization.md` §4
 - 优化措施总览与量化预期（启动 <0.3s、TUI RSS <350MB、零 glibc）：`docs/performance-optimization.md` §7
-- 零-glibc 研究历史与结论（2026-05，与 C1 证伪一致）：`docs/native-android-research.md`
+- 零-glibc 研究历史（2026-05，早于 C1 复活，其"不可行"结论已被 §0.2 推翻）：`docs/native-android-research.md`
 - 7 项验证脚本：`scripts/transplant-verify.sh`（agent-executable，`--runtime <opencode-native>`）
 - golden 回归：`tests/transplant/test_golden.py`（fixtures 由 `scripts/fetch-fixtures.sh` 预下载）
 
