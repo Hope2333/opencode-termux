@@ -1,0 +1,46 @@
+# PKGBUILD for OpenCode Native (transplant revival line) on Termux
+# Built via scripts/package/package_pacman_native.sh (pkgver/pkgrel rewritten there).
+pkgname=opencode-native
+pkgver=0.0.0
+pkgrel=1
+pkgdesc='OpenCode native Android runtime for Termux (EXPERIMENTAL headless: run/serve only, TUI broken; default recommended provider is opencode-glibc)'
+arch=('aarch64')
+url='https://github.com/anomalyco/opencode'
+license=('MIT')
+options=('!strip' '!debug')
+
+depends=()
+conflicts=('opencode')
+provides=('opencode')
+replaces=()
+
+source=()
+sha256sums=()
+
+# Location of the revived native binary, injected by the packaging script.
+: "${OPENCODE_NATIVE_BIN:?OPENCODE_NATIVE_BIN must point to opencode-native-revived}"
+
+package() {
+    local prefix="${PREFIX:-/data/data/com.termux/files/usr}"
+    if [[ -z "$OPENCODE_NATIVE_BIN" || ! -f "$OPENCODE_NATIVE_BIN" ]]; then
+        error "OPENCODE_NATIVE_BIN not set or missing"
+        return 1
+    fi
+
+    msg "Installing native runtime from $OPENCODE_NATIVE_BIN"
+    mkdir -p "$pkgdir$prefix/bin"
+    install -m755 "$OPENCODE_NATIVE_BIN" "$pkgdir$prefix/bin/opencode"
+}
+
+post_install() {
+    echo ""
+    echo "OpenCode Native installed (EXPERIMENTAL)"
+    echo "Usage: opencode --version"
+    echo "Scope: headless only (run/serve). TUI is broken on this line."
+    echo "Requires Android API >= 28; zero glibc runtime deps."
+    echo "Default recommended alternative: package 'opencode' (glibc wrapper line)."
+}
+
+post_upgrade() {
+    post_install
+}

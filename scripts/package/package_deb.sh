@@ -53,7 +53,11 @@ Architecture: $ARCH_DEB
 Maintainer: $MAINTAINER
 Section: utils
 Priority: optional
-Description: OpenCode AI coding assistant for Termux
+Description: OpenCode AI coding assistant for Termux (glibc wrapper line, default recommended)
+ Alternative provider: opencode-native (experimental headless run/serve
+ only, TUI broken, Android API >= 28).
+Conflicts: opencode-native
+Depends: bash, ncurses
 Depends: bash, ncurses
 EOF
 
@@ -66,6 +70,7 @@ set -e
 echo "OpenCode for Termux installed"
 echo "Run: opencode --version"
 echo "Runtime: glibc (bun-termux-loader wrapped)"
+echo "Provider: glibc wrapper line (default recommended; alternative: opencode-native)"
 HOOK_RUNNER="/data/data/com.termux/files/usr/lib/opencode/tools/run-system-skills.sh"
 if [[ -x "$HOOK_RUNNER" ]]; then
   OPENCODE_HOOK_STRICT=0 OPENCODE_HOOK_ENABLE_NETWORK=0 "$HOOK_RUNNER" post_install || true
