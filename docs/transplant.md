@@ -65,6 +65,33 @@
 `XDG_DATA_HOME` 可复现验证。另注意：首次启动全新 data 目录需预留 sqlite
 migration 时间（>6s），勿误判为挂死。
 
+## 0.4 新版 `.bun` section 格式（opencode >=1.18，task-28）
+
+opencode 1.18 起二进制布局变化：文件尾不再有 standalone trailer
+（旧定位报 `trailer not found at offset ...`），module graph 改为存放在
+`.bun` PROGBITS section 内：
+
+- 节首 8B = u64 LE `BUN_COMPILED.size`；
+- 节尾 = `[Offsets32][marker16]`（Offsets 结构跨版本不变，stride 52B），
+  其后紧跟 shdr table。
+
+`transplant.py` 处理方式：
+
+1. **extract**：trailer 定位失败时回退 `extract_section_bun()`——解析 ELF64
+   节表按名找 `.bun` 节，返回去首 8B 的 payload（即 revive_patch.py
+   `--graph` 约定格式，revive 自加 u64_le(len) 前缀）；report.json 记
+   `"format": "section"`（旧路径为 `"trailer"`）。
+2. **detect**：`detect_section()` 直接从 payload 尾读 Offsets32+marker16，
+   mod_len%36/52 判 layout；bun_version 不可知记 None。
+3. **convert/patch**：复用原逻辑（payload 尾结构与旧 module-graph.bin 一致）。
+4. **assemble 跳过**：不再拼接 host bun，直接进入 revive 嫁接——底座用
+   `artifacts/transplant/android-bun/bun`（缺失时按 config/bun-bind.json
+   url_pattern 幂等下载）。
+
+实测 1.18.21：`.bun` off=0x5940000 size=0x562A621，全管线 exit=0，
+产物 `--version`=1.18.21（reloc_count=50）。旧版（≤1.3.x）trailer 路径
+不受影响，golden 回归 4/4 PASS。证据：`.omo/evidence/task-28-section-format.log`。
+
 ## 1. 前置条件
 
 | 依赖 | 用途 | 检查 |
