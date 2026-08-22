@@ -17,7 +17,8 @@ Android-specific deviations from upstream (both binary-verified, see
      Appending right after file end would turn bss vaddrs into file-backed
      graph bytes and corrupt globals (v1 hang). We therefore place the blob
      past max(file_end, bss_end) and keep the old bss range zero-filled.
-  2. PIE relocation: the standalone detection chain dereferences
+  2. PIE relocation (--size-mode reloc, default): bun <=1.3.x android
+     dereferences
      BUN_COMPILED.size as an ABSOLUTE pointer (upstream compiled outputs are
      non-PIE where vaddr == absolute). Android bun is PIE, so we register an
      R_AARCH64_RELATIVE dynamic relocation (r_offset = .bun addr,
@@ -27,9 +28,18 @@ Android-specific deviations from upstream (both binary-verified, see
      Binary truth: getter @0x3829310 returns adrp 0x5568000 (+0, NOT +8);
      chain does ldr x9,[x0]; ldr x8,[x9] -> len prefix inside blob.
 
+  3. Plain offset (--size-mode plain-offset): bun >=1.4.x flipped the
+     consumer semantics. Every getter call site (e.g. 0xebd098 / 0xf44254 in
+     bun 1.4.0 android) loads x19 = *(u64*)&.bun[0], then dl_iterate_phdr()
+     locates the PT_LOAD covering &.bun[0] and computes abs = dlpi_addr + x19
+     before reading the len prefix. The size field must hold the UNBIASED
+     payload vaddr as a plain constant - no relocation entry, DT_RELA
+     untouched. Grafting with the 1.3.x reloc scheme onto 1.4.0 SIGSEGVs
+     pre-init at bias + <relocated value> (task-w4a-bun140-base.log).
+
 Usage:
   python3 revive_patch.py --bun <android-bun> --graph <module-graph.bin> \
-                          --out <output-elf>
+                          --out <output-elf> [--size-mode reloc|plain-offset]
 """
 import argparse
 import os
@@ -117,6 +127,12 @@ def main() -> None:
     ap.add_argument("--bun", required=True, help="official android bun ELF (base)")
     ap.add_argument("--graph", required=True, help="module-graph.bin ([graph][Offsets32][trailer16])")
     ap.add_argument("--out", required=True, help="output ELF path")
+    ap.add_argument("--size-mode", choices=["reloc", "plain-offset"], default="reloc",
+                    help="how BUN_COMPILED.size (.bun[0]) is published: "
+                         "'reloc' = R_AARCH64_RELATIVE absolute pointer (bun "
+                         "<=1.3.x android PIE chain dereferences .bun[0] "
+                         "directly); 'plain-offset' = constant unbiased payload "
+                         "vaddr, runtime adds dlpi_addr itself (bun >=1.4.x)")
     args = ap.parse_args()
 
     with open(args.bun, "rb") as f:
@@ -178,60 +194,74 @@ def main() -> None:
     out.extend(b"\x00" * (new_off - len(bun_bytes)))
     out.extend(blob)
 
-    # --- extended .rela.dyn with one R_AARCH64_RELATIVE entry for the size field ---
-    dyn_phdr = next((p for p in phdrs if p["type"] == PT_DYNAMIC), None)
-    if dyn_phdr is None:
-        fail("no PT_DYNAMIC")
-    dt = {t: v for _o, t, v in find_dynamic_entries(out, dyn_phdr)}
-    if DT_RELA not in dt or DT_RELASZ not in dt:
-        fail("DT_RELA/DT_RELASZ missing")
-    old_rela_off, old_rela_sz = dt[DT_RELA], dt[DT_RELASZ]
-    if old_rela_off != old_rela_sz and False:
-        pass  # offset/vaddr equality checked below via identity mapping of seg0
-    if old_rela_off % 8:
-        fail(f"DT_RELA not 8-aligned: {old_rela_off:#x}")
-    old_table = bytes(out[old_rela_off:old_rela_off + old_rela_sz])
-    if len(old_table) != old_rela_sz:
-        fail("existing rela table not fully inside file")
+    append_end = new_off + len(blob)           # identity mapping: vaddr == file offset
 
-    rela_vaddr = new_off + len(blob)           # identity mapping: vaddr == file offset
-    add_entry = struct.pack("<QQq", bun_sec["addr"], R_AARCH64_RELATIVE, new_off)
-    new_table = old_table + add_entry
+    if args.size_mode == "plain-offset":
+        # bun >=1.4.x flipped consumer semantics: every getter call site loads
+        # x19 = *(u64*)&.bun[0], finds the covering PT_LOAD via dl_iterate_phdr,
+        # and dereferences dlpi_addr + x19. Publish the UNBIASED payload vaddr
+        # as a plain constant; DT_RELA stays untouched.
+        struct.pack_into("<Q", out, bun_sec["addr"], new_off)
+        print(f"      size field: plain-offset {new_off:#x} @ {bun_sec['addr']:#x} "
+              f"(bun>=1.4.x runtime adds dlpi_addr itself)")
+        size_note = f"plain-offset {new_off:#x}; runtime computes load_bias + {new_off:#x}"
+    else:
+        # --- extended .rela.dyn with one R_AARCH64_RELATIVE entry for the size field ---
+        dyn_phdr = next((p for p in phdrs if p["type"] == PT_DYNAMIC), None)
+        if dyn_phdr is None:
+            fail("no PT_DYNAMIC")
+        dt = {t: v for _o, t, v in find_dynamic_entries(out, dyn_phdr)}
+        if DT_RELA not in dt or DT_RELASZ not in dt:
+            fail("DT_RELA/DT_RELASZ missing")
+        old_rela_off, old_rela_sz = dt[DT_RELA], dt[DT_RELASZ]
+        if old_rela_off != old_rela_sz and False:
+            pass  # offset/vaddr equality checked below via identity mapping of seg0
+        if old_rela_off % 8:
+            fail(f"DT_RELA not 8-aligned: {old_rela_off:#x}")
+        old_table = bytes(out[old_rela_off:old_rela_off + old_rela_sz])
+        if len(old_table) != old_rela_sz:
+            fail("existing rela table not fully inside file")
 
-    out.extend(new_table)
-    rela_end = rela_vaddr + len(new_table)
+        rela_vaddr = append_end                 # identity mapping: vaddr == file offset
+        add_entry = struct.pack("<QQq", bun_sec["addr"], R_AARCH64_RELATIVE, new_off)
+        new_table = old_table + add_entry
 
-    # rewrite DT_RELA / DT_RELASZ in place (PT_DYNAMIC is identity-mapped too)
-    patched_dt = False
-    for off, tag, _val in find_dynamic_entries(out, dyn_phdr):
-        if tag == DT_RELA:
-            struct.pack_into("<Q", out, off + 8, rela_vaddr)
-            patched_dt = True
-        elif tag == DT_RELASZ:
-            struct.pack_into("<Q", out, off + 8, len(new_table))
-    if not patched_dt:
-        fail("failed to rewrite DT_RELA")
-    if dt.get(DT_RELAENT) != RELAENT:
-        fail(f"unexpected DT_RELAENT {dt.get(DT_RELAENT)}")
+        out.extend(new_table)
+        append_end = rela_vaddr + len(new_table)
+
+        # rewrite DT_RELA / DT_RELASZ in place (PT_DYNAMIC is identity-mapped too)
+        patched_dt = False
+        for off, tag, _val in find_dynamic_entries(out, dyn_phdr):
+            if tag == DT_RELA:
+                struct.pack_into("<Q", out, off + 8, rela_vaddr)
+                patched_dt = True
+            elif tag == DT_RELASZ:
+                struct.pack_into("<Q", out, off + 8, len(new_table))
+        if not patched_dt:
+            fail("failed to rewrite DT_RELA")
+        if dt.get(DT_RELAENT) != RELAENT:
+            fail(f"unexpected DT_RELAENT {dt.get(DT_RELAENT)}")
+
+        print(f"      rela table: {old_rela_off:#x}(n={old_rela_sz//RELAENT}) -> "
+              f"{rela_vaddr:#x}(n={len(new_table)//RELAENT}) += RELATIVE off={bun_sec['addr']:#x} addend={new_off:#x}")
+        size_note = (f"BUN_COMPILED.size left 0 pre-link, filled by ld.so "
+                     f"relocation = load_bias + {new_off:#x}")
 
     # --- extend the writable PT_LOAD over everything appended ---
-    new_filesz = rela_end - load["offset"]
+    new_filesz = append_end - load["offset"]
     new_memsz = max(old_memsz, new_filesz)
     struct.pack_into("<Q", out, load["hdr_off"] + 8 + 8 * 3, new_filesz)   # p_filesz
     struct.pack_into("<Q", out, load["hdr_off"] + 8 + 8 * 4, new_memsz)    # p_memsz
 
     print(f"[5/6] PT_LOAD extended: filesz {old_filesz:#x}->{new_filesz:#x} "
           f"memsz {old_memsz:#x}->{new_memsz:#x}")
-    print(f"      rela table: {old_rela_off:#x}(n={old_rela_sz//RELAENT}) -> "
-          f"{rela_vaddr:#x}(n={len(new_table)//RELAENT}) += RELATIVE off={bun_sec['addr']:#x} addend={new_off:#x}")
     print(f"      blob: [{new_off:#x}, {new_off+len(blob):#x})  "
-          f"(u64 len={len(payload)} @ {new_off:#x}; size-field reloc target)")
+          f"(u64 len={len(payload)} @ {new_off:#x}; size-field target)")
 
     with open(args.out, "wb") as f:
         f.write(out)
     os.chmod(args.out, 0o755)
-    print(f"[6/6] wrote {args.out} ({len(out)} B); BUN_COMPILED.size left 0 pre-link, "
-          f"filled by ld.so relocation = load_bias + {new_off:#x}")
+    print(f"[6/6] wrote {args.out} ({len(out)} B); {size_note}")
 
 
 if __name__ == "__main__":
