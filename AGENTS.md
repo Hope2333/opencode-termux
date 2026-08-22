@@ -26,6 +26,7 @@ opencode-termux/
 | Stage install tree | `scripts/build.sh`, `scripts/common.sh` | writes staged prefix + build metadata |
 | Build DEB package | `scripts/package/package_deb.sh`, `packing/deb/DEBIAN/control` | postinst hook calls system-skill runner |
 | Build pacman package | `scripts/package/package_pacman.sh`, `packing/pacman/PKGBUILD*` | dynamic pkgver/pkgrel rewrite + makepkg flow |
+| Native provider packaging | `scripts/package/package_deb_native.sh`, `scripts/package/package_pacman_native.sh`, `packing/pacman/PKGBUILD.native` | opencode-native deb/pacman providers (experimental headless); glibc line stays default recommended (see docs/dual-track-install.md) |
 | System-skill hook behavior | `scripts/hooks/run-system-skills.sh`, `packing/manifests/system-skills/*.json` | strict/network flags default to safe mode |
 | Plugin lifecycle | `tools/plugin-manager.sh`, `tools/plugin-selfcheck.sh`, `docs/plugin-management.md` | local file plugin path + snapshot rollback model |
 | Upgrade/downgrade simulation | `tools/upgrade-matrix.sh`, `docs/execution-checklist.md` | machine2 lifecycle validation with cached deb artifacts |

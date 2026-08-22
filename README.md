@@ -117,8 +117,16 @@ See `docs/native-android-research.md` for full research details.
 
 ## Install
 
+Two packaging tracks provide the same `opencode` command — pick ONE provider:
+
+- **`opencode` (glibc wrapper line) — default recommended.** Mature, full TUI.
+- **`opencode-native` (transplant revival line) — experimental.** Zero glibc deps,
+  Android API >= 28, headless only (`run`/`serve`); TUI is broken. Installing it
+  replaces the glibc provider (and vice versa).
+
 ```bash
-# Path A: apt/pkg (recommended)
+# Track 1 (default recommended): glibc wrapper packages
+# Path A: apt/pkg
 apt install -y glibc-repo
 apt update
 apt install -y glibc openssl-glibc
@@ -128,7 +136,13 @@ dpkg -i /path/to/opencode_<version>_aarch64.deb
 pacman -Syu
 pacman -S glibc openssl-glibc
 pacman -U /path/to/opencode-<version>-aarch64.pkg.tar.xz
+
+# Track 2 (experimental): native provider — headless only, TUI broken
+dpkg -i /path/to/opencode-native_<version>_aarch64.deb
+# or: pacman -U /path/to/opencode-native-<version>-1-aarch64.pkg.tar.xz
 ```
+
+See `docs/dual-track-install.md` for provider selection details.
 
 Releases: https://github.com/Hope2333/opencode-termux/releases
 
