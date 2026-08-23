@@ -254,11 +254,11 @@ release-upload:
 		exit 1; \
 	fi
 	@if [ "$(NATIVE)" = "1" ]; then \
-		if [ ! -f "$(NATIVE_DIR)/opencode-native" ] || [ ! -f "$(NATIVE_DIR)/opencode-native-revived" ] || [ -z "$$(ls -A $(NATIVE_DIR) 2>/dev/null)" ]; then \
+		if [ ! -f "$(NATIVE_DIR)/opencode-native-revived" ] || [ -z "$$(ls -A $(NATIVE_DIR) 2>/dev/null)" ]; then \
 			echo "Error: NATIVE=1 but $(NATIVE_DIR) is missing or empty (anti-empty-release)" >&2; \
 			exit 1; \
 		fi; \
-		echo "NATIVE assets found: $(NATIVE_DIR)/opencode-native + report.json + watcher pkg"; \
+		echo "NATIVE assets found: $(NATIVE_DIR)/opencode-native-revived + report.json + watcher pkg"; \
 	fi
 	@echo "=== Release upload: TAG=$(TAG) VERS=$(VERS) VER=$(VER) PKG=$(PKG) REPO=$(REPO) NATIVE=$(NATIVE) ==="
 	@if [ -n "$(VERS)" ]; then \
@@ -284,7 +284,7 @@ release-upload:
 	echo "    glibc wrapper line (default recommended): opencode_<ver>_aarch64.deb / opencode-<ver>-aarch64.pkg.tar.*"; \
 	echo "    native experimental headless line: opencode-<ver>-aarch64-android-native / opencode-native_<ver>_aarch64.deb / opencode-native-<ver>-*-aarch64.pkg.* / opencode-<ver>-report.json / opencode-<ver>-watcher.tar.gz"; \
 	if [ "$(NATIVE)" = "1" ]; then \
-		cp "$(NATIVE_DIR)/opencode-native" "$(RELEASE_DIR)/opencode-$(NATIVE_VER)-aarch64-android-native"; \
+		cp "$(NATIVE_DIR)/opencode-native-revived" "$(RELEASE_DIR)/opencode-$(NATIVE_VER)-aarch64-android-native"; \
 		cp "$(NATIVE_DIR)/report.json" "$(RELEASE_DIR)/opencode-$(NATIVE_VER)-report.json"; \
 		tar czf "$(RELEASE_DIR)/opencode-$(NATIVE_VER)-watcher.tar.gz" -C tools/watcher watcher shim.js install.sh; \
 		echo "=== Building native provider packages (opencode-native) ==="; \
