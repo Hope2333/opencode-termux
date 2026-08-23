@@ -135,9 +135,9 @@ deb:
 	MAINTAINER='$(PACKAGER_NAME)' ./scripts/package/package_deb.sh
 	@if [ "$(OUTPUT_ROOT)" != "$(CURDIR)/packing" ]; then \
 		if [ "$(MIX)" = "1" ]; then \
-			mkdir -p "$(OUTPUT_ROOT)" && cp -f packing/dpkg/opencode_*.deb "$(OUTPUT_ROOT)/"; \
+			mkdir -p "$(OUTPUT_ROOT)" && cp -f packing/dpkg/opencode_$(VER)_aarch64.deb "$(OUTPUT_ROOT)/"; \
 		else \
-			mkdir -p "$(OUTPUT_ROOT)/deb" && cp -f packing/dpkg/opencode_*.deb "$(OUTPUT_ROOT)/deb/"; \
+			mkdir -p "$(OUTPUT_ROOT)/deb" && cp -f packing/dpkg/opencode_$(VER)_aarch64.deb "$(OUTPUT_ROOT)/deb/"; \
 		fi; \
 	fi
 
@@ -146,9 +146,9 @@ pacman:
 	PACKAGER_NAME='$(PACKAGER_NAME)' ./scripts/package/package_pacman.sh
 	@if [ "$(OUTPUT_ROOT)" != "$(CURDIR)/packing" ]; then \
 		if [ "$(MIX)" = "1" ]; then \
-			mkdir -p "$(OUTPUT_ROOT)" && cp -f packing/pacman/opencode-*.pkg.* "$(OUTPUT_ROOT)/"; \
+			mkdir -p "$(OUTPUT_ROOT)" && cp -f packing/pacman/opencode-$(VER)-*.pkg.* "$(OUTPUT_ROOT)/"; \
 		else \
-			mkdir -p "$(OUTPUT_ROOT)/pacman" && cp -f packing/pacman/opencode-*.pkg.* "$(OUTPUT_ROOT)/pacman/"; \
+			mkdir -p "$(OUTPUT_ROOT)/pacman" && cp -f packing/pacman/opencode-$(VER)-*.pkg.* "$(OUTPUT_ROOT)/pacman/"; \
 		fi; \
 	fi
 
