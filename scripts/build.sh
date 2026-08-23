@@ -44,7 +44,9 @@ if [[ -f "$BUNDLE_INPUT" ]]; then
 	log "installed OpenCode JS bundle"
 fi
 
-install -m 755 "$ROOT_DIR/scripts/launcher.sh" "$PREFIX_DIR/bin/opencode"
+# bin-direct: packaged bin/opencode IS the wrapped runtime ELF itself
+ln -f "$PREFIX_DIR/lib/opencode/runtime/opencode" "$PREFIX_DIR/bin/opencode" 2>/dev/null || \
+	install -m 755 "$PREFIX_DIR/lib/opencode/runtime/opencode" "$PREFIX_DIR/bin/opencode"
 if [[ -f "$ROOT_DIR/tools/plugin-manager.sh" ]]; then
 	install -m 755 "$ROOT_DIR/tools/plugin-manager.sh" "$PREFIX_DIR/lib/opencode/tools/plugin-manager.sh"
 fi
