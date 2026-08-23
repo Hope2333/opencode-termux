@@ -58,7 +58,6 @@ Description: OpenCode AI coding assistant for Termux (glibc wrapper line, defaul
  only, TUI broken, Android API >= 28).
 Conflicts: opencode-native
 Depends: bash, ncurses
-Depends: bash, ncurses
 EOF
 
 INSTALLED_SIZE=$(du -sk "$DEB_ROOT" | cut -f1)
