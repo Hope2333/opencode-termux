@@ -189,7 +189,16 @@ def main() -> None:
           f"filesz={old_filesz:#x} memsz={old_memsz:#x} | bss_end={bss_end:#x} -> new_off={new_off:#x}")
 
     # --- build output: zero-pad over old bss extent, append blob ---
-    blob = struct.pack("<Q", len(payload)) + payload
+    if args.size_mode == "plain-offset":
+        # W7a root-cause fix: the graph file already opens with its own u64
+        # mg_size prefix (== len(payload)-8), so wrapping it in another
+        # pack(len(payload)) published TWO u64s at new_off (mg_size+8 then a
+        # duplicate mg_size). Publish EXACTLY ONE prefix: keep payload
+        # verbatim (its leading u64 IS mg_size) and pad 8 zero bytes so the
+        # total appended length is unchanged.
+        blob = payload + b"\x00" * 8
+    else:
+        blob = struct.pack("<Q", len(payload)) + payload
     out = bytearray(bun_bytes)
     out.extend(b"\x00" * (new_off - len(bun_bytes)))
     out.extend(blob)
