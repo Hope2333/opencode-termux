@@ -14,6 +14,8 @@ MIX ?= 0
 # Release upload target variables
 TAG ?= Push$(shell date +%y%m%d)
 REPO ?= Hope2333/opencode-termux
+# Release staging dir: /tmp is not app-writable on Termux; honor TMPDIR
+RELEASE_DIR ?= $(if $(TMPDIR),$(TMPDIR),/tmp)/oc-release-$(TAG)
 NATIVE ?=
 VER_IS_SET = $(filter-out file default,$(origin VER))
 NATIVE_VER = $(if $(VER_IS_SET),$(VER),$(VERS))
@@ -260,7 +262,7 @@ release-upload:
 	fi
 	@echo "=== Release upload: TAG=$(TAG) VERS=$(VERS) VER=$(VER) PKG=$(PKG) REPO=$(REPO) NATIVE=$(NATIVE) ==="
 	@if [ -n "$(VERS)" ]; then \
-		$(MAKE) batch VERS='$(VERS)' PKG='$(PKG)' ODIR='/tmp/oc-release-$(TAG)' MIX=1; \
+		$(MAKE) batch VERS='$(VERS)' PKG='$(PKG)' ODIR='$(RELEASE_DIR)' MIX=1; \
 	fi
 	@echo "=== Uploading to release $(TAG) ==="; \
 	upload_failed=0; \
@@ -271,26 +273,26 @@ release-upload:
 		echo "Release $(TAG) exists; rebinding tag to HEAD via gh api (HTTPS, SSH 22 blocked)..."; \
 		gh api -X PATCH "repos/$(REPO)/git/refs/tags/$(TAG)" -f sha="$$(git rev-parse HEAD)" >/dev/null 2>&1 || echo "  (tag rebind skipped: API refused or already current)"; \
 	fi; \
-	for f in /tmp/oc-release-$(TAG)/opencode_*.deb /tmp/oc-release-$(TAG)/opencode-*.pkg.*; do \
+	for f in $(RELEASE_DIR)/opencode_*.deb $(RELEASE_DIR)/opencode-*.pkg.*; do \
 		if [ -f "$$f" ]; then \
 			echo "  uploading $$(basename $$f)..."; \
 			if ! gh release upload "$(TAG)" "$$f" --repo "$(REPO)" --clobber 2>&1; then upload_failed=1; fi; \
 		fi; \
 	done; \
-	mkdir -p "/tmp/oc-release-$(TAG)"; \
+	mkdir -p "$(RELEASE_DIR)"; \
 	echo "--- Dual-track asset naming ---"; \
 	echo "    glibc wrapper line (default recommended): opencode_<ver>_aarch64.deb / opencode-<ver>-aarch64.pkg.tar.*"; \
 	echo "    native experimental headless line: opencode-<ver>-aarch64-android-native / opencode-native_<ver>_aarch64.deb / opencode-native-<ver>-*-aarch64.pkg.* / opencode-<ver>-report.json / opencode-<ver>-watcher.tar.gz"; \
 	if [ "$(NATIVE)" = "1" ]; then \
-		cp "$(NATIVE_DIR)/opencode-native" "/tmp/oc-release-$(TAG)/opencode-$(NATIVE_VER)-aarch64-android-native"; \
-		cp "$(NATIVE_DIR)/report.json" "/tmp/oc-release-$(TAG)/opencode-$(NATIVE_VER)-report.json"; \
-		tar czf "/tmp/oc-release-$(TAG)/opencode-$(NATIVE_VER)-watcher.tar.gz" -C tools/watcher watcher shim.js install.sh; \
+		cp "$(NATIVE_DIR)/opencode-native" "$(RELEASE_DIR)/opencode-$(NATIVE_VER)-aarch64-android-native"; \
+		cp "$(NATIVE_DIR)/report.json" "$(RELEASE_DIR)/opencode-$(NATIVE_VER)-report.json"; \
+		tar czf "$(RELEASE_DIR)/opencode-$(NATIVE_VER)-watcher.tar.gz" -C tools/watcher watcher shim.js install.sh; \
 		echo "=== Building native provider packages (opencode-native) ==="; \
 		MAINTAINER='$(PACKAGER_NAME)' VERSION='$(NATIVE_VER)' ./scripts/package/package_deb_native.sh; \
 		PACKAGER_NAME='$(PACKAGER_NAME)' VERSION='$(NATIVE_VER)' ./scripts/package/package_pacman_native.sh; \
-		cp packing/dpkg-native/opencode-native_*.deb "/tmp/oc-release-$(TAG)/"; \
-		cp packing/pacman/opencode-native-*.pkg.* "/tmp/oc-release-$(TAG)/"; \
-		for f in "/tmp/oc-release-$(TAG)/opencode-$(NATIVE_VER)-aarch64-android-native" "/tmp/oc-release-$(TAG)/opencode-$(NATIVE_VER)-report.json" "/tmp/oc-release-$(TAG)/opencode-$(NATIVE_VER)-watcher.tar.gz" /tmp/oc-release-$(TAG)/opencode-native_*.deb /tmp/oc-release-$(TAG)/opencode-native-*.pkg.*; do \
+		cp packing/dpkg-native/opencode-native_*.deb "$(RELEASE_DIR)/"; \
+		cp packing/pacman/opencode-native-*.pkg.* "$(RELEASE_DIR)/"; \
+		for f in "$(RELEASE_DIR)/opencode-$(NATIVE_VER)-aarch64-android-native" "$(RELEASE_DIR)/opencode-$(NATIVE_VER)-report.json" "$(RELEASE_DIR)/opencode-$(NATIVE_VER)-watcher.tar.gz" $(RELEASE_DIR)/opencode-native_*.deb $(RELEASE_DIR)/opencode-native-*.pkg.*; do \
 			echo "  uploading $$(basename $$f)..."; \
 			if ! gh release upload "$(TAG)" "$$f" --repo "$(REPO)" --clobber 2>&1; then upload_failed=1; fi; \
 		done; \
