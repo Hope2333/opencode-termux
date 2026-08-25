@@ -132,6 +132,23 @@ def run_transplant(ver: str, tgz: Path, no_execve: bool = False) -> None:
     subprocess.run(cmd, check=True, capture_output=True, text=True)
 
 
+def ensure_pinned_bun_cache() -> None:
+    """Drop any pre-staged android-bun cache so transplant.py re-downloads
+    its own pinned base (bun-v1.3.14 — the exact base the goldens were
+    generated on).
+
+    The CI workflow downloads the bun-bind.json target (e.g. v1.4.0) into
+    artifacts/transplant/android-bun/bun-linux-aarch64-android.zip — the same
+    path transplant.py's download_bun() treats as its pinned-URL cache. A
+    stale zip there silently grafts goldens onto the wrong base bun and every
+    sha256 mismatches on cross-arch hosts.
+    """
+    cache = ARTIFACT_ROOT / "android-bun"
+    for name in ("bun", "bun-linux-aarch64-android.zip"):
+        p = cache / name
+        if p.exists():
+            p.unlink()
+
 def rebuild_artifact(ver: str, fixtures_dir: Path) -> None:
     """Rebuild a missing artifact from local fixtures (no network)."""
     if ver == SYNTH_VER:
@@ -188,6 +205,7 @@ def main(argv=None) -> int:
         print(f"FAIL: no golden versions under {golden_dir}", file=sys.stderr)
         return 1
 
+    ensure_pinned_bun_cache()
     failures = []
     for ver in versions:
         expected = (golden_dir / ver / "expected.sha256").read_text().strip()
