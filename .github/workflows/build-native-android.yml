@@ -54,13 +54,14 @@ jobs:
           npm pack "opencode-linux-arm64@$VER" --pack-destination work/
           ls -la work/
 
-      - name: Download android Bun (bun-bind.json target)
-        run: |
-          BUN_VER="${{ steps.bun.outputs.bun_ver }}"
-          URL="https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VER}/bun-linux-aarch64-android.zip"
-          mkdir -p artifacts/transplant/android-bun
-          curl -fL "$URL" -o artifacts/transplant/android-bun/bun-linux-aarch64-android.zip
-          ls -la artifacts/transplant/android-bun/
+      # NOTE: intentionally NO pre-staging of the android Bun zip here.
+      # transplant.py pins its own BUN_URL and downloads idempotently into its
+      # own cache dir. Pre-seeding artifacts/transplant/android-bun/ collides
+      # with that cache path (known cache-path collision): the pipeline then
+      # skips its own download and silently grafts whatever base was seeded.
+      # The default revive mode is `reloc`, which requires a <=1.3.x base
+      # (reloc+1.4.0 = SIGSEGV at runtime despite sha self-consistency);
+      # letting the pipeline self-download keeps base and mode matched.
 
       - name: Run transplant pipeline (--no-execve)
         run: |
