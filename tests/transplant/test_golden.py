@@ -156,7 +156,8 @@ def rebuild_artifact(ver: str, fixtures_dir: Path) -> None:
         raise SystemExit(
             f"golden {ver}: fixture {tgz} missing — run scripts/fetch-fixtures.sh first"
         )
-    run_transplant(ver, tgz)
+    # --no-execve: artifact is aarch64; execve probe fails on x86_64 hosts.
+    run_transplant(ver, tgz, no_execve=True)
 
 
 def main(argv=None) -> int:
