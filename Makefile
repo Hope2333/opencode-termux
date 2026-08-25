@@ -216,6 +216,20 @@ transplant:
 	fi
 	@echo "==> transplant VER=$(VER)"
 	python3 tools/transplant/transplant.py all --ver $(VER) --tgz $${TMPDIR:-/tmp}/$$(npm pack opencode-linux-arm64@$(VER) --pack-destination $${TMPDIR:-/tmp} 2>/dev/null | tail -n1)
+	@# W7c2: swap bionic libopentui.so into the grafted binary so OpenTUI renders
+	@# on Android/bionic. WARN-skip when the bionic build is absent.
+	@if [ -f artifacts/transplant/opentui-bionic/libopentui.so ]; then \
+		echo "==> swapping bionic libopentui (tools/transplant/swap_tui.py)"; \
+		strip_bin=$$(command -v llvm-strip || command -v strip); \
+		cp artifacts/transplant/opentui-bionic/libopentui.so $${TMPDIR:-/tmp}/libopentui-strip.so; \
+		$$strip_bin --strip-debug $${TMPDIR:-/tmp}/libopentui-strip.so; \
+		python3 tools/transplant/swap_tui.py \
+			--binary $(NATIVE_DIR)/opencode-native-revived \
+			--tui-lib $${TMPDIR:-/tmp}/libopentui-strip.so \
+			--out $(NATIVE_DIR)/opencode-native-tui; \
+	else \
+		echo "WARN: artifacts/transplant/opentui-bionic/libopentui.so not found; skipping TUI swap"; \
+	fi
 transplant: VER?= latest
 
 # transplant-check: golden regression across layout families
