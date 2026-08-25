@@ -18,7 +18,7 @@ on:
       version:
         description: "opencode version (e.g. 1.3.13)"
         required: false
-        default: "1.3.13"
+        default: "1.18.21"
 
 env:
   BUN_BIND_JSON: tools/transplant/config/bun-bind.json
@@ -68,6 +68,23 @@ jobs:
           TGZ="$(ls work/opencode-linux-arm64-*.tgz | head -1)"
           python3 tools/transplant/transplant.py all --ver "$VER" --tgz "$TGZ" --no-execve
           ls -la artifacts/transplant/"$VER"/
+
+      - name: Revive grafted binary (runnable on device)
+        run: |
+          VER="${{ github.event.inputs.version }}"
+          mkdir -p work/android-bun
+          unzip -o artifacts/transplant/android-bun/bun-linux-aarch64-android.zip -d work/android-bun
+          BUN_VER="${{ steps.bun.outputs.bun_ver }}"
+          MAJOR_MINOR="${BUN_VER%.*}"
+          if [ "${MAJOR_MINOR%%.*}" -ge 1 ] && [ "${MAJOR_MINOR#*.}" -ge 4 ]; then SIZE_MODE=plain-offset; else SIZE_MODE=reloc; fi
+          echo "size-mode=$SIZE_MODE (base bun v$BUN_VER)"
+          python3 tools/transplant/revive_patch.py \
+            --bun work/android-bun/bun-linux-aarch64-android/bun \
+            --graph "artifacts/transplant/$VER/module-graph.bin" \
+            --out "artifacts/transplant/$VER/opencode-native-revived" \
+            --size-mode "$SIZE_MODE"
+          ls -la "artifacts/transplant/$VER/"
+          echo "[ci-trial] revive ok"
 
       - name: Ensure golden fixtures
         run: |
