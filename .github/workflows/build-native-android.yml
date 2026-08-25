@@ -69,22 +69,14 @@ jobs:
           python3 tools/transplant/transplant.py all --ver "$VER" --tgz "$TGZ" --no-execve
           ls -la artifacts/transplant/"$VER"/
 
-      - name: Revive grafted binary (runnable on device)
-        run: |
-          VER="${{ github.event.inputs.version }}"
-          mkdir -p work/android-bun
-          unzip -o artifacts/transplant/android-bun/bun-linux-aarch64-android.zip -d work/android-bun
-          BUN_VER="${{ steps.bun.outputs.bun_ver }}"
-          MAJOR_MINOR="${BUN_VER%.*}"
-          if [ "${MAJOR_MINOR%%.*}" -ge 1 ] && [ "${MAJOR_MINOR#*.}" -ge 4 ]; then SIZE_MODE=plain-offset; else SIZE_MODE=reloc; fi
-          echo "size-mode=$SIZE_MODE (base bun v$BUN_VER)"
-          python3 tools/transplant/revive_patch.py \
-            --bun work/android-bun/bun-linux-aarch64-android/bun \
-            --graph "artifacts/transplant/$VER/module-graph.bin" \
-            --out "artifacts/transplant/$VER/opencode-native-revived" \
-            --size-mode "$SIZE_MODE"
-          ls -la "artifacts/transplant/$VER/"
-          echo "[ci-trial] revive ok"
+      # NOTE: no separate revive step here. `transplant.py all` already runs the
+      # revive graft internally (cmd_all step 6) and records it in report.json
+      # steps.revive; re-running revive_patch.py with a manually computed
+      # --size-mode overwrote that verified output and broke artifact vs
+      # report.json self-consistency (double-revive bug, fixed 2026-08-25).
+      # Size-mode knowledge for manual debugging: revive_patch.py default is
+      # `reloc`; bun >= 1.4 base may need `plain-offset` -- let transplant.py's
+      # internal logic decide, do not guess in CI.
 
       - name: Ensure golden fixtures
         run: |
@@ -104,7 +96,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: transplant-${{ github.event.inputs.version }}
-          path: artifacts/transplant/
+          path: artifacts/transplant/${{ github.event.inputs.version }}/
           retention-days: 30
 
       - name: Write status (attempt-based evidence)
