@@ -1,14 +1,21 @@
 # transplant — native-android 移植操作手册
 
-> [!IMPORTANT] 状态横幅：C1 路线**已复活**（revive 手术实证成功）
+> [!IMPORTANT] 状态横幅：C1 路线**已复活且全链产品化**（revive 手术实证 + TUI 可用 + alpha 发布）
 >
-> **C1 路线 = 用官方预编译 android Bun（v1.3.14，89.8MB，Bionic 直跑）作为底座，
-> 与 opencode 的 module graph 拼接成单个可 execve 的 ELF**（docs/performance-optimization.md §1.2/§4.1）。
+> **C1 路线 = 用官方预编译 android Bun（Bionic 直跑）作为底座，
+> 与 opencode 的 module graph 拼接/嫁接成单个可 execve 的 ELF**（docs/performance-optimization.md §1.2/§4.1）。
 >
-> **当前结论：可行。** 管线已集成 `revive` 步骤
-> （extract→detect→convert(if 36)→patch→assemble→**revive**→verify），实测
-> `artifacts/transplant/1.3.13/opencode-native-revived --version` → `1.3.13`（exit=0；
-> 手术实现 `tools/transplant/revive_patch.py`，commit `57ddee1`）。
+> **当前结论：可行，已产品化。** 管线一条龙
+> （extract→detect→convert(if 36)→patch→assemble→**revive**→verify），手术实现
+> `tools/transplant/revive_patch.py`（commit `57ddee1`）。双格式支持：旧 trailer 格式
+> （1.3.13 实证）与新版 `.bun` section 格式（opencode ≥1.18，1.18.21 实证，
+> reloc_count=50）；底座绑定 `tools/transplant/config/bun-bind.json` target=1.4.0
+> （commit b270d11 自 1.3.14 升级；**新版格式图必须用 ≥1.4 底座**）。
+> **TUI 完整可用**：swap_tui.py 等长注入 NDK 构建的 bionic libopentui.so 后完整渲染
+> （W10a 深度冒烟 5/5）。发布双渠道：stable=Push260822 双轨包；alpha=native-alpha-260825
+> prerelease（native 线长期定档 alpha pre-release，维护主线 pure/glibc）。
+> CI：`.github/workflows/build-native-android.yml`（workflow_dispatch，evidence-only
+> --no-execve），最新 run 32831119197 success。
 > 早前的"三重证伪"结论**已被推翻**——真因是 assemble 从未 patch `.bun` 节的
 > `BUN_COMPILED.size`，而 standalone 检测链在 android bun 中**完整存在**
 > （证伪历史留档见 §0.1，手术细节见 §0.2，遗留问题见 §0.3）。
@@ -48,15 +55,22 @@
    `R_AARCH64_RELATIVE` 重定位（`r_offset=0x5568000`、type=`1027`、
    `addend=payload vaddr`），由动态链接器加载时完成重定位，ASLR 安全。
 
-术后验证：`opencode-native-revived --version` → `1.3.13`，exit=0。
+**--size-mode 语义（按底座版本自动选择）**：`revive_patch.py --size-mode reloc|plain-offset`
+——≤1.3.x 底座走 reloc 重定位（上述第 2 点）；≥1.4.x 底座走 plain-offset 直写偏移
+（新版 `.bun` section 格式，见 §0.4）。管线按绑定的底座版本自动选择语义。
+
+术后验证（双格式均 exit=0）：trailer 路径 `1.3.13`；section 路径 `1.18.21`
+（证据 `.omo/evidence/task-28-section-format.log`）。
 
 ## 0.3 遗留问题
 
 | 编号 | 问题 | 说明 |
 |---|---|---|
 | #4 | `serve` 报 `Configuration is invalid` | 配置 schema 版本差异所致，见下方「serve 故障排查注记」 |
-| #1 | 启动 1965ms，超出 <300ms 目标 | module graph 全量解析慢 |
-| #7 | 冷启动 2423ms，超出 <2s 目标 | module graph 全量解析慢 |
+| #1 | 启动 ~1s 量级（`--version` 首试 1965ms） | 归因 Phase B bootstrap ~220ms + Phase C JS 求值 ~820ms；<300ms 目标需上游 Bun 改造，当前不可达（W3 报告），按 ~1s 现实验收 |
+| #7 | 冷启动 ~2s 量级（首测 2423ms） | module graph 全量解析慢；随上游优化跟进 |
+
+现状补充：以上为诚实性能边界，非阻塞项；体积 ~180MB；TUI 已可用（见状态横幅）。
 
 ### serve 故障排查注记（"Configuration is invalid"）
 
@@ -156,15 +170,15 @@ make transplant-check
 要点：非等长 patch 会被校验器拒绝（offset 漂移即失败）；无 search 命中 = warning 入 report
 而非失败；已替换图再跑 `hit_count == 0`（幂等）。
 
-### 3.2 `tools/transplant/config/bun-bind.json`（todo 10 规划，尚未落盘）
+### 3.2 `tools/transplant/config/bun-bind.json`（已落盘，target=1.4.0）
 
-> 当前 android Bun 下载地址硬编码在 `tools/transplant/probe_assemble.py` 的 `BUN_URL`
-> （`https://github.com/oven-sh/bun/releases/download/bun-v1.3.14/bun-linux-aarch64-android.zip`，
-> zip 成员 `bun-linux-aarch64-android/bun`）。todo 10 将其抽为配置，规划 schema：
+android Bun 底座绑定配置（commit b270d11 将 target 自 1.3.14 升级至 1.4.0）。
+新版 `.bun` section 格式的 module graph **必须用 ≥1.4 底座**；旧 trailer 格式
+（≤1.3.x）沿用 reloc 语义底座即可。底座缺失时按 `url_pattern` 幂等下载：
 
 ```jsonc
 {
-  "target": "1.3.14",               // 绑定的 android Bun 版本（semver）
+  "target": "1.4.0",                // 绑定的 android Bun 版本（semver）
   "url_pattern": "https://github.com/oven-sh/bun/releases/download/bun-v{ver}/bun-linux-aarch64-android.zip"
 }
 ```
@@ -202,8 +216,9 @@ A: 不白做。管线是**格式研究基础设施**：extract/detect/convert/pa
 经 revive 的 `opencode-native-revived` 可直接作为 opencode 运行（§0.2）。
 
 **Q: 哪些版本已验证？**
-A: 诚实边界：已实证的是 **1.3.13** 的完整管线（含 revive 复活，`--version` exit=0，
-见状态横幅与 §0.2）。probe 未覆盖的版本一律标
+A: 诚实边界：**trailer 路径已实证 1.3.13 完整管线**（含 revive 复活，`--version` exit=0）；
+**section 新格式已实证 1.18.21 全管线**（reloc_count=50，exit=0，golden 回归 4/4 PASS，
+见 §0.4）。probe 未覆盖的版本一律标
 **"待验证"**，落入未覆盖区间即按 §4 失败预案锁定报错，不产出未验证二进制。
 
 ## 6. 引用（不复制报告全文）
