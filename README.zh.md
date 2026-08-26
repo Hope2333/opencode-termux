@@ -27,13 +27,13 @@ OpenCode on Termux，双运行时线：**native bionic 直跑线（主推）+ gl
   kill -9 自愈 ≤612ms。
 - **bin 直放打包**：包内 `bin/opencode` 即真实可执行 ELF，无 bash 启动器包装。
 
-### 快速开始（alpha 预发布）
+### 快速开始（beta 预发布）
 
-native 资产发布在长期 pre-release ALPHA 渠道，tag 形如 `native-alpha-*`：
+native 资产发布在长期 pre-release BETA 渠道（tag 形如 `native-beta-*`）；首个 beta tag：`native-beta-260826`（含 crashfix，commit 342d68d）：
 
 ```bash
-# 从 https://github.com/Hope2333/opencode-termux/releases/tag/native-alpha-260825
-# （及后续 native-alpha-* tag）下载资产（名形如 opencode-1.18.21-aarch64-android-native-tui）
+# 从 https://github.com/Hope2333/opencode-termux/releases/tag/native-beta-260826
+# （及后续 native-beta-* tag）下载资产（名形如 opencode-1.18.21-aarch64-android-native-tui）
 dpkg -i opencode-native_<version>_aarch64.deb
 # 或
 pacman -U opencode-native-<version>-1-aarch64.pkg.tar.xz
@@ -87,7 +87,7 @@ artifact（CI 不执行产物）。**CI 绿 ≠ 可跑**：最终验收必须本
 
 ### 发布策略（诚实标注）
 
-> **native 线资产长期定档 pre-release ALPHA 渠道**（`native-alpha-*` tag）；
+> **native 线资产长期定档 pre-release BETA 渠道**（`native-beta-*` tag，首个 beta：`native-beta-260826`）；
 > stable 维护主线仍由 pure/glibc 双轨包承担。
 >
 > 性能现实（实测，非营销话术）：启动 ~1s 量级（`--version` 首试 1965ms =

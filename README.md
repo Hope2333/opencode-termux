@@ -20,13 +20,14 @@ Zero glibc dependencies, requires Android API >= 28.
 - **Native watcher**: `tools/watcher/` provides a standalone daemon module (`watcher.c`, NDK inotify recursive watching) plus a plugin-side shim (`shim.js`) and `install.sh`. It fixes the total lack of file watching caused by upstream `@parcel/watcher` failing to load on Termux. E2E all three event types <100ms, kill -9 self-heal ≤612ms.
 - **bin-direct packaging**: `bin/opencode` inside the package is a real executable ELF, no bash launcher wrapper.
 
-### Quick start (alpha pre-release)
+### Quick start (beta pre-release)
 
-Native assets ship on a long-term pre-release ALPHA channel, tags look like `native-alpha-*`:
+Native assets ship on a long-term BETA pre-release channel (`native-beta-*` tags);
+first beta tag: `native-beta-260826`, includes the crashfix (commit 342d68d):
 
 ```bash
-# Download from https://github.com/Hope2333/opencode-termux/releases/tag/native-alpha-260825
-# (and later native-alpha-* tags). Asset names look like opencode-1.18.21-aarch64-android-native-tui
+# Download from https://github.com/Hope2333/opencode-termux/releases/tag/native-beta-260826
+# (and later native-beta-* tags). Asset names look like opencode-1.18.21-aarch64-android-native-tui
 dpkg -i opencode-native_<version>_aarch64.deb
 # or
 pacman -U opencode-native-<version>-1-aarch64.pkg.tar.xz
@@ -73,7 +74,7 @@ runs the full revive flow and golden regression on an x86 runner; artifacts are 
 
 ### Release policy (honest notes)
 
-> **Native line assets stay on the long-term pre-release ALPHA channel** (`native-alpha-*` tags);
+> **Native line assets stay on the long-term BETA pre-release channel** (`native-beta-*` tags);
 > stable maintenance remains carried by the pure/glibc dual-track packages.
 >
 > Performance reality (measured, not marketing): startup ~1s magnitude (`--version` first try 1965ms =

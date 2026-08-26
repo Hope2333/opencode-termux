@@ -1,6 +1,6 @@
 # transplant — native-android 移植操作手册
 
-> [!IMPORTANT] 状态横幅：C1 路线**已复活且全链产品化**（revive 手术实证 + TUI 可用 + alpha 发布）
+> [!IMPORTANT] 状态横幅：C1 路线**已复活且全链产品化**（revive 手术实证 + TUI 可用 + beta 发布）
 >
 > **C1 路线 = 用官方预编译 android Bun（Bionic 直跑）作为底座，
 > 与 opencode 的 module graph 拼接/嫁接成单个可 execve 的 ELF**（docs/performance-optimization.md §1.2/§4.1）。
@@ -12,8 +12,8 @@
 > reloc_count=50）；底座绑定 `tools/transplant/config/bun-bind.json` target=1.4.0
 > （commit b270d11 自 1.3.14 升级；**新版格式图必须用 ≥1.4 底座**）。
 > **TUI 完整可用**：swap_tui.py 等长注入 NDK 构建的 bionic libopentui.so 后完整渲染
-> （W10a 深度冒烟 5/5）。发布双渠道：stable=Push260822 双轨包；alpha=native-alpha-260825
-> prerelease（native 线长期定档 alpha pre-release，维护主线 pure/glibc）。
+> （W10a 深度冒烟 5/5）。发布双渠道：stable=Push260822 双轨包；beta=native-beta-260826
+> prerelease（native 线长期定档 beta pre-release，维护主线 pure/glibc）。
 > CI：`.github/workflows/build-native-android.yml`（workflow_dispatch，evidence-only
 > --no-execve），最新 run 32831119197 success。
 > 早前的"三重证伪"结论**已被推翻**——真因是 assemble 从未 patch `.bun` 节的
