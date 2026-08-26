@@ -1,0 +1,50 @@
+# OpenTUI patch: guard negative FFI coords in bufferDrawChar path (crash alpha-260825)
+#
+# Source tree: OpenTUI pin 07910e36c9dda7d952295ee43c0d3588b3c6d2c3 (2026-08-07)
+# Target file: packages/core/src/zig/buffer.zig
+#   (on older pins where native lives at packages/native/src/buffer.zig, apply
+#    with -p2/path adjustment or manually — the hunk content is identical)
+#
+# Root cause (DIAG2, .omo/evidence/task-crash-alpha260825.log):
+#   JS passes negative coordinates / negative-derived scissor sizes across FFI;
+#   they arrive as huge u32 (bit31=1). bufferDrawChar -> isPointInScissor then
+#   does u32->i32 @intCast which panics in ReleaseSafe => SIGABRT of the whole
+#   TUI process when expanding/collapsing thinking blocks.
+#
+# Fix:
+#   1) setVisibleCellWithAlphaBlending: early-return when x/y have bit31 set
+#      (negative coordinate defense at the FFI boundary).
+#   2) isPointInScissor: clamp scissor width/height to i32 range and use
+#      saturating add (+|) so huge u32 clip dims degrade gracefully instead of
+#      panicking on @intCast or i32 overflow.
+#
+# Verified: differential FFI stress probe (old so SIGABRT vs patched so clean,
+# 2000 iters x2 modes) + TUI smoke/interaction regression + transplant goldens.
+diff --git a/packages/core/src/zig/buffer.zig b/packages/core/src/zig/buffer.zig
+index 72cc290..ab10cbd 100644
+--- a/packages/core/src/zig/buffer.zig
++++ b/packages/core/src/zig/buffer.zig
+@@ -319,8 +319,13 @@ pub const OptimizedBuffer = struct {
+ 
+     pub fn isPointInScissor(self: *const OptimizedBuffer, x: i32, y: i32) bool {
+         const scissor = self.getCurrentScissorRect() orelse return true;
+-        return x >= scissor.x and x < scissor.x + @as(i32, @intCast(scissor.width)) and
+-            y >= scissor.y and y < scissor.y + @as(i32, @intCast(scissor.height));
++        // FFI negative-coordinate defense (crash alpha-260825): JS may pass
++        // negative-derived scissor sizes that cross FFI as huge u32 values;
++        // clamp instead of @intCast (panic) so clipping degrades gracefully.
++        const w = @as(i32, @intCast(@min(scissor.width, 0x7FFFFFFF)));
++        const h = @as(i32, @intCast(@min(scissor.height, 0x7FFFFFFF)));
++        return x >= scissor.x and x < scissor.x +| w and
++            y >= scissor.y and y < scissor.y +| h;
+     }
+ 
+     pub fn isRectInScissor(self: *const OptimizedBuffer, x: i32, y: i32, width: u32, height: u32) bool {
+@@ -922,6 +927,7 @@ pub const OptimizedBuffer = struct {
+     }
+ 
+     inline fn setVisibleCellWithAlphaBlending(self: *OptimizedBuffer, x: u32, y: u32, cell: Cell, opacity: f32, fully_transparent: bool) void {
++        if (x >= 0x80000000 or y >= 0x80000000) return; // FFI negative-coordinate defense (crash alpha-260825)
+         if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
+         if (isFullyOpaque(opacity, cell.fg, cell.bg)) {
+             self.set(x, y, cell);
