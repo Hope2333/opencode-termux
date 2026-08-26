@@ -1,112 +1,99 @@
+[English](./README.md) | [简体中文](./README.zh.md)
+
 # opencode-termux
 
-OpenCode on Termux，双运行时线：**native bionic 直跑线（主推）+ glibc wrapper 线（稳定附录）**。
-当前分支：`native-android`。
+OpenCode on Termux with two runtime lines: **native bionic direct-run line (primary) + glibc wrapper line (stable appendix)**.
+Current branch: `native-android`.
 
 ---
 
-## Native 线（主推）：零 glibc 原生 Android 运行时
+## Native line (primary): zero-glibc native Android runtime
 
-官方预编译 Android Bun 作底座，把 opencode 的 module graph 移植拼接进同一个 ELF，
-经 revive 复活手术后产出单个可直接 execve 的 Bionic 可执行文件。零 glibc 依赖，
-要求 Android API >= 28。
+The official prebuilt Android Bun serves as the base. We graft opencode's module graph into the same ELF,
+run the revive surgery, and produce a single Bionic executable that can be execve'd directly.
+Zero glibc dependencies, requires Android API >= 28.
 
-### 功能亮点
+### Highlights
 
-- **零 glibc**：不依赖 glibc-repo / openssl-glibc。此前"零 glibc 不可能"的结论已被
-  复活手术推翻，真因是 assemble 从未 patch `.bun` 节的 `BUN_COMPILED.size`
-  （standalone 检测链在 android bun 中完整存在），详见 `docs/transplant.md` §0.1/§0.2。
-- **TUI 完整可用**：NDK 自建的 bionic `libopentui.so` 经 `tools/transplant/swap_tui.py`
-  等长换入后 TUI 完整渲染。W10a 深度冒烟 5/5 通过（真实聊天往返 / resize /
-  干净退出 / 5min 浸泡 RSS 反降）。
-- **原生 watcher**：`tools/watcher/` 提供独立守护模块（`watcher.c`，NDK inotify
-  递归监听）+ 插件侧 shim（`shim.js`）+ `install.sh`，解决上游 `@parcel/watcher`
-  在 Termux 上加载失败导致的完全无文件监听问题。E2E 三类事件 <100ms，
-  kill -9 自愈 ≤612ms。
-- **bin 直放打包**：包内 `bin/opencode` 即真实可执行 ELF，无 bash 启动器包装。
+- **Zero glibc**: no glibc-repo / openssl-glibc needed. The earlier "zero glibc is impossible" conclusion was overturned by the revive surgery. The real cause was that assemble never patched `BUN_COMPILED.size` in the `.bun` section (the standalone detection chain is fully present in android bun). See `docs/transplant.md` §0.1/§0.2.
+- **Fully working TUI**: a self-built bionic `libopentui.so` (NDK) is swapped in at equal length via `tools/transplant/swap_tui.py`, giving complete TUI rendering. W10a deep smoke passed 5/5 (real chat round trip / resize / clean exit / 5min soak with RSS actually dropping).
+- **Native watcher**: `tools/watcher/` provides a standalone daemon module (`watcher.c`, NDK inotify recursive watching) plus a plugin-side shim (`shim.js`) and `install.sh`. It fixes the total lack of file watching caused by upstream `@parcel/watcher` failing to load on Termux. E2E all three event types <100ms, kill -9 self-heal ≤612ms.
+- **bin-direct packaging**: `bin/opencode` inside the package is a real executable ELF, no bash launcher wrapper.
 
-### 快速开始（alpha 预发布）
+### Quick start (alpha pre-release)
 
-native 资产发布在长期 pre-release ALPHA 渠道，tag 形如 `native-alpha-*`：
+Native assets ship on a long-term pre-release ALPHA channel, tags look like `native-alpha-*`:
 
 ```bash
-# 从 https://github.com/Hope2333/opencode-termux/releases/tag/native-alpha-260825
-# （及后续 native-alpha-* tag）下载资产（名形如 opencode-1.18.21-aarch64-android-native-tui）
+# Download from https://github.com/Hope2333/opencode-termux/releases/tag/native-alpha-260825
+# (and later native-alpha-* tags). Asset names look like opencode-1.18.21-aarch64-android-native-tui
 dpkg -i opencode-native_<version>_aarch64.deb
-# 或
+# or
 pacman -U opencode-native-<version>-1-aarch64.pkg.tar.xz
 ```
 
-安装 `opencode-native` 会替换 glibc 线的 `opencode` provider（反之亦然），
-provider 选择细节见 `docs/dual-track-install.md`。
+Installing `opencode-native` replaces the glibc line's `opencode` provider (and vice versa).
+Provider selection details: `docs/dual-track-install.md`.
 
 ```bash
-opencode --version   # → 1.18.x
+opencode --version   # -> 1.18.x
 opencode run "hi"
 opencode             # TUI
 ```
 
-### 构建
+### Build
 
-一条龙管线：
+One-shot pipeline:
 
 ```bash
 make transplant VER=1.18.21
-# extract → detect → convert → patch → assemble → revive → verify
-# 直接产出可运行的 opencode-native-revived
+# extract -> detect -> convert -> patch -> assemble -> revive -> verify
+# Produces a runnable opencode-native-revived directly
 ```
 
-要点：
+Key points:
 
-- **全版本覆盖**：1.2.x → latest 全线打通。旧 trailer 格式与新版 `.bun` section
-  格式（opencode ≥1.18，1.18.21 实证）自动识别。
-- **revive 尺寸模式自动选择**：底座 ≤1.3.x 用 reloc 重定位写法，≥1.4.x 用
-  plain-offset 直写偏移（自 b09c28c 起按底座版本自动判定）；可用
-  `--size-mode reloc|plain-offset` 显式覆盖。新版 section 格式的 graph 必须用
-  ≥1.4 底座（见 `tools/transplant/config/bun-bind.json`，target=1.4.0）。
-- **TUI 注入**：管线内含 swap_tui 步骤，等长换入 bionic libopentui.so。
-- **goldens 回归**：`make transplant-check`（golden-file 回归；fixtures 需先
-  `scripts/fetch-fixtures.sh` 预下载）。
+- **All-version coverage**: 1.2.x through latest all work. Old trailer format and the new `.bun` section format (opencode >= 1.18, proven on 1.18.21) are auto-detected.
+- **Auto revive size mode**: bases <= 1.3.x use reloc relocation writes, >= 1.4.x use plain-offset direct writes (auto-decided by base version since b09c28c); override explicitly with `--size-mode reloc|plain-offset`. Graphs in the new section format must use a >= 1.4 base (see `tools/transplant/config/bun-bind.json`, target=1.4.0).
+- **TUI injection**: the pipeline includes a swap_tui step that swaps in the bionic libopentui.so at equal length.
+- **Golden regression**: `make transplant-check` (golden-file regression; fixtures need `scripts/fetch-fixtures.sh` pre-downloaded first).
 
-### 依赖
+### Dependencies
 
-| 工具 | 必需？ | 用途 |
+| Tool | Required? | Purpose |
 |---|---|---|
-| python3 | ✅ | 管线本体，纯标准库即可运行 |
-| NDK | 仅自建组件时 | 编译 bionic libopentui.so / watcher.c |
-| gh / npm / curl | ✅ | 拉取 Bun 底座、opencode 包与 fixtures |
+| python3 | ✅ | Pipeline itself, runs on stdlib alone |
+| NDK | Only for self-built components | Building bionic libopentui.so / watcher.c |
+| gh / npm / curl | ✅ | Fetching the Bun base, opencode packages and fixtures |
 
-### CI 与验证边界
+### CI and verification boundary
 
-`.github/workflows/build-native-android.yml`（workflow_dispatch 手动触发）：
-在 x86 runner 上执行完整 revive 流程与 golden 回归，产物为 evidence-only
-artifact（CI 不执行产物）。**CI 绿 ≠ 可跑**：最终验收必须本机真机终验。
-另注意：隔离 HOME 测试需预热缓存镜像，否则二进制会在启动时挂起。
+`.github/workflows/build-native-android.yml` (workflow_dispatch manual trigger):
+runs the full revive flow and golden regression on an x86 runner; artifacts are evidence-only (CI does not execute them). **CI green ≠ runnable**: final acceptance requires on-device verification on a real machine. Also note: isolated-HOME testing needs a warm cache mirror, otherwise the binary hangs at startup.
 
-### 发布策略（诚实标注）
+### Release policy (honest notes)
 
-> **native 线资产长期定档 pre-release ALPHA 渠道**（`native-alpha-*` tag）；
-> stable 维护主线仍由 pure/glibc 双轨包承担。
+> **Native line assets stay on the long-term pre-release ALPHA channel** (`native-alpha-*` tags);
+> stable maintenance remains carried by the pure/glibc dual-track packages.
 >
-> 性能现实（实测，非营销话术）：启动 ~1s 量级（`--version` 首试 1965ms =
-> Phase B bootstrap ~220ms + Phase C JS 求值 ~820ms；<300ms 目标需上游 Bun
-> 改造，当前不可达），体积 ~180MB。
+> Performance reality (measured, not marketing): startup ~1s magnitude (`--version` first try 1965ms =
+> Phase B bootstrap ~220ms + Phase C JS evaluation ~820ms; the <300ms goal needs upstream Bun changes and is unreachable today), size ~180MB.
 
-完整手术原理、config schema、失败预案与 FAQ 见 `docs/transplant.md`；
-三条运行线对比见 `docs/comparison-runtime-lines.md`。
+For the full surgery principles, config schema, failure playbooks and FAQ see `docs/transplant.md`;
+for a comparison of the three runtime lines see `docs/comparison-runtime-lines.md`.
 
 ---
 
-## 附录：glibc/pure 线（稳定双轨包）
+## Appendix: glibc/pure line (stable dual-track packages)
 
-bun-termux-loader 包装方案：上游 `opencode-linux-arm64` 是 glibc 链接的
-Bun 单文件应用（Bun runtime + JS 编译进单个 ELF）。loader 在其前部拼一个
-~12KB 的 Bionic wrapper ELF：读 `/proc/self/exe` 定位 BUNWRAP1 元数据、
-抽出内嵌 opencode 二进制，再 mmap glibc 的 ld.so 并跳到其入口
-（userland exec，不走 execve），使 `/proc/self/exe` 保持指向自身、
-Bun 的 JS 定位不被破坏。旧版本维护分支：`glibc`。
+The bun-termux-loader wrapping approach: upstream `opencode-linux-arm64` is a glibc-linked
+Bun single-file app (Bun runtime + JS compiled into one ELF). The loader prepends a
+~12KB Bionic wrapper ELF: it reads `/proc/self/exe` to locate BUNWRAP1 metadata,
+extracts the embedded opencode binary, then mmaps glibc's ld.so and jumps to its entry
+(userland exec, no execve), keeping `/proc/self/exe` pointing at itself so Bun's JS
+location stays intact. Legacy maintenance branch: `glibc`.
 
-### 依赖
+### Dependencies
 
 | Package | Required? | Why |
 |---------|-----------|-----|
@@ -115,7 +102,7 @@ Bun 的 JS 定位不被破坏。旧版本维护分支：`glibc`。
 | `bash` | ✅ Yes | Launcher script |
 | `ncurses` | ✅ Yes | TUI support |
 
-### 安装
+### Install
 
 ```bash
 # Path A: apt/pkg
@@ -130,44 +117,45 @@ pacman -S glibc openssl-glibc
 pacman -U /path/to/opencode-<version>-aarch64.pkg.tar.xz
 ```
 
-### 构建
+### Build
 
 ```bash
-# 单版本
+# Single version
 make all VER=1.17.3 PKG=both
 
-# 批量构建
+# Batch build
 make batch VERS='1.17.[0-3]' PKG=both ODIR=~/oct-out MIX=1
 
-# 构建流程: clean → runtime(produce-local.sh: npm download + loader wrap)
-#          → stage(scripts/build.sh) → deb → pacman
+# Flow: clean -> runtime(produce-local.sh: npm download + loader wrap)
+#      -> stage(scripts/build.sh) -> deb -> pacman
 
-# 隐藏目标: release-upload（默认 TAG=Push<YYMMDD>, REPO=Hope2333/opencode-termux, PKG=both）
+# Hidden target: release-upload (defaults TAG=Push<YYMMDD>, REPO=Hope2333/opencode-termux, PKG=both)
 make release-upload TAG=Push260522 VERS='1.17.[0-3]'
 ```
 
 ### CI
 
-`.github/workflows/build-pure-android.yml`：workflow_dispatch 手动触发，
-QEMU aarch64 处理二进制，npm 下载 opencode-linux-arm64 后用预构建
-wrapper+shim（`tools/prebuilt/`）包装，上传 artifact 并写 status JSON。
+`.github/workflows/build-pure-android.yml`: workflow_dispatch manual trigger,
+QEMU aarch64 binary handling, npm download of opencode-linux-arm64 wrapped with the
+prebuilt wrapper+shim (`tools/prebuilt/`), artifact upload plus status JSON.
 
-> amd64 (x64) + Android + Termux 组合几乎无真实用户，本项目不提供 x64 资产；
-> armv7 32 位依赖链破损严重、修复成本过高，该实验已放弃。
+> amd64 (x64) + Android + Termux has almost no real users; this project ships no x64 assets.
+> armv7's 32-bit dependency chain is badly broken with prohibitive fix costs; that experiment is abandoned.
 
-### Launcher 安全机制
+### Launcher safeguards
 
-- 退出时 TTY 清理（按 exit code 分软/硬清理）
-- 陈旧锁清理（`$XDG_STATE_HOME` 下 `*.lock`）
-- 默认 `OPENCODE_DISABLE_DEFAULT_PLUGINS=1`
+- TTY cleanup on exit (soft/hard depending on exit code)
+- Stale lock cleanup (`*.lock` under `$XDG_STATE_HOME`)
+- `OPENCODE_DISABLE_DEFAULT_PLUGINS=1` by default
 
-### 零 glibc 约束史（历史记录）
+### Zero-glibc constraints history (historical record)
 
-早期"零 glibc 不可能"的 Constraints 结论表已被 transplant 复活手术部分推翻
-（"runtime swap / binary surgery 不可行"的真因是未 patch `BUN_COMPILED.size`）。
-仍然成立的约束：Android 上 `bun build --compile` 因 `/data/` 权限扫描被
-Zig 源码硬编码阻断；上游 Bun 至今没有 `--target=bun-linux-aarch64-android`。
-完整证伪与推翻记录见 `docs/transplant.md` 与 `docs/native-android-research.md`。
+The early Constraints table concluding "zero glibc impossible" has been partially overturned
+by the transplant revive surgery (the real cause behind "runtime swap / binary surgery infeasible"
+was the missing `BUN_COMPILED.size` patch). Still-valid constraints: on Android,
+`bun build --compile` is hard-blocked by Zig source code scanning `/data/` permissions;
+upstream Bun still has no `--target=bun-linux-aarch64-android`.
+Full falsification and overturn records: `docs/transplant.md` and `docs/native-android-research.md`.
 
 ---
 
@@ -175,29 +163,29 @@ Zig 源码硬编码阻断；上游 Bun 至今没有 `--target=bun-linux-aarch64-
 
 ```
 .github/workflows/
-  build-native-android.yml    Native 线 CI（evidence-only artifact）
-  build-pure-android.yml      glibc 线 CI（aarch64）
-  prebuild-armv7.yml          armv7 prebuild handoff（已搁置）
+  build-native-android.yml    Native line CI (evidence-only artifact)
+  build-pure-android.yml      glibc line CI (aarch64)
+  prebuild-armv7.yml          armv7 prebuild handoff (shelved)
 tools/
-  transplant/                 Native 复活管线（transplant.py / revive_patch.py /
-                              swap_tui.py / config/bun-bind.json）
-  watcher/                    原生 inotify watcher 守护 + shim 插件桥
-  produce-local.sh            glibc 线：npm 下载 + loader wrap
-  prebuilt/                   glibc 线 CI 用预构建 aarch64 wrapper+shim
+  transplant/                 Native revive pipeline (transplant.py / revive_patch.py /
+                              swap_tui.py / config/bun-bind.json)
+  watcher/                    Native inotify watcher daemon + shim plugin bridge
+  produce-local.sh            glibc line: npm download + loader wrap
+  prebuilt/                   Prebuilt aarch64 wrapper+shim for glibc line CI
 scripts/
-  fetch-fixtures.sh           transplant-check golden fixtures 预下载
-  build.sh                    Stage prefix（glibc 线）
-  launcher.sh                 Runtime dispatcher（cleanup + exec）
+  fetch-fixtures.sh           transplant-check golden fixtures pre-download
+  build.sh                    Stage prefix (glibc line)
+  launcher.sh                 Runtime dispatcher (cleanup + exec)
   package/package_deb.sh      DEB builder
   package/package_pacman.sh   Pacman builder
   hooks/run-system-skills.sh  Post-install/upgrade hooks
 patches/
   0001-android-support.patch  Upstream OpenCode Android patches (WIP)
 docs/
-  transplant.md               Native 线手术权威文档
-  comparison-runtime-lines.md 三条运行线对比
-  dual-track-install.md       Provider 选择（opencode vs opencode-native）
-  native-android-research.md  零 glibc 研究史
+  transplant.md               Authoritative native-line surgery doc
+  comparison-runtime-lines.md Comparison of the three runtime lines
+  dual-track-install.md       Provider choice (opencode vs opencode-native)
+  native-android-research.md  Zero-glibc research history
 ```
 
 ## Related
