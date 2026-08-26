@@ -1,16 +1,112 @@
-# opencode-termux — pure-android branch
+# opencode-termux
 
-**This is the current mainline branch.** It produces OpenCode packages using
-bun-termux-loader to wrap the upstream `opencode-linux-arm64` binary for
-Android/Bionic. glibc is required at runtime (the wrapper loads it via
-userland exec).
-
-**Looking for the legacy branch?** See the `glibc` branch (same approach,
-older version).
+OpenCode on Termux，双运行时线：**native bionic 直跑线（主推）+ glibc wrapper 线（稳定附录）**。
+当前分支：`native-android`。
 
 ---
 
-## Dependencies
+## Native 线（主推）：零 glibc 原生 Android 运行时
+
+官方预编译 Android Bun 作底座，把 opencode 的 module graph 移植拼接进同一个 ELF，
+经 revive 复活手术后产出单个可直接 execve 的 Bionic 可执行文件。零 glibc 依赖，
+要求 Android API >= 28。
+
+### 功能亮点
+
+- **零 glibc**：不依赖 glibc-repo / openssl-glibc。此前"零 glibc 不可能"的结论已被
+  复活手术推翻，真因是 assemble 从未 patch `.bun` 节的 `BUN_COMPILED.size`
+  （standalone 检测链在 android bun 中完整存在），详见 `docs/transplant.md` §0.1/§0.2。
+- **TUI 完整可用**：NDK 自建的 bionic `libopentui.so` 经 `tools/transplant/swap_tui.py`
+  等长换入后 TUI 完整渲染。W10a 深度冒烟 5/5 通过（真实聊天往返 / resize /
+  干净退出 / 5min 浸泡 RSS 反降）。
+- **原生 watcher**：`tools/watcher/` 提供独立守护模块（`watcher.c`，NDK inotify
+  递归监听）+ 插件侧 shim（`shim.js`）+ `install.sh`，解决上游 `@parcel/watcher`
+  在 Termux 上加载失败导致的完全无文件监听问题。E2E 三类事件 <100ms，
+  kill -9 自愈 ≤612ms。
+- **bin 直放打包**：包内 `bin/opencode` 即真实可执行 ELF，无 bash 启动器包装。
+
+### 快速开始（alpha 预发布）
+
+native 资产发布在长期 pre-release ALPHA 渠道，tag 形如 `native-alpha-*`：
+
+```bash
+# 从 https://github.com/Hope2333/opencode-termux/releases/tag/native-alpha-260825
+# （及后续 native-alpha-* tag）下载资产（名形如 opencode-1.18.21-aarch64-android-native-tui）
+dpkg -i opencode-native_<version>_aarch64.deb
+# 或
+pacman -U opencode-native-<version>-1-aarch64.pkg.tar.xz
+```
+
+安装 `opencode-native` 会替换 glibc 线的 `opencode` provider（反之亦然），
+provider 选择细节见 `docs/dual-track-install.md`。
+
+```bash
+opencode --version   # → 1.18.x
+opencode run "hi"
+opencode             # TUI
+```
+
+### 构建
+
+一条龙管线：
+
+```bash
+make transplant VER=1.18.21
+# extract → detect → convert → patch → assemble → revive → verify
+# 直接产出可运行的 opencode-native-revived
+```
+
+要点：
+
+- **全版本覆盖**：1.2.x → latest 全线打通。旧 trailer 格式与新版 `.bun` section
+  格式（opencode ≥1.18，1.18.21 实证）自动识别。
+- **revive 尺寸模式自动选择**：底座 ≤1.3.x 用 reloc 重定位写法，≥1.4.x 用
+  plain-offset 直写偏移（自 b09c28c 起按底座版本自动判定）；可用
+  `--size-mode reloc|plain-offset` 显式覆盖。新版 section 格式的 graph 必须用
+  ≥1.4 底座（见 `tools/transplant/config/bun-bind.json`，target=1.4.0）。
+- **TUI 注入**：管线内含 swap_tui 步骤，等长换入 bionic libopentui.so。
+- **goldens 回归**：`make transplant-check`（golden-file 回归；fixtures 需先
+  `scripts/fetch-fixtures.sh` 预下载）。
+
+### 依赖
+
+| 工具 | 必需？ | 用途 |
+|---|---|---|
+| python3 | ✅ | 管线本体，纯标准库即可运行 |
+| NDK | 仅自建组件时 | 编译 bionic libopentui.so / watcher.c |
+| gh / npm / curl | ✅ | 拉取 Bun 底座、opencode 包与 fixtures |
+
+### CI 与验证边界
+
+`.github/workflows/build-native-android.yml`（workflow_dispatch 手动触发）：
+在 x86 runner 上执行完整 revive 流程与 golden 回归，产物为 evidence-only
+artifact（CI 不执行产物）。**CI 绿 ≠ 可跑**：最终验收必须本机真机终验。
+另注意：隔离 HOME 测试需预热缓存镜像，否则二进制会在启动时挂起。
+
+### 发布策略（诚实标注）
+
+> **native 线资产长期定档 pre-release ALPHA 渠道**（`native-alpha-*` tag）；
+> stable 维护主线仍由 pure/glibc 双轨包承担。
+>
+> 性能现实（实测，非营销话术）：启动 ~1s 量级（`--version` 首试 1965ms =
+> Phase B bootstrap ~220ms + Phase C JS 求值 ~820ms；<300ms 目标需上游 Bun
+> 改造，当前不可达），体积 ~180MB。
+
+完整手术原理、config schema、失败预案与 FAQ 见 `docs/transplant.md`；
+三条运行线对比见 `docs/comparison-runtime-lines.md`。
+
+---
+
+## 附录：glibc/pure 线（稳定双轨包）
+
+bun-termux-loader 包装方案：上游 `opencode-linux-arm64` 是 glibc 链接的
+Bun 单文件应用（Bun runtime + JS 编译进单个 ELF）。loader 在其前部拼一个
+~12KB 的 Bionic wrapper ELF：读 `/proc/self/exe` 定位 BUNWRAP1 元数据、
+抽出内嵌 opencode 二进制，再 mmap glibc 的 ld.so 并跳到其入口
+（userland exec，不走 execve），使 `/proc/self/exe` 保持指向自身、
+Bun 的 JS 定位不被破坏。旧版本维护分支：`glibc`。
+
+### 依赖
 
 | Package | Required? | Why |
 |---------|-----------|-----|
@@ -19,118 +115,9 @@ older version).
 | `bash` | ✅ Yes | Launcher script |
 | `ncurses` | ✅ Yes | TUI support |
 
-```bash
-# Install dependencies
-apt install -y glibc-repo
-apt update
-apt install -y glibc openssl-glibc
-
-# Then install opencode
-dpkg -i /path/to/opencode_<version>_aarch64.deb
-```
-
-### Path B: pacman (secondary)
+### 安装
 
 ```bash
-pacman -Syu
-pacman -S glibc openssl-glibc
-pacman -U /path/to/opencode-<version>-aarch64.pkg.tar.xz
-```
-
-### Optional: Android-native Bun
-
-```bash
-# From the bun-termux repo (pure-android branch)
-# Provides: bun -- JavaScript runtime, 0 glibc
-# Repo: https://github.com/Hope2333/bun-termux
-```
-
----
-
-## What this branch provides
-
-- ✅ **Real OpenCode AI** (`opencode --version` → `1.17.x`)
-- ✅ deb + pacman package output
-- ✅ Plugin lifecycle system (install/update/rollback)
-- ✅ TTY/signal cleanup launcher
-- ✅ System-skill hooks (post-install/upgrade/remove)
-- ✅ CI workflow for automated builds
-- ✅ Batch build (`make batch VERS='1.17.[0-3]'`)
-- ✅ Release upload automation (`make release-upload`)
-
----
-
-## How it works
-
-The upstream OpenCode binary (`opencode-linux-arm64` from npm) is a
-**glibc-linked Bun-compiled application**. It contains the Bun runtime +
-OpenCode JS code compiled into a single ELF executable.
-
-To make it run on Android/Bionic, **bun-termux-loader** prepends a thin
-Bionic wrapper:
-
-```
-┌──────────────────────────────────────────────┐
-│ Bionic wrapper ELF (~12KB)                   │
-│   - Reads /proc/self/exe                     │
-│   - Finds BUNWRAP1 metadata                  │
-│   - Extracts embedded OpenCode binary        │
-│   - Userland exec via glibc's ld.so          │
-├──────────────────────────────────────────────┤
-│ BUNWRAP1 metadata                            │
-├──────────────────────────────────────────────┤
-│ Original opencode binary (glibc Bun + JS)    │
-│   - Interpreter: /lib/ld-linux-aarch64.so.1  │
-│   - Entry: compiled-app mode (RX seg base)   │
-│   - ---- Bun! ---- marker + JS bytecode      │
-└──────────────────────────────────────────────┘
-```
-
-**Userland exec**: Instead of `execve()` (which would update `/proc/self/exe`
-and break Bun's JS location), the wrapper mmap()s glibc's `ld.so` and jumps
-to its entry point, keeping `/proc/self/exe` pointing to itself.
-
----
-
-## Constraints (zero-glibc attempts)
-
-We invested significant research into removing the glibc dependency.
-Here's what we tried and why it didn't work:
-
-| Approach | Result | Root Cause |
-|----------|--------|------------|
-| **Android Bun as runtime** (v1.3.14 Bionic binary) | ❌ | `bun build --compile` fails on Termux (`/data/` permission) |
-| **JS bundle from source** (`bun build --target=bun`) | ❌ | Native modules (`@opentui/solid`) require `--compile` |
-| **Runtime swap** (replace glibc Bun with Android Bun) | ❌ | Android Bun lacks compiled-app entry point code (ELF entry at 0x1f00200, not segment base) |
-| **Binary surgery** (patch ELF entry + swap) | ❌ | Missing Zig/C++ level "load embedded JS" code in Android Bun |
-| **Fork Bun + add android target** | ⏳ | Requires modifying Bun's Zig/C++ build system + WebKit |
-> **Update (2026-08)**: the "Runtime swap" and "Binary surgery" verdicts above were
-> **overturned** by the transplant revival surgery — patching `BUN_COMPILED.size` (+ a
-> `.rela.dyn` relocation) lets the official Android Bun carry the grafted module graph.
-> The native line now ships as alpha with full TUI; see `docs/transplant.md` and the
-> Native-android section below.
-
-**Current path**: bun-termux-loader wrapping. Production-stable, works today.
-The glibc dependency is standard on Termux (`apt install glibc`).
-
-**Future**: When upstream Bun supports `--target=bun-linux-aarch64-android`,
-we can switch to native Android Bun as the runtime and eliminate glibc.
-
-See `docs/native-android-research.md` for full research details.
-
----
-
-## Install
-
-Two packaging tracks provide the same `opencode` command — pick ONE provider:
-
-- **`opencode` (glibc wrapper line) — default recommended.** Mature, full TUI.
-- **`opencode-native` (transplant revival line) — alpha.** Zero glibc deps,
-  Android API >= 28, full TUI (bionic libopentui injected); startup ~1s. Installing it
-  replaces the glibc provider (and vice versa).
-
-```bash
-# Track 1 (default recommended): glibc wrapper packages
 # Path A: apt/pkg
 apt install -y glibc-repo
 apt update
@@ -141,142 +128,46 @@ dpkg -i /path/to/opencode_<version>_aarch64.deb
 pacman -Syu
 pacman -S glibc openssl-glibc
 pacman -U /path/to/opencode-<version>-aarch64.pkg.tar.xz
-
-# Track 2 (alpha): native provider — zero glibc, full TUI
-dpkg -i /path/to/opencode-native_<version>_aarch64.deb
-# or: pacman -U /path/to/opencode-native-<version>-1-aarch64.pkg.tar.xz
 ```
 
-See `docs/dual-track-install.md` for provider selection details.
-
-Releases: https://github.com/Hope2333/opencode-termux/releases
-
----
-
-## Usage
+### 构建
 
 ```bash
-opencode --version          # → 1.17.3
-opencode run "hi"           # OpenCode AI chat
-opencode run --mode=dev .   # development mode
-opencode serve              # API server mode
-opencode web                # web interface
-```
-
----
-
-## Build
-
-### Local build (Termux)
-
-```bash
-# Single version
+# 单版本
 make all VER=1.17.3 PKG=both
 
-# Batch build (1.17.0 through 1.17.3)
+# 批量构建
 make batch VERS='1.17.[0-3]' PKG=both ODIR=~/oct-out MIX=1
-```
 
-### Build + release upload
+# 构建流程: clean → runtime(produce-local.sh: npm download + loader wrap)
+#          → stage(scripts/build.sh) → deb → pacman
 
-```bash
-# Hidden target (not in help):
+# 隐藏目标: release-upload（默认 TAG=Push<YYMMDD>, REPO=Hope2333/opencode-termux, PKG=both）
 make release-upload TAG=Push260522 VERS='1.17.[0-3]'
-# Defaults: TAG=Push<YYMMDD>, REPO=Hope2333/opencode-termux, PKG=both
 ```
 
-### Build flow
+### CI
 
-```
-make all VER=1.17.3 PKG=both
-  → clean (rm -rf artifacts/staged, packaging work dirs)
-  → runtime (tools/produce-local.sh: npm download + bun-termux-loader wrap)
-  → stage (scripts/build.sh: copy to prefix tree)
-  → deb (scripts/package/package_deb.sh)
-  → pacman (scripts/package/package_pacman.sh)
-```
+`.github/workflows/build-pure-android.yml`：workflow_dispatch 手动触发，
+QEMU aarch64 处理二进制，npm 下载 opencode-linux-arm64 后用预构建
+wrapper+shim（`tools/prebuilt/`）包装，上传 artifact 并写 status JSON。
 
----
+> amd64 (x64) + Android + Termux 组合几乎无真实用户，本项目不提供 x64 资产；
+> armv7 32 位依赖链破损严重、修复成本过高，该实验已放弃。
 
-## CI Pipeline
+### Launcher 安全机制
 
-Workflow: `.github/workflows/build-pure-android.yml`
+- 退出时 TTY 清理（按 exit code 分软/硬清理）
+- 陈旧锁清理（`$XDG_STATE_HOME` 下 `*.lock`）
+- 默认 `OPENCODE_DISABLE_DEFAULT_PLUGINS=1`
 
-```
-workflow_dispatch (manual, with version input)
-  ↓ Install Bun (Linux) for optional bundle build
-  ↓ Clone upstream source + apply patches (WIP)
-  ↓ QEMU aarch64 emulation for binary handling
-  ↓ Download opencode-linux-arm64 from npm
-  ↓ Wrap with bun-termux-loader (pre-built aarch64 wrapper+shim)
-  ↓ Create bundle + upload artifact + write status JSON
-```
+### 零 glibc 约束史（历史记录）
 
-Matrix builds for: `aarch64`
-
-> **Note**: The combination of amd64 (x64) + Android + Termux is extremely rare with virtually no real-world users.
-> If you're on amd64, use a standard Linux distribution with your system package manager or npm/bun to install opencode directly — no Termux wrapper needed.
-> For those who still need it, modify the workflow config and build yourself; this project does not provide x64 release assets.
->
-> **armv7**: The 32-bit dependency chain is severely broken with prohibitively high fix costs. This experiment is abandoned.
-
----
-
-## Native-android 分支（native 线，alpha）
-
-`native-android` 是拓展分支，承载 transplant 复活管线（`tools/transplant/transplant.py`），
-产出零 glibc 依赖的原生 Android 运行路径。当前状态：**管线贯通、TUI 完整可用，
-发布定档 alpha**（长期 pre-release；stable 维护主线仍是 pure/glibc 双轨包）。
-
-历史注记：早期"C1 已证伪/三重证伪"结论**已被推翻**——真因是 assemble 从未 patch
-`.bun` 节的 `BUN_COMPILED.size`（standalone 检测链在 android bun 中完整存在）。
-手术细节与证伪历史留档见 `docs/transplant.md` §0.1/§0.2。
-
-### 现状一览
-
-- **复活管线贯通**：`make transplant VER=<ver>` 一条龙
-  extract→detect→convert→patch→assemble→revive→verify，直接产出可运行的
-  `opencode-native-revived`。同时支持旧 trailer 格式与新版 `.bun` section 格式
-  （opencode ≥1.18，1.18.21 实证）；`revive_patch.py --size-mode reloc|plain-offset`
-  按底座版本自动选择语义（≤1.3.x reloc 重定位，≥1.4.x plain-offset 直写偏移；
-  新版格式图必须用 ≥1.4 底座，见 `tools/transplant/config/bun-bind.json` target=1.4.0）。
-- **TUI 完整可用**：`tools/transplant/swap_tui.py` 将 NDK 构建的 bionic
-  `libopentui.so` 等长注入后 TUI 完整渲染。W10a 深度冒烟 5/5 通过
-  （真实聊天往返 / resize / 干净退出 / 5min 浸泡 RSS 反降）。
-- **CI 绿**：`.github/workflows/build-native-android.yml`（workflow_dispatch，
-  evidence-only `--no-execve`），含 revive 步骤与 golden 回归。近期修正：
-  d918c8c（重建补 --no-execve）、a0bee4e（golden 重建前清预置缓存防错底座）。
-  最新 run 32831119197 success，产物 transplant-1.18.21。
-- **watcher 栈**：`tools/watcher/`（`watcher.c` 原生 inotify 守护 + `shim.js`
-  插件桥 + `install.sh`），E2E 三类事件 <100ms，kill -9 自愈 ≤612ms。
-
-### 发布渠道（双轨）
-
-| 渠道 | 内容 | 入口 |
-|---|---|---|
-| stable | Push260822 双轨包（glibc wrapper deb/pacman） | <https://github.com/Hope2333/opencode-termux/releases> |
-| alpha | native-alpha-260825 prerelease（资产 `opencode-1.18.21-aarch64-android-native-tui`） | <https://github.com/Hope2333/opencode-termux/releases/tag/native-alpha-260825> |
-
-政策：native 线长期定档 alpha pre-release；stable 主线由 pure/glibc 承担。
-
-### 性能诚实数据（实测，非营销话术）
-
-- 启动 ~1s 量级：`--version` 首试 1965ms，归因 Phase B bootstrap ~220ms +
-  Phase C JS 求值 ~820ms。<300ms 目标需上游 Bun 改造，当前不可达（W3 报告）。
-- 体积 ~180MB。
-
-### 命令速查
-
-```bash
-# 一键管线（extract→detect→convert→patch→assemble→revive→verify）
-# 现产 opencode-native-revived（可直接运行）
-make transplant VER=1.18.21
-
-# 回归（golden-file，fixtures 需先 scripts/fetch-fixtures.sh 预下载）
-make transplant-check
-```
-
-完整手术原理、config schema、失败预案与 FAQ 见 `docs/transplant.md`。
+早期"零 glibc 不可能"的 Constraints 结论表已被 transplant 复活手术部分推翻
+（"runtime swap / binary surgery 不可行"的真因是未 patch `BUN_COMPILED.size`）。
+仍然成立的约束：Android 上 `bun build --compile` 因 `/data/` 权限扫描被
+Zig 源码硬编码阻断；上游 Bun 至今没有 `--target=bun-linux-aarch64-android`。
+完整证伪与推翻记录见 `docs/transplant.md` 与 `docs/native-android-research.md`。
 
 ---
 
@@ -284,119 +175,39 @@ make transplant-check
 
 ```
 .github/workflows/
-  build-pure-android.yml      CI automated build pipeline (aarch64)
-  prebuild-armv7.yml          armv7 prebuild handoff (deferred)
+  build-native-android.yml    Native 线 CI（evidence-only artifact）
+  build-pure-android.yml      glibc 线 CI（aarch64）
+  prebuild-armv7.yml          armv7 prebuild handoff（已搁置）
 tools/
-  produce-local.sh            Download from npm + wrap
-  prebuilt/                   Pre-built aarch64 wrapper+shim for CI
+  transplant/                 Native 复活管线（transplant.py / revive_patch.py /
+                              swap_tui.py / config/bun-bind.json）
+  watcher/                    原生 inotify watcher 守护 + shim 插件桥
+  produce-local.sh            glibc 线：npm 下载 + loader wrap
+  prebuilt/                   glibc 线 CI 用预构建 aarch64 wrapper+shim
 scripts/
-  build.sh                    Stage prefix
-  launcher.sh                 Runtime dispatcher (cleanup + exec)
+  fetch-fixtures.sh           transplant-check golden fixtures 预下载
+  build.sh                    Stage prefix（glibc 线）
+  launcher.sh                 Runtime dispatcher（cleanup + exec）
   package/package_deb.sh      DEB builder
   package/package_pacman.sh   Pacman builder
   hooks/run-system-skills.sh  Post-install/upgrade hooks
 patches/
-  0001-android-support.patch   Upstream OpenCode Android patches (WIP)
+  0001-android-support.patch  Upstream OpenCode Android patches (WIP)
 docs/
-  native-android-research.md  Research: zero-glibc approaches
+  transplant.md               Native 线手术权威文档
+  comparison-runtime-lines.md 三条运行线对比
+  dual-track-install.md       Provider 选择（opencode vs opencode-native）
+  native-android-research.md  零 glibc 研究史
 ```
-
-## Launcher safeguards
-
-- TTY cleanup on exit (soft/hard depending on exit code)
-- Stale lock cleanup (`*.lock` in `$XDG_STATE_HOME`)
-- `OPENCODE_DISABLE_DEFAULT_PLUGINS=1` (default)
-
-## Metadata
-
-Maintainer: `Hope2333(幽零小喵) <u0catmiao@proton.me>`
 
 ## Related
 
 - OpenCode upstream: <https://github.com/anomalyco/opencode>
 - bun-termux-loader: <https://github.com/Hope2333/bun-termux-loader>
-- Android-native Bun: <https://github.com/Hope2333/bun-termux> (pure-android branch)
+- Android-native Bun: <https://github.com/Hope2333/bun-termux>
 - Upstream Bun (Android builds): <https://github.com/oven-sh/bun>
-- Research doc: `docs/native-android-research.md`
+- Releases: <https://github.com/Hope2333/opencode-termux/releases>
 
----
+## Metadata
 
-## Pure-Bionic OpenCode: constraint history
-
-The notes below record why a from-source pure-Bionic build stayed out of reach,
-and which of them the transplant revival has since bypassed. Full evidence:
-`docs/transplant.md`. Obstacles without a superseded note still hold.
-
-### 1. Compilation: `bun build --compile` is blocked on Android
-
-Bun's `--compile` flag scans the filesystem from `/` to resolve imports and
-native modules. On Android, `/data/` is permission-restricted (`AccessDenied`),
-causing all `bun build` operations (with or without `--compile`) to fail.
-There is no known workaround — it's hardcoded in Bun's Zig source.
-
-```bash
-bun build ./src/index.ts            # ❌ Cannot read directory "/data/": AccessDenied
-bun build --compile ./src/index.ts  # ❌ same
-```
-
-### 2. Android Bun has no "compiled app" entry point
-
-The Android Bun binary (v1.3.14) is a **pure interpreter** — it starts as
-`bun`, not as a Bun-compiled application. The ELF entry point is at offset
-`0x1f00200` (interpreter mode) instead of the RX segment base (compiled-app
-mode). The compiled-app startup code (`mov x5, x0; ldr x1, [sp]` pattern)
-does **not exist** in the binary. Simply concatenating Android Bun + JS
-payload produces a binary that runs as `bun --help`, not as OpenCode.
-
-> **Superseded**: the standalone detection chain does exist in Android Bun. The real
-> blocker was an unpatched `BUN_COMPILED.size`, fixed by the revive surgery
-> (`tools/transplant/revive_patch.py`). The grafted binary runs today — see
-> `docs/transplant.md`.
-
-### 3. JS bytecode is not portable
-
-The JS extracted from the upstream binary is **compiled bytecode**, not
-TypeScript source. It cannot be run with `bun run` — it requires the
-`bun build --compile` loading path, which only exists in binaries produced
-by that process.
-
-### 4. Native modules lack Bionic builds
-
-OpenCode depends on `@opentui/solid` (TUI framework) and `@parcel/watcher`
-(file watcher). These ship with glibc `.so` files. Bionic-compiled versions
-do not exist publicly.
-
-> **Partially superseded**: `@opentui/solid` now runs via an NDK-built bionic
-> `libopentui.so` (equal-length injection via `tools/transplant/swap_tui.py`), and file
-> watching uses the native `tools/watcher/` stack instead of `@parcel/watcher`.
-
-### 5. Upstream Bun has no Android compile target
-
-```bash
-bun build --compile --target=bun-linux-arm64           # ✅ works (produces glibc binary)
-bun build --compile --target=bun-linux-aarch64-android # ❌ does not exist
-```
-
-There is no `--target` for Android in Bun's build system. Adding it requires
-changes to Bun's Zig/C++ source code and WebKit/JavaScriptCore integration.
-
----
-
-## This branch's commitment
-
-This branch exists specifically to **track and resolve** these obstacles.
-The path forward:
-
-| Timeline | Milestone |
-|----------|-----------|
-| **Now** | bun-termux-loader wrapping (mainline, needs glibc) + transplant native line (alpha, zero glibc, TUI enabled) |
-| **Short-term** | Fork Bun, patch `/data/` scan, add Android compile target |
-| **Medium-term** | Build Android-native OpenCode on CI with forked Bun |
-| **Goal** | `opencode` → runs on Termux, **zero glibc**, single Bionic binary |
-
-Every constraint documented here has a corresponding issue or experiment in
-the repo. When upstream Bun or OpenCode removes any of these blockers, this
-branch will switch immediately.
-
-**This is not a dead end. It's a work in progress.**
-
+Maintainer: `Hope2333(幽零小喵) <u0catmiao@proton.me>`
