@@ -17,7 +17,7 @@ Android-specific deviations from upstream (both binary-verified, see
      Appending right after file end would turn bss vaddrs into file-backed
      graph bytes and corrupt globals (v1 hang). We therefore place the blob
      past max(file_end, bss_end) and keep the old bss range zero-filled.
-  2. PIE relocation (--size-mode reloc, default): bun <=1.3.x android
+  2. PIE relocation (--size-mode reloc): bun <=1.3.x android
      dereferences
      BUN_COMPILED.size as an ABSOLUTE pointer (upstream compiled outputs are
      non-PIE where vaddr == absolute). Android bun is PIE, so we register an
@@ -40,9 +40,15 @@ Android-specific deviations from upstream (both binary-verified, see
 Usage:
   python3 revive_patch.py --bun <android-bun> --graph <module-graph.bin> \
                           --out <output-elf> [--size-mode reloc|plain-offset]
+
+  --size-mode omitted (default): auto-detected from the base ELF's embedded
+  bun version string ("bun-vX.Y.Z" / "Bun vX.Y.Z"): major.minor >= 1.4 ->
+  plain-offset, else reloc. An explicit flag always wins and is noted as
+  such in the output.
 """
 import argparse
 import os
+import re
 import struct
 import sys
 
@@ -59,15 +65,37 @@ DT_RELASZ = 8                # total size of rela table
 DT_RELAENT = 9               # entry size (must stay 24)
 RELAENT = 24
 
+SCAN_HEAD_BYTES = 4 * 1024 * 1024   # bounded fast-path scan window
+_BUN_VERSION_RE = re.compile(rb"(?:bun-v|Bun v)(\d+)\.(\d+)\.(\d+)")
 
 def fail(msg: str) -> None:
     print(f"FAIL: {msg}", file=sys.stderr)
     sys.exit(1)
 
-
 def align_up(x: int, a: int) -> int:
     return (x + a - 1) & ~(a - 1)
 
+def detect_size_mode(bun_bytes: bytes) -> str:
+    """Infer --size-mode from the Bun version string embedded in the base ELF.
+
+    Evidence matrix: reloc fits bun <=1.3.x bases, plain-offset fits
+    bun >=1.4.x bases; reloc+1.4.x SIGSEGVs pre-init. Scan strategy:
+    bounded 4MB head first (cheap), then one pass over the remainder of the
+    already-resident buffer (the base is fully loaded for surgery anyway --
+    no second file read, no double buffering).
+    Conservative fallback: reloc + WARN when no version string is found.
+    """
+    m = _BUN_VERSION_RE.search(bun_bytes[:SCAN_HEAD_BYTES])
+    if m is None:
+        m = _BUN_VERSION_RE.search(bun_bytes)
+    if m is None:
+        print("WARN: no bun version string found in base ELF; "
+              "auto size-mode fallback -> reloc", file=sys.stderr)
+        return "reloc"
+    major, minor, patch = (int(g) for g in m.groups())
+    mode = "plain-offset" if (major, minor) >= (1, 4) else "reloc"
+    print(f"auto size-mode={mode} (base bun v{major}.{minor}.{patch})")
+    return mode
 
 def parse_elf64(data: bytes):
     if data[:4] != b"\x7fELF" or data[4] != 2 or data[5] != 1:
@@ -102,12 +130,10 @@ def parse_elf64(data: bytes):
                               addr=addr, offset=offset, size=size, link=link))
     return phdrs, shdrs
 
-
 def section_name(data: bytes, shstrtab: dict, name_off: int) -> str:
     start = shstrtab["offset"] + name_off
     end = data.index(b"\x00", start)
     return data[start:end].decode("ascii", "replace")
-
 
 def find_dynamic_entries(out: bytearray, dyn_phdr: dict):
     """Yield (tag_index_byte_off, tag, val) for each entry of PT_DYNAMIC."""
@@ -121,22 +147,29 @@ def find_dynamic_entries(out: bytearray, dyn_phdr: dict):
             break
     return ents
 
-
 def main() -> None:
     ap = argparse.ArgumentParser(description="C1 revival ELF surgery")
     ap.add_argument("--bun", required=True, help="official android bun ELF (base)")
     ap.add_argument("--graph", required=True, help="module-graph.bin ([graph][Offsets32][trailer16])")
     ap.add_argument("--out", required=True, help="output ELF path")
-    ap.add_argument("--size-mode", choices=["reloc", "plain-offset"], default="reloc",
+    ap.add_argument("--size-mode", choices=["reloc", "plain-offset"], default=None,
                     help="how BUN_COMPILED.size (.bun[0]) is published: "
                          "'reloc' = R_AARCH64_RELATIVE absolute pointer (bun "
                          "<=1.3.x android PIE chain dereferences .bun[0] "
                          "directly); 'plain-offset' = constant unbiased payload "
-                         "vaddr, runtime adds dlpi_addr itself (bun >=1.4.x)")
+                         "vaddr, runtime adds dlpi_addr itself (bun >=1.4.x); "
+                         "default: auto-detect from the base bun version "
+                         "(>=1.4 -> plain-offset, else reloc)")
     args = ap.parse_args()
 
     with open(args.bun, "rb") as f:
         bun_bytes = f.read()
+    if args.size_mode is None:
+        # Auto-detect from the embedded bun version; kills the mode x base
+        # mismatch class (reloc onto a 1.4.x base SIGSEGVs pre-init).
+        args.size_mode = detect_size_mode(bun_bytes)
+    else:
+        print(f"size-mode={args.size_mode} (explicit)")
     with open(args.graph, "rb") as f:
         payload = f.read()
 
@@ -190,13 +223,22 @@ def main() -> None:
 
     # --- build output: zero-pad over old bss extent, append blob ---
     if args.size_mode == "plain-offset":
-        # W7a root-cause fix: the graph file already opens with its own u64
-        # mg_size prefix (== len(payload)-8), so wrapping it in another
-        # pack(len(payload)) published TWO u64s at new_off (mg_size+8 then a
-        # duplicate mg_size). Publish EXACTLY ONE prefix: keep payload
-        # verbatim (its leading u64 IS mg_size) and pad 8 zero bytes so the
-        # total appended length is unchanged.
-        blob = payload + b"\x00" * 8
+        # Consumer contract: the qword at the published vaddr is the graph
+        # byte count, with the graph bytes immediately following it.
+        # - Legacy standalone payloads open with their own mg_size prefix
+        #   (== len-8): publish verbatim (W4a/W7a era).
+        # - Section-format payloads (1.18.x+, leading b"/$bunfs/") carry NO
+        #   prefix: publish one ourselves (matches the proven w7c2 layout;
+        #   grafting them verbatim makes the runtime read ASCII as mg_size
+        #   and SIGSEGV).
+        lead = payload[:8]
+        if struct.unpack_from("<Q", payload)[0] == len(payload) - 8:
+            blob = payload + b"\x00" * 8
+        else:
+            if lead != b"/$bunfs/":
+                print(f"[warn] unrecognized module-graph lead {lead!r}; "
+                      "publishing own length prefix")
+            blob = struct.pack("<Q", len(payload)) + payload + b"\x00" * 8
     else:
         blob = struct.pack("<Q", len(payload)) + payload
     out = bytearray(bun_bytes)
@@ -271,7 +313,6 @@ def main() -> None:
         f.write(out)
     os.chmod(args.out, 0o755)
     print(f"[6/6] wrote {args.out} ({len(out)} B); {size_note}")
-
 
 if __name__ == "__main__":
     main()
