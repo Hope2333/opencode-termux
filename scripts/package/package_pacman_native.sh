@@ -34,7 +34,7 @@ if [[ -z "${VERSION:-}" ]]; then
 	fi
 	VERSION="$(basename "${_builds[0]}")"
 fi
-NATIVE_BIN="$TRANSPLANT_ROOT/$VERSION/opencode-native-revived"
+NATIVE_BIN="${OPENCODE_NATIVE_BIN:-$TRANSPLANT_ROOT/$VERSION/opencode-native-revived}"
 [[ -x "$NATIVE_BIN" ]] || {
 	echo "Error: missing native runtime $NATIVE_BIN (run: make transplant VER=$VERSION)" >&2
 	exit 1
