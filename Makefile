@@ -23,7 +23,7 @@ NATIVE_DIR = artifacts/transplant/$(NATIVE_VER)
 
 OUTPUT_ROOT := $(if $(ODIR),$(ODIR),$(CURDIR)/packing)
 
-.PHONY: help all runtime stage deb pacman deb-native pacman-native native-pkg batch clean status steps matrix selfcheck release-upload test transplant-check
+.PHONY: help all runtime stage deb pacman deb-native pacman-native native-pkg batch clean status steps matrix selfcheck release-upload test transplant-check transplant-upx
 
 help:
 	@echo "OpenCode Termux build helper"
@@ -45,6 +45,7 @@ help:
 	@echo
 	@echo "Native provider commands (experimental headless line):"
 	@echo "  make transplant VER=1.18.21       # build native binary first"
+	@echo "  make transplant-upx VER=1.18.21   # OPTIONAL: UPX-pack the revived product (last step!)""
 	@echo "  make deb-native VER=1.18.21       # opencode-native .deb provider"
 	@echo "  make pacman-native VER=1.18.21    # opencode-native pacman provider"
 	@echo "  make native-pkg VER=1.18.21       # both native packages"
@@ -231,6 +232,48 @@ transplant:
 		echo "WARN: artifacts/transplant/opentui-bionic/libopentui.so not found; skipping TUI swap"; \
 	fi
 transplant: VER?= latest
+
+# transplant-upx: OPTIONAL final step — UPX-pack an already-revived native product.
+# MUST run AFTER transplant (swap_tui.py / revive_patch break on a packed ELF).
+# Requires a revived product in $(NATIVE_DIR); override source with SRC=<path>.
+# Produces opencode-native-<ver>-upx, KEEPS the original, writes upx-report-<ver>.json
+# (both sha256 + ratio). WARN-skips when upx is missing.
+transplant-upx:
+	@if [ -z "$(VER)" ]; then \
+		echo "Error: VER is empty. Example: make transplant-upx VER=1.18.21"; \
+		exit 1; \
+	fi
+	@if ! command -v upx >/dev/null 2>&1; then \
+		echo "WARN: upx not found; skipping UPX compression (transplant-upx skipped)"; \
+		exit 0; \
+	fi
+	@SRC="$(SRC)"; \
+	if [ -z "$$SRC" ]; then \
+		if [ -f $(NATIVE_DIR)/opencode-native-tui ]; then SRC=$(NATIVE_DIR)/opencode-native-tui; \
+		elif [ -f $(NATIVE_DIR)/opencode-native-revived ]; then SRC=$(NATIVE_DIR)/opencode-native-revived; \
+		elif [ -f $(NATIVE_DIR)/opencode-native ]; then SRC=$(NATIVE_DIR)/opencode-native; \
+		else \
+			echo "Error: no revived product in $(NATIVE_DIR); run 'make transplant VER=$(VER)' first"; \
+			exit 1; \
+		fi; \
+	fi; \
+	echo "==> transplant-upx VER=$(VER) source=$$SRC"; \
+	OUT=$(NATIVE_DIR)/opencode-native-$(VER)-upx; \
+	cp -p "$$SRC" "$$OUT"; \
+	upx $(UPX_OPTS) --no-color "$$OUT"; \
+	RC=$$?; \
+	if [ $$RC -ne 0 ]; then echo "Error: upx failed rc=$$RC"; rm -f "$$OUT"; exit $$RC; fi; \
+	SRC_SHA=$$(sha256sum "$$SRC" | cut -d' ' -f1); \
+	OUT_SHA=$$(sha256sum "$$OUT" | cut -d' ' -f1); \
+	ORIG_SIZE=$$(stat -c%s "$$SRC"); \
+	UPX_SIZE=$$(stat -c%s "$$OUT"); \
+	RATIO=$$(awk "BEGIN{printf \"%.2f\", $$UPX_SIZE*100/$$ORIG_SIZE}"); \
+	echo "original : $$SRC_SHA  $$ORIG_SIZE B"; \
+	echo "upx      : $$OUT_SHA  $$UPX_SIZE B ($$RATIO%)"; \
+	python3 -c 'import json,sys; src,out,ss,os_,osz,usz,ratio=sys.argv[1:]; ver=out.split("opencode-native-",1)[1].split("-upx",1)[0]; d=out.rfind("/"); rep={"version":ver,"source":src,"source_sha256":ss,"source_size":int(osz),"upx_binary":out,"upx_sha256":os_,"upx_size":int(usz),"ratio_pct":float(ratio),"note":"packed MUST be the final pipeline step; swap_tui.py/revive_patch break on packed ELF"}; open(out[:d]+"/upx-report-"+ver+".json","w").write(json.dumps(rep,indent=2)); print("wrote upx-report-"+ver+".json")' "$$SRC" "$$OUT" "$$SRC_SHA" "$$OUT_SHA" "$$ORIG_SIZE" "$$UPX_SIZE" "$$RATIO" || exit 1; \
+	echo "==> transplant-upx done: original kept at $$SRC; upx at $$OUT"
+transplant-upx: VER?= latest
+transplant-upx: UPX_OPTS?= --best
 
 # transplant-check: golden regression across layout families
 # (tests/transplant/test_golden.py; fixtures pre-downloaded by scripts/fetch-fixtures.sh)

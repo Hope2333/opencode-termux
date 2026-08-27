@@ -136,6 +136,29 @@ make transplant-check
 每步失败打印可操作错误并以非 0 退出；`verify` 子命令重跑 execve 断言版本串一致
 （`--no-execve` 跳过 execve 步，供 x86 CI 只产二进制 + report）。
 
+
+### 2.1 可选：UPX 压缩（native 线实测事实）
+
+对 revive 产物做 `upx --best` 可再压一档，真机已验证可用：
+
+| 指标 | 数值 |
+|---|---|
+| 体积 | 179,807,785 B → **51,891,796 B**（28.86%） |
+| TUI 直跑 | 正常渲染与交互 |
+| `--version` | 1.18.21，rc=0 |
+| 启动开销 | ~12s（运行时自解压），首次启动明显变慢 |
+
+两条硬约束（操作顺序敏感）：
+
+1. **UPX 必须是管线最后一步。** `revive_patch.py` / `swap_tui.py` 操作的是未压缩
+   ELF 的 section / payload；packing 后 section 被 mangle，任何一步"复活手术"或
+   TUI 等长替换都会失效。
+2. **goldens 回归基线基于未压缩产物**——`make transplant-check` 不感知 UPX，
+   压缩产物不要喂给 golden 路径。
+
+> 说明：压缩属于发布包装层面的可选项，不影响管线正确性语义；
+> 是否默认启用由发布策略决定（当前 BETA 渠道不默认 UPX）。
+
 ## 3. config schema 解释
 
 ### 3.1 `tools/transplant/config/patches.json`（已存在）
@@ -221,7 +244,51 @@ A: 诚实边界：**trailer 路径已实证 1.3.13 完整管线**（含 revive �
 见 §0.4）。probe 未覆盖的版本一律标
 **"待验证"**，落入未覆盖区间即按 §4 失败预案锁定报错，不产出未验证二进制。
 
-## 6. 引用（不复制报告全文）
+## 6. UPX 可选压制（最后一步）
+
+UPX 可把复活产物再压一层，体积显著缩小，代价是每次启动多一次解压开销。
+这是**纯可选**步骤，且**必须放在管线最末端**——packed ELF 会让 swap_tui.py / revive_patch 直接失效。
+
+### 实测数据（1.18.21, aarch64-android-native）
+
+| 项目 | 数值 |
+|---|---|
+| 原始产物 | 179,807,785 B（opencode-native-w7c2-fixed） |
+| `upx --best` | 51,891,796 B（**28.86%**，用户实测 HAND-CHECKED） |
+| `upx`（默认压缩） | 55,348,940 B（30.78%，本任务复测） |
+| 启动代价 | packed 直跑约 **12s** 启动（解压开销；--version rc=0） |
+
+### 兼容性全貌（本任务验证矩阵，6/6 PASS）
+
+- `--version` → 1.18.21，rc=0
+- `serve --port 4099` → HTTP 200（/、/health、/v1/models），进程干净退出无残留
+- `run "hi"` → e2e rc=0，真实模型回包（glm-5.3-flash）
+- 无参 TUI → pty 下正常初始化并渲染，超时强退无残留进程
+- 插件加载（`models`）→ rc=0，492 行输出无 plugin error
+- 反复启动稳定性 ×3 → `--version` 连续 3 次均 rc=0
+
+### 关键不兼容（packed 必须是最后一步）
+
+- `swap_tui.py` 对 packed ELF：`asset marker not found` → rc=2（UPX 压缩后明文 asset 标记消失，section/asset 解析失效）
+- `revive_patch` 对 packed ELF：`FAIL: invalid section header table / e_shstrndx` → rc=1（UPX 剥离/重排 section header，`.bun` 段无法定位）
+
+### 管线集成
+
+```bash
+# 要求 <ver> 已有复活产物（opencode-native-tui > revived > assembled，或 SRC= 显式指定）
+make transplant-upx VER=1.18.21
+# 等价：make transplant-upx VER=1.18.21 SRC=artifacts/transplant/1.18.21/opencode-native-w7c2-fixed
+# 自定义压缩等级：UPX_OPTS= 走默认（快），默认 --best（最省体积）
+```
+
+行为：
+
+- 产出 `artifacts/transplant/<ver>/opencode-native-<ver>-upx`，**保留原版**不动
+- 两版 sha256 + 压缩比写入 `artifacts/transplant/<ver>/upx-report-<ver>.json`
+- `upx` 缺失时明确 **WARN-skip**（rc=0），不阻断管线
+- golden 回归不受影响：`tests/transplant/test_golden.py` 只对未压缩的 `opencode-native` 取 sha256，UPX 产物是独立文件，不进 goldens 路径
+
+## 7. 引用（不复制报告全文）
 
 - 目标架构 / 自动化方案 / 补丁集 / 7 项验证清单：`docs/performance-optimization.md` §4
 - 优化措施总览与量化预期（启动 <0.3s、TUI RSS <350MB、零 glibc）：`docs/performance-optimization.md` §7
