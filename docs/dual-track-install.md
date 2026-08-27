@@ -14,12 +14,25 @@ one replaces the other.
 |---|---|---|
 | `opencode`（glibc wrapper 线） | `opencode-glibc` | 稳定附录（glibc 双轨包） |
 | `opencode-native`（native bionic 线） | `opencode` | 稳定主推（native 线） |
+| —（新增过渡包） | `opencode-glibc-standalone` | 命令入口 `opencode-glibc`，与 `opencode` 可共存，单版本冻结，用于回退 |
 
 ### 现有用户预期
 
 - 新包采用 dpkg/pacman 的 `Breaks`/`Replaces` 语义处理冲突：安装新包会自动替换同名旧 provider。
-- 过渡期间 `opencode-glibc` 与 `opencode`（native 线）可并存安装，便于逐步切换。
+- `opencode` 与 `opencode-glibc` 互斥，不可并存安装（同现双轨关系保持不变）。
+- 过渡期新增 `opencode-glibc-standalone`：命令入口为 `opencode-glibc`、库路径独立（`bin/opencode-glibc` + `lib/opencode-glibc`），**与 `opencode` 包可共存**，仅发布一个冻结版本，专用于过渡期回退。
 - 切换 provider 的方式不变：`dpkg -i` / `pacman -U` 对应包即可。
+
+### 典型升级路径
+
+1. 卸载旧 glibc `opencode` 包。
+2. 安装 native `opencode`（继承 `opencode` 名，稳定主推）。
+3. 同时安装 `opencode-glibc-standalone` 作为保底回退（入口 `opencode-glibc`）。
+
+### 打包注意
+
+- `opencode-glibc-standalone` 包**不得**对字面名 `opencode` 声明 `Conflicts`，避免误伤已继承该名的 native 包。
+- 互斥关系仅存在于 `opencode` ↔ `opencode-glibc` 这一对。
 
 ### 时间线
 
