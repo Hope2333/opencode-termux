@@ -5,7 +5,7 @@
 OpenCode on Termux with two runtime lines: **native bionic direct-run line (primary) + glibc wrapper line (stable appendix)**.
 Current branch: `native-android`.
 
-> **Upcoming package rename (transition notice):** The current glibc `opencode` package will be renamed to `opencode-glibc`. The native bionic line will inherit the plain `opencode` name and become the stable channel around Push 27/28 (dates approximate). `opencode` and `opencode-glibc` remain mutually exclusive (cannot be installed together). During the transition a new `opencode-glibc-standalone` package (command entry `opencode-glibc`, independent lib path) can coexist with `opencode`; it ships a single frozen version for rollback only. Watch the [releases page](https://github.com/Hope2333/opencode-termux/releases) for the switchover.
+> **Upcoming package rename (transition notice):** The current glibc `opencode` package will be renamed to `opencode-glibc`. The native bionic line will inherit the plain `opencode` name and become the stable channel around Push 27/28 (dates approximate). `opencode` and `opencode-glibc` remain mutually exclusive (cannot be installed together). During the transition a new `opencode-glibc-standalone` package (command entry `opencode-glibc`, independent lib path) can coexist with `opencode`; it ships a single frozen version for rollback only. After the transition completes, the repository mainline switches to the native line; glibc/pure becomes appendix maintenance. Watch the [releases page](https://github.com/Hope2333/opencode-termux/releases) for the switchover.
 
 ---
 

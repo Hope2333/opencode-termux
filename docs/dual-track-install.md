@@ -39,6 +39,10 @@ one replaces the other.
 - 约 Push 27/28（日期近似），以最终真机验证为准。
 - 具体切换以 releases 页面公告为准。
 
+### 终态
+
+包名变更与 27/28 stable 切换全部完成后，仓库**主线切换到 native 线**（发布主渠道与开发主线），glibc/pure 双轨降级为附录维护（appendix maintenance）。
+
 | | Track 1: glibc wrapper (`opencode`) | Track 2: native (`opencode-native`) |
 |---|---|---|
 | Status | **Default recommended**, mature | Experimental |
