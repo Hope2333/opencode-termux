@@ -136,29 +136,6 @@ make transplant-check
 每步失败打印可操作错误并以非 0 退出；`verify` 子命令重跑 execve 断言版本串一致
 （`--no-execve` 跳过 execve 步，供 x86 CI 只产二进制 + report）。
 
-
-### 2.1 可选：UPX 压缩（native 线实测事实）
-
-对 revive 产物做 `upx --best` 可再压一档，真机已验证可用：
-
-| 指标 | 数值 |
-|---|---|
-| 体积 | 179,807,785 B → **51,891,796 B**（28.86%） |
-| TUI 直跑 | 正常渲染与交互 |
-| `--version` | 1.18.21，rc=0 |
-| 启动开销 | ~12s（运行时自解压），首次启动明显变慢 |
-
-两条硬约束（操作顺序敏感）：
-
-1. **UPX 必须是管线最后一步。** `revive_patch.py` / `swap_tui.py` 操作的是未压缩
-   ELF 的 section / payload；packing 后 section 被 mangle，任何一步"复活手术"或
-   TUI 等长替换都会失效。
-2. **goldens 回归基线基于未压缩产物**——`make transplant-check` 不感知 UPX，
-   压缩产物不要喂给 golden 路径。
-
-> 说明：压缩属于发布包装层面的可选项，不影响管线正确性语义；
-> 是否默认启用由发布策略决定（当前 BETA 渠道不默认 UPX）。
-
 ## 3. config schema 解释
 
 ### 3.1 `tools/transplant/config/patches.json`（已存在）
