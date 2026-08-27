@@ -5,6 +5,8 @@
 OpenCode on Termux，双运行时线：**native bionic 直跑线（主推）+ glibc wrapper 线（稳定附录）**。
 当前分支：`native-android`。
 
+> **包名即将变更（过渡公告）：** 现有的 glibc `opencode` 包将更名为 `opencode-glibc`；native bionic 线将继承 `opencode` 名称，并在约 Push 27/28（日期近似）成为稳定渠道。过渡期间两个包可并存安装。请关注 [releases 页面](https://github.com/Hope2333/opencode-termux/releases) 的切换进展。
+
 ---
 
 ## Native 线（主推）：零 glibc 原生 Android 运行时

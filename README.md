@@ -5,6 +5,8 @@
 OpenCode on Termux with two runtime lines: **native bionic direct-run line (primary) + glibc wrapper line (stable appendix)**.
 Current branch: `native-android`.
 
+> **Upcoming package rename (transition notice):** The current glibc `opencode` package will be renamed to `opencode-glibc`. The native bionic line will inherit the plain `opencode` name and become the stable channel around Push 27/28 (dates approximate). During the transition both packages may be installed side-by-side. Watch the [releases page](https://github.com/Hope2333/opencode-termux/releases) for the switchover.
+
 ---
 
 ## Native line (primary): zero-glibc native Android runtime

@@ -4,6 +4,28 @@ Two packaging tracks provide the same `opencode` command on Termux.
 **Pick ONE provider** — the packages conflict with each other, so installing
 one replaces the other.
 
+## 包名变更过渡计划
+
+未来将区分 glibc 和 bionic 构建。旧 `opencode` 包从 `opencode` 变更为 `opencode-glibc`，`opencode` 将继承 native 线。push 日期在 27、28 左右 native 线定为稳定版（BETA 横幅移除）。
+
+### 重命名对照表
+
+| 旧名称 | 新名称 | 渠道 |
+|---|---|---|
+| `opencode`（glibc wrapper 线） | `opencode-glibc` | 稳定附录（glibc 双轨包） |
+| `opencode-native`（native bionic 线） | `opencode` | 稳定主推（native 线） |
+
+### 现有用户预期
+
+- 新包采用 dpkg/pacman 的 `Breaks`/`Replaces` 语义处理冲突：安装新包会自动替换同名旧 provider。
+- 过渡期间 `opencode-glibc` 与 `opencode`（native 线）可并存安装，便于逐步切换。
+- 切换 provider 的方式不变：`dpkg -i` / `pacman -U` 对应包即可。
+
+### 时间线
+
+- 约 Push 27/28（日期近似），以最终真机验证为准。
+- 具体切换以 releases 页面公告为准。
+
 | | Track 1: glibc wrapper (`opencode`) | Track 2: native (`opencode-native`) |
 |---|---|---|
 | Status | **Default recommended**, mature | Experimental |
