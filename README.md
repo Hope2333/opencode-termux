@@ -1,12 +1,20 @@
-# opencode-termux — pure-android branch
+# opencode-termux — pure-android branch (soon `glibc`)
 
-**This is the current mainline branch.** It produces OpenCode packages using
-bun-termux-loader to wrap the upstream `opencode-linux-arm64` binary for
-Android/Bionic. glibc is required at runtime (the wrapper loads it via
-userland exec).
+**This branch is the glibc/pure-line appendix maintenance branch.** It produces
+OpenCode packages using bun-termux-loader to wrap the upstream
+`opencode-linux-arm64` binary for Android/Bionic. glibc is required at runtime
+(the wrapper loads it via userland exec). This branch will be renamed `glibc`.
 
-**Looking for the legacy branch?** See the `glibc` branch (same approach,
-older version).
+**Mainline is now the native line.** The `native-android` branch is the default
+mainline: its native bionic build inherits the plain `opencode` package name
+(zero glibc, direct-run). This branch is appendix maintenance only.
+
+**Package names:** the glibc line ships as `opencode-glibc`; the transitional
+`opencode-glibc-standalone` rollback package (command `opencode-glibc`) can
+coexist with native `opencode`.
+
+**Looking for the legacy branch?** The classic glibc line is archived at the
+`archive/glibc-classic` branch.
 
 ---
 
