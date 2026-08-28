@@ -2,14 +2,13 @@
 
 # opencode-termux
 
-OpenCode on Termux，双运行时线：**native bionic 直跑线（主推）+ glibc wrapper 线（稳定附录）**。
-当前分支：`native-android`。
-
-> **包名即将变更（过渡公告）：** 现有的 glibc `opencode` 包将更名为 `opencode-glibc`；native bionic 线将继承 `opencode` 名称，并在约 Push 27/28（日期近似）成为稳定渠道。`opencode` 与 `opencode-glibc` 互斥、不可并存安装。过渡期提供 `opencode-glibc-standalone`（命令入口 `opencode-glibc`、库路径独立），可与 `opencode` 共存，仅发布一个冻结版本用于回退。过渡全部完成后，仓库主线切换到 native 线，glibc/pure 降级为附录维护。请关注 [releases 页面](https://github.com/Hope2333/opencode-termux/releases) 的切换进展。
+OpenCode on Termux。**主线 = native bionic 直跑线**：经 transplant 复活管线产出的
+单个零 glibc Android ELF，以 `opencode` 原名作为正式发布渠道出货。glibc wrapper 线
+（继承自原 `pure-android` 线）保留为附录维护。当前分支：`native-android`（默认主线）。
 
 ---
 
-## Native 线（主推）：零 glibc 原生 Android 运行时
+## Native 线（主线）：零 glibc 单 ELF 运行时
 
 官方预编译 Android Bun 作底座，把 opencode 的 module graph 移植拼接进同一个 ELF，
 经 revive 复活手术后产出单个可直接 execve 的 Bionic 可执行文件。零 glibc 依赖，
@@ -17,38 +16,94 @@ OpenCode on Termux，双运行时线：**native bionic 直跑线（主推）+ gl
 
 ### 功能亮点
 
-- **零 glibc**：不依赖 glibc-repo / openssl-glibc。此前"零 glibc 不可能"的结论已被
-  复活手术推翻，真因是 assemble 从未 patch `.bun` 节的 `BUN_COMPILED.size`
-  （standalone 检测链在 android bun 中完整存在），详见 `docs/transplant.md` §0.1/§0.2。
-- **TUI 完整可用**：NDK 自建的 bionic `libopentui.so` 经 `tools/transplant/swap_tui.py`
-  等长换入后 TUI 完整渲染。W10a 深度冒烟 5/5 通过（真实聊天往返 / resize /
-  干净退出 / 5min 浸泡 RSS 反降）。
-- **原生 watcher**：`tools/watcher/` 提供独立守护模块（`watcher.c`，NDK inotify
-  递归监听）+ 插件侧 shim（`shim.js`）+ `install.sh`，解决上游 `@parcel/watcher`
-  在 Termux 上加载失败导致的完全无文件监听问题。E2E 三类事件 <100ms，
-  kill -9 自愈 ≤612ms。
-- **bin 直放打包**：包内 `bin/opencode` 即真实可执行 ELF，无 bash 启动器包装。
+- ✅ **零 glibc**：不依赖 glibc-repo / openssl-glibc。此前"零 glibc 不可能"的结论
+  已被复活手术推翻——真因是 assemble 从未 patch `.bun` 节的 `BUN_COMPILED.size`。
+  详见 `docs/transplant.md` §0.1/§0.2。
+- ✅ **TUI 完整可用**：NDK 自建的 bionic `libopentui.so` 经
+  `tools/transplant/swap_tui.py` 等长换入。W10a 深度冒烟 5/5 通过（真实聊天往返 /
+  resize / 干净退出 / 5min 浸泡 RSS 反降）。
+- ✅ **原生 watcher**：`tools/watcher/` 提供独立守护模块（`watcher.c`，NDK inotify
+  递归监听）+ 插件侧 shim（`shim.js`）。解决上游 `@parcel/watcher` 在 Termux 上
+  加载失败导致的完全无文件监听问题。E2E 三类事件 <100ms，kill -9 自愈 ≤612ms。
+- ✅ **bin 直放打包**：包内 `bin/opencode` 即真实可执行 ELF，无 bash 启动器包装。
+- ✅ **UPX 压缩变体**：同一 native ELF 经 UPX `--best` 压缩，以 `opencode-compressed`
+  包家族出货——体积 -71.14%，代价为实测启动变慢。见
+  [压缩变体](#压缩变体opencode-compressednative--upx)。
 
-### 快速开始（beta 预发布）
+### 工作原理
 
-native 资产发布在长期 pre-release BETA 渠道（tag 形如 `native-beta-*`）；首个 beta tag：`native-beta-260826`（含 crashfix，commit 342d68d）：
-
-```bash
-# 从 https://github.com/Hope2333/opencode-termux/releases/tag/native-beta-260826
-# （及后续 native-beta-* tag）下载资产（名形如 opencode-1.18.21-aarch64-android-native-tui）
-dpkg -i opencode-native_<version>_aarch64.deb
-# 或
-pacman -U opencode-native-<version>-1-aarch64.pkg.tar.xz
+```
+官方 android bun ELF            opencode module graph
+        │                              │
+        └──────────────┬───────────────┘
+                       ▼
+    tools/transplant/transplant.py（拼接 + patch）
+                       ▼
+       revive 复活手术（BUN_COMPILED.size 修复）
+                       ▼
+  swap_tui.py：bionic libopentui.so 等长换入
+                       ▼
+     单个可 execve 的 opencode ELF（~180MB）
 ```
 
-安装 `opencode-native` 会替换 glibc 线的 `opencode` provider（反之亦然），
-provider 选择细节见 `docs/dual-track-install.md`。
+### 安装（主线包名：`opencode`）
+
+native 主线已继承 `opencode` 原名（glibc wrapper 线更名为 `opencode-glibc`，
+见[共存矩阵](#包共存矩阵)）：
+
+```bash
+# 从 https://github.com/Hope2333/opencode-termux/releases 下载
+# ELF 资产名形如 opencode-1.18.21-aarch64-android-native
+dpkg -i opencode_<version>_aarch64.deb
+# 或
+pacman -U opencode-<version>-1-aarch64.pkg.tar.xz
+```
 
 ```bash
 opencode --version   # → 1.18.x
 opencode run "hi"
 opencode             # TUI
 ```
+
+### 压缩变体：`opencode-compressed`（native + UPX）
+
+同一复活后的 native ELF，额外经 UPX `--best` 压缩，以 `opencode-compressed`
+包家族出货（命令入口仍为 `opencode`）：
+
+| 阶段 | 体积 | 说明 |
+|---|---|---|
+| 未压缩 native ELF | 179,807,785 B | sha256 `02609002…`（native-beta-260826 构建） |
+| UPX `--best` | 51,891,796 B | **-71.14%**，sha256 `30c074ab…` |
+| + `xz -9` 上传层 | 50,362,704 B | sha256 `42a0ef39…`；xz 仅再省 ~3%，因 UPX 输出已是高熵数据 |
+
+- **启动代价（实测）**：UPX 解压增加 ~0.7–1.1s（总计 1.9–2.3s vs 未压缩 ~1.1s）。
+  要下载体积选 `opencode-compressed`，要启动速度选原生 `opencode`。
+- **指纹链**：未压缩 `02609002…` → UPX `30c074ab…` → xz `42a0ef39…`
+  （sha256 前缀；完整哈希见 release 说明与 `SHA256SUMS.txt`）。
+- **AV 误报声明**：UPX 加壳的可执行文件是杀毒软件误报的常见触发源。使用前请对照
+  `SHA256SUMS.txt` 校验下载产物。
+- 首次同现于 **Push260828** 发布（四包家族首次同台）：ELF 资产
+  `opencode-1.18.21-aarch64-android-native-tui-upx`（+ `.xz`）、包
+  `opencode-compressed_1.18.21_aarch64.deb` /
+  `opencode-compressed-1.18.21-1-aarch64.pkg.tar.xz`，以及 `SHA256SUMS.txt`。
+
+```bash
+dpkg -i opencode-compressed_<version>_aarch64.deb
+# 或
+pacman -U opencode-compressed-<version>-1-aarch64.pkg.tar.xz
+```
+
+### 包共存矩阵
+
+| 包名 | 线 | 命令入口 | 共存关系 |
+|---|---|---|---|
+| `opencode` | native bionic（主线） | `opencode` | 与 `opencode-glibc`、`opencode-compressed` 互斥 |
+| `opencode-compressed` | native bionic + UPX | `opencode` | 与 `opencode`、`opencode-glibc` 互斥 |
+| `opencode-glibc` | glibc wrapper（附录） | `opencode` | 与 `opencode`、`opencode-compressed` 互斥 |
+| `opencode-glibc-standalone` | glibc wrapper，单版本冻结 | `opencode-glibc` | **可与 `opencode` 共存**；仅作回退 |
+
+三个以 `opencode` 为入口的包通过包管理器冲突机制相互替换；standalone 包使用独立
+库路径与独立命令名，因此可作为冻结回退与 native 主线并存。
 
 ### 构建
 
@@ -89,26 +144,33 @@ artifact（CI 不执行产物）。**CI 绿 ≠ 可跑**：最终验收必须本
 
 ### 发布策略（诚实标注）
 
-> **native 线资产长期定档 pre-release BETA 渠道**（`native-beta-*` tag，首个 beta：`native-beta-260826`）；
-> stable 维护主线仍由 pure/glibc 双轨包承担。
->
-> 性能现实（实测，非营销话术）：启动 ~1s 量级（`--version` 首试 1965ms =
-> Phase B bootstrap ~220ms + Phase C JS 求值 ~820ms；<300ms 目标需上游 Bun
-> 改造，当前不可达），体积 ~180MB。
+> native 线为稳定主线发布渠道。性能现实（实测，非营销话术）：启动 ~1s 量级
+> （`--version` 首试 1965ms = Phase B bootstrap ~220ms + Phase C JS 求值 ~820ms；
+> <300ms 目标需上游 Bun 改造，当前不可达），体积未压缩 ~180MB / UPX 后 ~50MB。
 
 完整手术原理、config schema、失败预案与 FAQ 见 `docs/transplant.md`；
-三条运行线对比见 `docs/comparison-runtime-lines.md`。
+各运行线对比见 `docs/comparison-runtime-lines.md`。
 
 ---
 
-## 附录：glibc/pure 线（稳定双轨包）
+## 分支拓扑
+
+| 分支 | 角色 |
+|---|---|
+| `native-android` | **默认主线** — native bionic 线（本分支） |
+| `glibc` | glibc wrapper 线，附录维护（由 `pure-android` 改名） |
+| `archive/glibc-classic` | 旧版 glibc 线，已归档 |
+
+---
+
+## 附录：glibc wrapper 线（继承自 pure-android 线）
 
 bun-termux-loader 包装方案：上游 `opencode-linux-arm64` 是 glibc 链接的
 Bun 单文件应用（Bun runtime + JS 编译进单个 ELF）。loader 在其前部拼一个
 ~12KB 的 Bionic wrapper ELF：读 `/proc/self/exe` 定位 BUNWRAP1 元数据、
 抽出内嵌 opencode 二进制，再 mmap glibc 的 ld.so 并跳到其入口
 （userland exec，不走 execve），使 `/proc/self/exe` 保持指向自身、
-Bun 的 JS 定位不被破坏。旧版本维护分支：`glibc`。
+Bun 的 JS 定位不被破坏。
 
 ### 依赖
 
@@ -126,12 +188,20 @@ Bun 的 JS 定位不被破坏。旧版本维护分支：`glibc`。
 apt install -y glibc-repo
 apt update
 apt install -y glibc openssl-glibc
-dpkg -i /path/to/opencode_<version>_aarch64.deb
+dpkg -i opencode-glibc_<version>_aarch64.deb
 
 # Path B: pacman
 pacman -Syu
 pacman -S glibc openssl-glibc
-pacman -U /path/to/opencode-<version>-aarch64.pkg.tar.xz
+pacman -U opencode-glibc-<version>-1-aarch64.pkg.tar.xz
+```
+
+回退包（与 native `opencode` 共存，命令入口 `opencode-glibc`，单版本冻结）：
+
+```bash
+dpkg -i opencode-glibc-standalone_<version>_aarch64.deb
+# 或
+pacman -U opencode-glibc-standalone-<version>-1-aarch64.pkg.tar.xz
 ```
 
 ### 构建
@@ -145,9 +215,6 @@ make batch VERS='1.17.[0-3]' PKG=both ODIR=~/oct-out MIX=1
 
 # 构建流程: clean → runtime(produce-local.sh: npm download + loader wrap)
 #          → stage(scripts/build.sh) → deb → pacman
-
-# 隐藏目标: release-upload（默认 TAG=Push<YYMMDD>, REPO=Hope2333/opencode-termux, PKG=both）
-make release-upload TAG=Push260522 VERS='1.17.[0-3]'
 ```
 
 ### CI
@@ -165,14 +232,6 @@ wrapper+shim（`tools/prebuilt/`）包装，上传 artifact 并写 status JSON�
 - 陈旧锁清理（`$XDG_STATE_HOME` 下 `*.lock`）
 - 默认 `OPENCODE_DISABLE_DEFAULT_PLUGINS=1`
 
-### 零 glibc 约束史（历史记录）
-
-早期"零 glibc 不可能"的 Constraints 结论表已被 transplant 复活手术部分推翻
-（"runtime swap / binary surgery 不可行"的真因是未 patch `BUN_COMPILED.size`）。
-仍然成立的约束：Android 上 `bun build --compile` 因 `/data/` 权限扫描被
-Zig 源码硬编码阻断；上游 Bun 至今没有 `--target=bun-linux-aarch64-android`。
-完整证伪与推翻记录见 `docs/transplant.md` 与 `docs/native-android-research.md`。
-
 ---
 
 ## Repository layout
@@ -181,7 +240,6 @@ Zig 源码硬编码阻断；上游 Bun 至今没有 `--target=bun-linux-aarch64-
 .github/workflows/
   build-native-android.yml    Native 线 CI（evidence-only artifact）
   build-pure-android.yml      glibc 线 CI（aarch64）
-  prebuild-armv7.yml          armv7 prebuild handoff（已搁置）
 tools/
   transplant/                 Native 复活管线（transplant.py / revive_patch.py /
                               swap_tui.py / config/bun-bind.json）
@@ -190,17 +248,23 @@ tools/
   prebuilt/                   glibc 线 CI 用预构建 aarch64 wrapper+shim
 scripts/
   fetch-fixtures.sh           transplant-check golden fixtures 预下载
-  build.sh                    Stage prefix（glibc 线）
+  build.sh                    Stage prefix（glibc 线；STANDALONE=1 出回退包）
   launcher.sh                 Runtime dispatcher（cleanup + exec）
-  package/package_deb.sh      DEB builder
-  package/package_pacman.sh   Pacman builder
+  package/package_deb.sh      DEB builder（opencode-glibc）
+  package/package_pacman.sh   Pacman builder（opencode-glibc）
+  package/package_deb_native.sh        DEB builder（native opencode）
+  package/package_pacman_native.sh     Pacman builder（native opencode）
+  package/package_deb_compressed.sh    DEB builder（opencode-compressed）
+  package/package_pacman_compressed.sh Pacman builder（opencode-compressed）
+  package/package_deb_standalone.sh    DEB builder（opencode-glibc-standalone）
+  package/package_pacman_standalone.sh Pacman builder（opencode-glibc-standalone）
   hooks/run-system-skills.sh  Post-install/upgrade hooks
 patches/
   0001-android-support.patch  Upstream OpenCode Android patches (WIP)
 docs/
   transplant.md               Native 线手术权威文档
-  comparison-runtime-lines.md 三条运行线对比
-  dual-track-install.md       Provider 选择（opencode vs opencode-native）
+  comparison-runtime-lines.md 各运行线对比
+  dual-track-install.md       各包家族间的 provider 选择
   native-android-research.md  零 glibc 研究史
 ```
 
