@@ -39,7 +39,7 @@ fi
 }
 DEB_ROOT="$ROOT_DIR/packing/dpkg/work"
 OUT_DIR="$ROOT_DIR/packing/dpkg"
-OUT_FILE="$OUT_DIR/opencode_${VERSION}_${ARCH_DEB}.deb"
+OUT_FILE="$OUT_DIR/opencode-glibc_${VERSION}_${ARCH_DEB}.deb"
 
 rm -rf "$DEB_ROOT"
 mkdir -p "$DEB_ROOT/DEBIAN" "$DEB_ROOT$PREFIX" "$OUT_DIR"
@@ -47,16 +47,17 @@ chmod 755 "$DEB_ROOT" "$DEB_ROOT/DEBIAN"
 cp -a "$STAGED_PREFIX/." "$DEB_ROOT$PREFIX/"
 
 cat >"$DEB_ROOT/DEBIAN/control" <<EOF
-Package: opencode
+Package: opencode-glibc
 Version: $VERSION
 Architecture: $ARCH_DEB
 Maintainer: $MAINTAINER
 Section: utils
 Priority: optional
-Description: OpenCode AI coding assistant for Termux (glibc wrapper line, default recommended)
- Alternative provider: opencode-native (experimental headless run/serve
- only, TUI broken, Android API >= 28).
-Conflicts: opencode-native
+Replaces: opencode
+Breaks: opencode (<< $VERSION)
+Conflicts: opencode
+Description: OpenCode AI coding assistant for Termux (glibc appendix, renamed opencode-glibc)
+ Alternative provider: opencode-native (stable mainline since 27/28, full TUI).
 Depends: bash, ncurses
 EOF
 
@@ -69,7 +70,7 @@ set -e
 echo "OpenCode for Termux installed"
 echo "Run: opencode --version"
 echo "Runtime: glibc (bun-termux-loader wrapped)"
-echo "Provider: glibc wrapper line (default recommended; alternative: opencode-native)"
+echo "Provider: glibc appendix (renamed opencode-glibc); alternative: opencode-native (stable mainline since 27/28)"
 HOOK_RUNNER="/data/data/com.termux/files/usr/lib/opencode/tools/run-system-skills.sh"
 if [[ -x "$HOOK_RUNNER" ]]; then
   OPENCODE_HOOK_STRICT=0 OPENCODE_HOOK_ENABLE_NETWORK=0 "$HOOK_RUNNER" post_install || true

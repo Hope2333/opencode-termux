@@ -1,15 +1,16 @@
 # PKGBUILD for OpenCode on Termux
-pkgname=opencode
+pkgname=opencode-glibc
 pkgver=1.1.65
 pkgrel=8
-pkgdesc='Open source coding agent for Termux (glibc wrapper line, default recommended; alternative: opencode-native experimental headless)'
+pkgdesc='Open source coding agent for Termux (glibc appendix, renamed opencode-glibc; alternative: opencode-native stable mainline since 27/28)'
 arch=('aarch64')
 url='https://github.com/anomalyco/opencode'
 license=('MIT')
 options=('!strip' '!debug')
 
 depends=('bash' 'ncurses' 'bun')
-conflicts=('opencode-native')
+replaces=('opencode')
+conflicts=('opencode' 'opencode-compressed')
 makedepends=()
 optdepends=(
     'ripgrep: faster search'

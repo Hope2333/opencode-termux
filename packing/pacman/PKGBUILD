@@ -1,4 +1,4 @@
-pkgname=opencode
+pkgname=opencode-glibc
 pkgver=1.2.10
 pkgrel=1
 pkgdesc='OpenCode for Termux from local staged prefix'
@@ -6,6 +6,8 @@ arch=('aarch64')
 url='https://github.com/anomalyco/opencode'
 license=('MIT')
 options=('!strip' '!debug')
+replaces=('opencode')
+conflicts=('opencode' 'opencode-compressed')
 
 makedepends=()
 source=()

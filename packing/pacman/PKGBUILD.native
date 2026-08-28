@@ -1,17 +1,19 @@
 # PKGBUILD for OpenCode Native (transplant revival line) on Termux
 # Built via scripts/package/package_pacman_native.sh (pkgver/pkgrel rewritten there).
-pkgname=opencode-native
+pkgname=opencode
 pkgver=0.0.0
 pkgrel=1
-pkgdesc='OpenCode native Android runtime for Termux (EXPERIMENTAL headless: run/serve only, TUI broken; default recommended provider is opencode-glibc)'
+pkgdesc='OpenCode native Android runtime for Termux (stable mainline since 27/28, full TUI; glibc appendix is opencode-glibc)'
 arch=('aarch64')
 url='https://github.com/anomalyco/opencode'
 license=('MIT')
 options=('!strip' '!debug')
 
 depends=()
-conflicts=('opencode')
-provides=('opencode')
+# NOTE: no conflict on the literal 'opencode-glibc' name: opencode-glibc-standalone
+# provides that virtual name and MUST coexist with us. Mutual exclusion with the
+# real glibc package is enforced by its own conflicts=('opencode' ...) list.
+conflicts=('opencode-compressed')
 replaces=()
 
 source=()
@@ -34,11 +36,11 @@ package() {
 
 post_install() {
     echo ""
-    echo "OpenCode Native installed (EXPERIMENTAL)"
+    echo "OpenCode Native installed (stable mainline since 27/28)"
     echo "Usage: opencode --version"
-    echo "Scope: headless only (run/serve). TUI is broken on this line."
+    echo "Scope: full TUI and run/serve. Stable mainline since 27/28."
     echo "Requires Android API >= 28; zero glibc runtime deps."
-    echo "Default recommended alternative: package 'opencode' (glibc wrapper line)."
+    echo "Glibc appendix alternative: package 'opencode-glibc'."
 }
 
 post_upgrade() {
