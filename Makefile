@@ -23,7 +23,7 @@ NATIVE_DIR = artifacts/transplant/$(NATIVE_VER)
 
 OUTPUT_ROOT := $(if $(ODIR),$(ODIR),$(CURDIR)/packing)
 
-.PHONY: help all runtime stage deb pacman deb-native pacman-native native-pkg batch clean status steps matrix selfcheck release-upload test transplant-check transplant-upx
+.PHONY: help all runtime stage deb pacman deb-native pacman-native native-pkg batch clean status steps matrix selfcheck release-upload test transplant transplant-predict transplant-check transplant-upx
 
 help:
 	@echo "OpenCode Termux build helper"
@@ -45,10 +45,22 @@ help:
 	@echo
 	@echo "Native provider commands (experimental headless line):"
 	@echo "  make transplant VER=1.18.21       # build native binary first"
-	@echo "  make transplant-upx VER=1.18.21   # OPTIONAL: UPX-pack the revived product (last step!)""
+	@echo "  make transplant-upx VER=1.18.21   # OPTIONAL: UPX-pack the revived product (last step!)"
 	@echo "  make deb-native VER=1.18.21       # opencode .deb provider (native mainline)"
 	@echo "  make pacman-native VER=1.18.21    # opencode pacman provider (native mainline)"
 	@echo "  make native-pkg VER=1.18.21       # both native packages"
+	@echo
+	@echo "Transplant (native-android) notes:"
+	@echo "  - bun-base pairing constraint: section-format graphs require an android Bun base >= 1.4.0"
+	@echo "    (trailer-format <=1.3.x require a 1.3.x base). Source: tools/transplant/config/bun-bind.json"
+	@echo "    (min_base_for_section=1.4.0)."
+	@echo "  - Dry-run feasibility (no downloads; metadata/local state only):"
+	@echo "      make transplant-predict VER=1.18.22"
+	@echo "      exit codes: 0=OK, 1=FAIL, 2=NEEDS_INFO."
+	@echo "  - QUARANTINE: if android bun base resolve fails, transplant exits non-zero and writes"
+	@echo "      artifacts/transplant/<ver>/bun-base.QUARANTINE.json. Supply a base via"
+	@echo "      tools/transplant/config/bun-bind.json (min_base_for_section) or a cached android bun,"
+	@echo "      then re-run: make transplant VER=<ver>."
 	@echo
 	@echo "Batch commands:"
 	@echo "  make batch VERS='1.2.10 1.2.11 1.2.12' PKG=both"
@@ -209,6 +221,11 @@ matrix:
 # transplant: build native android binary via transplant pipeline
 # (tools/transplant/transplant.py, zero-glibc native-android path)
 # Output: artifacts/transplant/<ver>/opencode-native + report.json
+# bun-base pairing is resolved internally from tools/transplant/config/bun-bind.json
+# (min_base_for_section: section-format graphs require android Bun base >= 1.4.0;
+#  trailer-format <=1.3.x require a 1.3.x base). A resolve failure aborts with a
+#  non-zero exit and writes artifacts/transplant/<ver>/bun-base.QUARANTINE.json
+#  (QUARANTINE) — no hardcoded base fallback remains in this chain.
 transplant:
 	@if [ -z "$(VER)" ]; then \
 		echo "Error: VER is empty. Example: make transplant VER=1.3.13"; \
@@ -216,21 +233,32 @@ transplant:
 	fi
 	@echo "==> transplant VER=$(VER)"
 	python3 tools/transplant/transplant.py all --ver $(VER) --tgz $${TMPDIR:-/tmp}/$$(npm pack opencode-linux-arm64@$(VER) --pack-destination $${TMPDIR:-/tmp} 2>/dev/null | tail -n1)
-	@# W7c2: swap bionic libopentui.so into the grafted binary so OpenTUI renders
-	@# on Android/bionic. WARN-skip when the bionic build is absent.
+	@# W7c2: TUI swap + post-swap pty probe are now performed INSIDE
+	@# `transplant.py all` (tools/transplant/swap_tui.py graft + tui_probe gate),
+	@# which records `tui_probe` in report.json. The Makefile only adds the
+	@# QUARANTINE signal when the bionic libopentui.so build is absent: upgrade
+	@# the old silent WARN into an explicit `tui:"absent"` in the report so the
+	@# gap is impossible to miss (no silent skip).
 	@if [ -f artifacts/transplant/opentui-bionic/libopentui.so ]; then \
-		echo "==> swapping bionic libopentui (tools/transplant/swap_tui.py)"; \
-		strip_bin=$$(command -v llvm-strip || command -v strip); \
-		cp artifacts/transplant/opentui-bionic/libopentui.so $${TMPDIR:-/tmp}/libopentui-strip.so; \
-		$$strip_bin --strip-debug $${TMPDIR:-/tmp}/libopentui-strip.so; \
-		python3 tools/transplant/swap_tui.py \
-			--binary $(NATIVE_DIR)/opencode-native-revived \
-			--tui-lib $${TMPDIR:-/tmp}/libopentui-strip.so \
-			--out $(NATIVE_DIR)/opencode-native-tui; \
+		echo "==> bionic libopentui present; swap + tui_probe handled by transplant.py all"; \
 	else \
-		echo "WARN: artifacts/transplant/opentui-bionic/libopentui.so not found; skipping TUI swap"; \
-	fi
+		echo "WARN: artifacts/transplant/opentui-bionic/libopentui.so not found -> quarantine (tui:absent)"; \
+		python3 -c "import json; p='artifacts/transplant/$(VER)/report.json'; \
+		  r=json.load(open(p)); r['tui']='absent'; json.dump(r, open(p,'w'), indent=2); \
+		  print('  report.tui=absent (bionic libopentui.so absent)')"; \
+		fi
 transplant: VER?= latest
+
+# transplant-predict: DRY-RUN feasibility gate (no downloads; metadata/local state only).
+# Wraps `transplant.py predict`; exit 0=OK, 1=FAIL, 2=NEEDS_INFO. Safe to run before `transplant`.
+transplant-predict:
+	@if [ -z "$(VER_IS_SET)" ]; then \
+		echo "Error: VER is required. Example: make transplant-predict VER=1.18.22"; \
+		exit 1; \
+	fi
+	@echo "==> transplant-predict VER=$(VER)"
+	python3 tools/transplant/transplant.py predict --ver $(VER)
+transplant-predict: VER?= latest
 
 # transplant-upx: OPTIONAL final step — UPX-pack an already-revived native product.
 # MUST run AFTER transplant (swap_tui.py / revive_patch break on a packed ELF).
