@@ -17,7 +17,66 @@ import argparse
 import struct
 import sys
 
-ASSET_MARKER = b"\x00/$bunfs/root/libopentui-x8k2b6xk.so\x00\x7fELF"
+# Generalized asset marker: registry-name prefix (incl. leading NUL) up to the
+# dynamic hash suffix, terminated by the raw ELF magic that follows the name's
+# trailing NUL. This matches any libopentui-<hash>.so asset regardless of its
+# hash suffix.
+ASSET_PREFIX = b"\x00/$bunfs/root/libopentui-"
+ASSET_TERMINATOR = b"\x7fELF"
+
+
+def find_libopentui_asset(data: bytes) -> int:
+    """Locate the embedded libopentui asset's ELF start within the bunfs payload.
+
+    The asset is stored RAW (uncompressed) as:
+        \\x00/$bunfs/root/libopentui-<hash>.so\\x00<ELF bytes>
+    We match the prefix (incl. leading NUL) and require the asset name to end in
+    ".so" with the raw ELF magic immediately following its trailing NUL, so any
+    hash suffix matches. Scanning continues past incidental matches inside the
+    bundled JS source (which may also contain the "/$bunfs/root/libopentui-"
+    literal). Returns the absolute offset of \\x7fELF, or -1 if none exists.
+    """
+    start = 0
+    while True:
+        idx = data.find(ASSET_PREFIX, start)
+        if idx < 0:
+            return -1
+        name_end = data.find(b"\x00", idx + len(ASSET_PREFIX))
+        if name_end < 0:
+            return -1
+        name = data[idx + len(ASSET_PREFIX):name_end]
+        # The raw ELF magic follows the name's trailing NUL.
+        elf_off = name_end + 1
+        if name.endswith(b".so") and data[elf_off:elf_off + 4] == ASSET_TERMINATOR:
+            return elf_off
+        # Not the real asset (e.g. a reference inside bundled JS); keep scanning.
+        start = name_end + 1
+
+
+def list_bunfs_assets(data: bytes) -> list:
+    """Enumerate all /$bunfs/root/<name> registry strings present in `data`.
+
+    Used to give the operator a clear picture of what assets ARE available when
+    the expected libopentui asset cannot be found. Only plausible asset names
+    (short, NUL-terminated tokens) are returned; long spans that merely contain
+    the "/$bunfs/root/" literal inside bundled JS are skipped as noise.
+    """
+    token = b"/$bunfs/root/"
+    candidates = []
+    start = 0
+    while True:
+        i = data.find(token, start)
+        if i < 0:
+            break
+        name_start = i + len(token)
+        name_end = data.find(b"\x00", name_start)
+        if name_end < 0:
+            break
+        name = data[name_start:name_end]
+        if 0 < len(name) <= 255:
+            candidates.append(name.decode("utf-8", "replace"))
+        start = name_end + 1
+    return candidates
 
 
 def elf_size(data: bytes, off: int) -> int:
@@ -50,11 +109,30 @@ def main() -> int:
     data = open(args.binary, "rb").read()
     lib = open(args.tui_lib, "rb").read()
 
-    idx = data.find(ASSET_MARKER)
-    if idx < 0:
-        print("swap_tui: asset marker not found", file=sys.stderr)
+    base = find_libopentui_asset(data)
+    if base < 0:
+        assets = list_bunfs_assets(data)
+        libs = [a for a in assets if "libopentui" in a]
+        print(
+            "swap_tui: libopentui asset not found (no /$bunfs/root/libopentui-*.so)",
+            file=sys.stderr,
+        )
+        if libs:
+            print(
+                "swap_tui: candidate libopentui-like assets present:",
+                file=sys.stderr,
+            )
+            for a in libs:
+                print(f"  - {a}", file=sys.stderr)
+        else:
+            print(
+                "swap_tui: no libopentui-like asset; available bunfs assets "
+                "(first 20):",
+                file=sys.stderr,
+            )
+            for a in assets[:20]:
+                print(f"  - {a}", file=sys.stderr)
         return 2
-    base = idx + len(ASSET_MARKER) - 4  # position of \x7fELF
 
     # Raw-ELF sanity: reject compressed payloads.
     head = data[base : base + 16]

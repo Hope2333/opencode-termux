@@ -13,6 +13,14 @@
           "region": "string_data"
         }
       ]
+    },
+    {
+      "min": "1.4.0",
+      "max": null,
+      "patch_required": false,
+      "reason": "section era",
+      "bun_layout": "52",
+      "patches": []
     }
   ],
   "locked_versions_schema": {
