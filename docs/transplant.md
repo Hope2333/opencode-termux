@@ -1,6 +1,6 @@
 # transplant — native-android 移植操作手册
 
-> [!IMPORTANT] 状态横幅：C1 路线**已复活且全链产品化**（revive 手术实证 + TUI 可用 + beta 发布）
+> [!IMPORTANT] 状态横幅：C1 路线**已复活且全链产品化**（revive 手术实证 + TUI 可用 + stable 正式发布）
 >
 > **C1 路线 = 用官方预编译 android Bun（Bionic 直跑）作为底座，
 > 与 opencode 的 module graph 拼接/嫁接成单个可 execve 的 ELF**（docs/performance-optimization.md §1.2/§4.1）。
@@ -12,8 +12,9 @@
 > reloc_count=50）；底座绑定 `tools/transplant/config/bun-bind.json` target=1.4.0
 > （commit b270d11 自 1.3.14 升级；**新版格式图必须用 ≥1.4 底座**）。
 > **TUI 完整可用**：swap_tui.py 等长注入 NDK 构建的 bionic libopentui.so 后完整渲染
-> （W10a 深度冒烟 5/5）。发布双渠道：stable=Push260822 双轨包；beta=native-beta-260826
-> prerelease（native 线长期定档 beta pre-release，维护主线 pure/glibc）。
+> （W10a 深度冒烟 5/5）。发布渠道：native 线自 27/28 起切换为 stable 正式发布主线
+> （`make release-upload NATIVE=STABLE`，正式 release 非 prerelease）；历史 beta 渠道
+> （native-beta-260826 等 prerelease tag）留档备查；glibc/pure 双轨包降为附录维护。
 > CI：`.github/workflows/build-native-android.yml`（workflow_dispatch，evidence-only
 > --no-execve），最新 run 32831119197 success。
 > 早前的"三重证伪"结论**已被推翻**——真因是 assemble 从未 patch `.bun` 节的
@@ -170,18 +171,36 @@ make transplant-check
 要点：非等长 patch 会被校验器拒绝（offset 漂移即失败）；无 search 命中 = warning 入 report
 而非失败；已替换图再跑 `hit_count == 0`（幂等）。
 
-### 3.2 `tools/transplant/config/bun-bind.json`（已落盘，target=1.4.0）
+### 3.2 `tools/transplant/config/bun-bind.json`（管线真消费，target=1.4.0）
 
 android Bun 底座绑定配置（commit b270d11 将 target 自 1.3.14 升级至 1.4.0）。
-新版 `.bun` section 格式的 module graph **必须用 ≥1.4 底座**；旧 trailer 格式
-（≤1.3.x）沿用 reloc 语义底座即可。底座缺失时按 `url_pattern` 幂等下载：
+**此文件现由管线真消费**（`tools/transplant/probe_assemble.py:resolve_bun_base`），
+不再是无用配置。新版 `.bun` section 格式的 module graph **必须用 ≥1.4 底座**；
+旧 trailer 格式（≤1.3.x）沿用 reloc 语义底座（1.3.x）即可。
 
 ```jsonc
 {
   "target": "1.4.0",                // 绑定的 android Bun 版本（semver）
-  "url_pattern": "https://github.com/oven-sh/bun/releases/download/bun-v{ver}/bun-linux-aarch64-android.zip"
+  "url_pattern": "https://github.com/oven-sh/bun/releases/download/bun-v{ver}/bun-linux-aarch64-android.zip",
+  "min_base_for_section": "1.4.0",  // section 格式图要求 base >= 此版本（plain-offset size-mode）
+  "notes": "opencode >=1.18 section 格式需 >=1.4 底座；<=1.3.x trailer 格式需 1.3.x 底座"
 }
 ```
+
+**底座解析链（缓存优先，按版本格式配对校验）**：`transplant.py` 在 `assemble`/`revive`/
+`all` 中按版本推断 graph 格式（`format_from_ver`：≥1.18→section，否则 trailer），
+再调用 `resolve_bun_base(graph_format, cache_dir)`：
+
+1. **local-cache**：扫描 `artifacts/transplant/android-bun/` 内任意版本 ELF/zip（版本由
+   ELF 字符串或 zip 文件名识别），取满足配对规则者（section⇒base≥min_base_for_section；
+   trailer⇒base≤1.3.x）。
+2. **bun-bind**：按 `target` + `url_pattern` 下载（幂等，zip 入 `bun-<ver>.zip`、ELF 入 `bun-<ver>/bun`）。
+3. **github-latest**：`scripts/ci/probe-latest-bun.sh` 取 latest tag 再下载（真源）。
+4. **default**：`DEFAULT_BUN_VERSION`（1.3.14），仅 trailer 格式可用；section 格式不匹配则跳过。
+
+**全链失败 → QUARANTINE**：无满足配对规则的底座时抛 `ResolveError` 并写
+`<out>/bun-base.QUARANTINE.json`（含 candidates/断点/建议），退出非零——**不再静默产出
+假绿灯**。调试可用 `transplant.py resolve-base --ver <ver>` 打印候选链与所选底座。
 
 配套 `scripts/ci/probe-latest-bun.sh`：GitHub API `repos/oven-sh/bun/releases/latest` 解析
 tag → 比对 assets 是否含 aarch64-android.zip → 与 `target` 不同则输出 CHANGELOG 提示 +
