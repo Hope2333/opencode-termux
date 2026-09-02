@@ -23,7 +23,7 @@ NATIVE_DIR = artifacts/transplant/$(NATIVE_VER)
 
 OUTPUT_ROOT := $(if $(ODIR),$(ODIR),$(CURDIR)/packing)
 
-.PHONY: help all runtime stage deb pacman deb-native pacman-native native-pkg batch clean status steps matrix selfcheck release-upload test transplant transplant-predict transplant-check transplant-upx
+.PHONY: help all runtime stage deb pacman deb-native pacman-native native-pkg batch clean status steps matrix selfcheck release-upload test transplant transplant-predict transplant-check transplant-upx seccomp-harden
 
 help:
 	@echo "OpenCode Termux build helper"
@@ -46,6 +46,7 @@ help:
 	@echo "Native provider commands (experimental headless line):"
 	@echo "  make transplant VER=1.18.21       # build native binary first"
 	@echo "  make transplant-upx VER=1.18.21   # OPTIONAL: UPX-pack the revived product (last step!)"
+	@echo "  make seccomp-harden VER=1.18.21   # DT_NEEDED SIGSYS hardening (auto-run by transplant)"
 	@echo "  make deb-native VER=1.18.21       # opencode .deb provider (native mainline)"
 	@echo "  make pacman-native VER=1.18.21    # opencode pacman provider (native mainline)"
 	@echo "  make native-pkg VER=1.18.21       # both native packages"
@@ -247,6 +248,10 @@ transplant:
 		  r=json.load(open(p)); r['tui']='absent'; json.dump(r, open(p,'w'), indent=2); \
 		  print('  report.tui=absent (bionic libopentui.so absent)')"; \
 		fi
+	@# W11: self-activating seccomp hardening (DT_NEEDED libopencode-crhandler.so
+	@# + SIGSYS handler/PLT interposer shim). WARN-skips when the toolchain is
+	@# missing; idempotent (already-hardened products are detected and skipped).
+	$(MAKE) --no-print-directory seccomp-harden VER=$(VER)
 transplant: VER?= latest
 
 # transplant-predict: DRY-RUN feasibility gate (no downloads; metadata/local state only).
@@ -301,6 +306,50 @@ transplant-upx:
 	echo "==> transplant-upx done: original kept at $$SRC; upx at $$OUT"
 transplant-upx: VER?= latest
 transplant-upx: UPX_OPTS?= --best
+
+# seccomp-harden: W11 self-activating seccomp hardening of a revived native product.
+# Builds tools/shim/sigsys_handler.c -> libopencode-crhandler.so (SIGSYS handler
+# for the inline-svc sites + syscall()/close_range() PLT interposers for the
+# spawn-child fd-hygiene path) and rewrites the product's dynamic section so the
+# shim is the FIRST DT_NEEDED entry (no env vars, no LD_PRELOAD). The patcher is
+# zero-displacement (tools/transplant/crhandler_patch.py): file size, PT_LOADs
+# and the graft are provably untouched. The PRE-patch copy is kept as
+# *.pre-crhandler next to the product for rollback evidence. WARN-skips when the
+# toolchain is missing; idempotent (already-hardened products are detected).
+# Runs automatically inside `transplant` after the TUI swap; MUST run BEFORE
+# transplant-upx (upx packing hides the dynamic section).
+seccomp-harden:
+	@if [ -z "$(VER)" ]; then \
+		echo "Error: VER is empty. Example: make seccomp-harden VER=1.18.21"; \
+		exit 1; \
+	fi
+	@if ! command -v clang >/dev/null 2>&1; then \
+		echo "WARN: clang not found; skipping seccomp hardening (seccomp-harden skipped)"; \
+		exit 0; \
+	fi
+	@if [ ! -f tools/shim/sigsys_handler.c ] || [ ! -f tools/transplant/crhandler_patch.py ]; then \
+		echo "WARN: tools/shim/sigsys_handler.c or tools/transplant/crhandler_patch.py missing; skipping seccomp hardening"; \
+		exit 0; \
+	fi
+	@SRC="$(SRC)"; \
+	if [ -z "$$SRC" ]; then \
+		if [ -f $(NATIVE_DIR)/opencode-native-tui ]; then SRC=$(NATIVE_DIR)/opencode-native-tui; \
+		elif [ -f $(NATIVE_DIR)/opencode-native-revived ]; then SRC=$(NATIVE_DIR)/opencode-native-revived; \
+		elif [ -f $(NATIVE_DIR)/opencode-native ]; then SRC=$(NATIVE_DIR)/opencode-native; \
+		else \
+			echo "WARN: no revived product in $(NATIVE_DIR); skipping seccomp hardening"; \
+			exit 0; \
+		fi; \
+	fi; \
+	echo "==> seccomp-harden VER=$(VER) source=$$SRC"; \
+	clang -shared -fPIC -O2 -o $(NATIVE_DIR)/libopencode-crhandler.so tools/shim/sigsys_handler.c || exit 1; \
+	if grep -aqF libopencode-crhandler.so "$$SRC"; then \
+		echo "==> seccomp-harden: $$SRC already hardened, skip (shim rebuilt)"; \
+		exit 0; \
+	fi; \
+	cp -p "$$SRC" "$$SRC.pre-crhandler" || exit 1; \
+	python3 tools/transplant/crhandler_patch.py "$$SRC" || exit 1; \
+	echo "seccomp-harden: pre-patch copy kept at $$SRC.pre-crhandler"
 
 # transplant-check: golden regression across layout families
 # (tests/transplant/test_golden.py; fixtures pre-downloaded by scripts/fetch-fixtures.sh)
