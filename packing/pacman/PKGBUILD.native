@@ -32,6 +32,23 @@ package() {
     msg "Installing native runtime from $OPENCODE_NATIVE_BIN"
     mkdir -p "$pkgdir$prefix/bin"
     install -m755 "$OPENCODE_NATIVE_BIN" "$pkgdir$prefix/bin/opencode"
+
+    # W11: ship the self-activating seccomp shim when the binary references it
+    # (DT_NEEDED libopencode-crhandler.so). It must land in $prefix/lib/opencode/
+    # to satisfy the binary's DT_RUNPATH $ORIGIN/../lib/opencode.
+    if grep -aqF libopencode-crhandler.so "$OPENCODE_NATIVE_BIN"; then
+        local shim_so
+        shim_so="$(dirname "$OPENCODE_NATIVE_BIN")/libopencode-crhandler.so"
+        if [[ ! -f "$shim_so" ]]; then
+            error "hardened binary references libopencode-crhandler.so but $shim_so is missing (run: make seccomp-harden)"
+            return 1
+        fi
+        mkdir -p "$pkgdir$prefix/lib/opencode"
+        install -m644 "$shim_so" "$pkgdir$prefix/lib/opencode/libopencode-crhandler.so"
+        msg "Packaging seccomp shim: $shim_so -> $prefix/lib/opencode/"
+    else
+        msg "binary is not seccomp-hardened; shipping without libopencode-crhandler.so"
+    fi
 }
 
 post_install() {

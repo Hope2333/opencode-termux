@@ -59,6 +59,23 @@ chmod 755 "$DEB_ROOT" "$DEB_ROOT/DEBIAN"
 
 install -m755 "$NATIVE_BIN" "$DEB_ROOT$PREFIX/bin/opencode"
 
+# W11: ship the self-activating seccomp shim when the binary references it
+# (DT_NEEDED libopencode-crhandler.so). It must land in $PREFIX/lib/opencode/
+# to satisfy the binary's DT_RUNPATH $ORIGIN/../lib/opencode.
+if grep -aqF libopencode-crhandler.so "$NATIVE_BIN"; then
+	SHIM_SO="$(dirname "$NATIVE_BIN")/libopencode-crhandler.so"
+	if [[ ! -f "$SHIM_SO" ]]; then
+		echo "Error: hardened binary references libopencode-crhandler.so but $SHIM_SO is missing" >&2
+		echo "       (run: make seccomp-harden VER=$VERSION)" >&2
+		exit 1
+	fi
+	mkdir -p "$DEB_ROOT$PREFIX/lib/opencode"
+	install -m644 "$SHIM_SO" "$DEB_ROOT$PREFIX/lib/opencode/libopencode-crhandler.so"
+	echo "Packaging seccomp shim: $SHIM_SO -> $PREFIX/lib/opencode/"
+else
+	echo "Note: binary is not seccomp-hardened; shipping without libopencode-crhandler.so"
+fi
+
 cat >"$DEB_ROOT/DEBIAN/control" <<EOF
 Package: opencode
 Version: $VERSION
