@@ -1,0 +1,50 @@
+# PKGBUILD for OpenCode Compressed (UPX-packed native variant) on Termux
+# Built via scripts/package/package_pacman_compressed.sh (pkgver/pkgrel rewritten there).
+# D1 ruling: mutually exclusive with opencode (native mainline) and
+# opencode-glibc (glibc appendix). Provides the versioned virtual name
+# opencode=<pkgver>. No replaces=(): the compressed variant is an
+# alternative, not an upgrade - it must never silently displace an
+# installed provider or wipe its user data.
+pkgname=opencode-compressed
+pkgver=0.0.0
+pkgrel=1
+pkgdesc='OpenCode compressed variant for Termux (UPX-packed native bionic runtime, zero glibc)'
+arch=('aarch64')
+url='https://github.com/anomalyco/opencode'
+license=('MIT')
+options=('!strip' '!debug')
+
+depends=()
+provides=("opencode=$pkgver")
+conflicts=('opencode' 'opencode-glibc')
+replaces=()
+
+source=()
+sha256sums=()
+
+# Location of the UPX-packed revived binary, injected by the packaging script.
+: "${OPENCODE_COMPRESSED_BIN:?OPENCODE_COMPRESSED_BIN must point to opencode-native-revived-upx}"
+
+package() {
+    local prefix="${PREFIX:-/data/data/com.termux/files/usr}"
+    if [[ -z "$OPENCODE_COMPRESSED_BIN" || ! -f "$OPENCODE_COMPRESSED_BIN" ]]; then
+        error "OPENCODE_COMPRESSED_BIN not set or missing"
+        return 1
+    fi
+
+    msg "Installing compressed runtime from $OPENCODE_COMPRESSED_BIN"
+    mkdir -p "$pkgdir$prefix/bin"
+    install -m755 "$OPENCODE_COMPRESSED_BIN" "$pkgdir$prefix/bin/opencode"
+}
+
+post_install() {
+    echo ""
+    echo "OpenCode compressed variant installed (UPX-packed native bionic runtime)"
+    echo "Usage: opencode --version"
+    echo "Scope: same runtime as the native mainline, UPX-packed for size."
+    echo "Mutually exclusive with opencode and opencode-glibc (no Replaces: variant, not upgrade)."
+}
+
+post_upgrade() {
+    post_install
+}
