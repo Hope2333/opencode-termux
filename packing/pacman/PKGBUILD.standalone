@@ -2,18 +2,18 @@ pkgname=opencode-glibc-standalone
 pkgver=1.2.10
 pkgrel=1
 # Single frozen version for rollback only. Coexists with `opencode` (native)
-# and `opencode-glibc`: different bin name (opencode-glibc) and independent
-# lib prefix (usr/lib/opencode-glibc/). No Conflicts against literal `opencode`.
+# but mutually exclusive with `opencode-glibc` (both ship bin/opencode-glibc).
+# No Conflicts against literal `opencode`.
 pkgdesc='OpenCode glibc standalone (frozen single-version rollback package)'
 arch=('aarch64')
 url='https://github.com/anomalyco/opencode'
 license=('MIT')
 options=('!strip' '!debug')
 
-# Provides the opencode-glibc virtual name without conflicting with the
-# mainline opencode-glibc package (different bin/lib layout, frozen version).
+# Provides the opencode-glibc virtual name; conflicts with the real
+# opencode-glibc package (both ship bin/opencode-glibc entry).
 provides=('opencode-glibc')
-conflicts=()
+conflicts=('opencode-glibc')
 
 _prefix="${PREFIX:-/data/data/com.termux/files/usr}"
 _repo_root="${REPO_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}"

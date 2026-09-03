@@ -5,9 +5,9 @@ Maintainer: Hope2333(幽零小喵) <u0catmiao@proton.me>
 Section: utils
 Priority: optional
 Depends: glibc, openssl-glibc, bash, ncurses
+Conflicts: opencode-glibc
 Description: OpenCode glibc standalone (frozen single-version rollback package)
- Single frozen version for rollback only. Coexists with both the native
- `opencode` package and the `opencode-glibc` package: different command
- entry `opencode-glibc` and independent lib prefix usr/lib/opencode-glibc/.
- No Conflicts/Replaces/Breaks against the literal name `opencode`, so it
- will not displace the native or glibc mainline providers.
+ Single frozen version for rollback only. Coexists with the native
+ `opencode` package (no conflicts on literal `opencode`) but is mutually
+ exclusive with `opencode-glibc` (both ship bin/opencode-glibc entry).
+ Independent lib prefix usr/lib/opencode-glibc/.
