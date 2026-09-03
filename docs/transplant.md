@@ -240,6 +240,32 @@ A: 诚实边界：**trailer 路径已实证 1.3.13 完整管线**（含 revive �
 见 §0.4）。probe 未覆盖的版本一律标
 **"待验证"**，落入未覆盖区间即按 §4 失败预案锁定报错，不产出未验证二进制。
 
+## 5.1 回退构建：glibc Zig 0.15.x 重建 bionic libopentui.so
+
+**触发条件**：当历史预编译的 bionic `libopentui.so`（如 NDK 构建版）找不到/不可用时，
+用 **glibc Zig 0.15.x 仅作编译工具**重建（产物为 bionic ELF，永不经 glibc 运行）。
+封装脚本：`tools/transplant/build-libopentui.sh`（一键复现，env 可覆盖各路径）。
+
+**工具链**：Zig 0.15.2 本身是 glibc 二进制，经 Termux glibc 加载器运行：
+`$GLIBC_LD --library-path $GLIBC_LIB $ZIG_BIN build -Dtarget=aarch64-linux-android …`。
+下载官方 `zig-aarch64-linux-0.15.2.tar.xz`（arch-OS 顺序，非 `zig-linux-aarch64-…`），
+`@Type` 在 0.15.2 仍存在（uucode 依赖需要），0.16 已移除故不可用于此构建。
+
+**两个不可省的坑（漏掉任一 → bionic 上 dlopen 失败、TUI 仍挂死）**：
+1. OpenTUI `build.zig` 的 `b.addLibrary(...)` 之后必须 `lib.linkLibC()`，且 libc spec
+   必须含 `lib_dir` + `dynamic_linker`（指向 `/system/bin/linker64`）。否则 Zig 产出带
+   未解析符号 `getauxval` 的 .so，`ctypes.CDLL`/`bun` 在 bionic 上 `dlopen` 报
+   `cannot locate symbol "getauxval"`。
+2. uucode 的 host 表生成器（`uucode_build_tables`）会被全局 `--libc` 误伤：先不带
+   `--libc` 跑一次生成并缓存 `tables.zig`，再经 env `UUCODE_USE_PREBUILT_TABLES=1`
+   复用（`prebuilt_tables.zig` 落地），并造 dummy `build_tables` 模块避免 `test` 步骤
+   配置期 `.?` panic。
+
+**验证**：`llvm-readelf -d` 见 NEEDED `libc.so`+`libdl.so`；`python3 -c "import ctypes; ctypes.CDLL(path)"`
+在 bionic 主机 `dlopen OK`；strip 后 ≤ MiMo 内嵌槽位 4,567,704B。
+**注意**：headless（`script`/pty）下 TUI 不出屏、零转义，属 Termux 沙箱环境限制，与原始
+glibc 库行为一致，非 bionic 库回归；真机判定以 dlopen 成功 + 真机主 TUI 进入为准。
+
 ## 6. UPX 可选压制（最后一步）
 
 UPX 可把复活产物再压一层，体积显著缩小，代价是每次启动多一次解压开销。

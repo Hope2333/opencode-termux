@@ -6,7 +6,7 @@ one replaces the other.
 
 ## 包名变更过渡计划
 
-未来将区分 glibc 和 bionic 构建。旧 `opencode` 包从 `opencode` 变更为 `opencode-glibc`，`opencode` 将继承 native 线。push 日期在 27、28 左右 native 线定为稳定版（BETA 横幅移除）。
+包名变更与主线切换已于 27/28 生效：glibc 与 bionic 构建已区分，旧 `opencode` 包已更名为 `opencode-glibc`，`opencode` 已由 native bionic 线继承并成为稳定主线（正式发布渠道，BETA 预发布阶段已结束）。
 
 ### 重命名对照表
 
@@ -36,37 +36,37 @@ one replaces the other.
 
 ### 时间线
 
-- 约 Push 27/28（日期近似），以最终真机验证为准。
+- 已于 27/28 生效（真机验证完成：迁移/回退/互斥拒绝全路径实测通过）。
 - 具体切换以 releases 页面公告为准。
 
 ### 终态
 
-包名变更与 27/28 stable 切换全部完成后，仓库**主线切换到 native 线**（发布主渠道与开发主线），glibc/pure 双轨降级为附录维护（appendix maintenance）。
+仓库主线已切换到 native 线（发布主渠道与开发主线），glibc/pure 双轨已降级为附录维护（appendix maintenance）。
 
-| | Track 1: glibc wrapper (`opencode`) | Track 2: native (`opencode-native`) |
+| | Track 1: glibc wrapper (`opencode-glibc`) | Track 2: native (`opencode-native`) |
 |---|---|---|
-| Status | **Default recommended**, mature | Experimental |
+| Status | Appendix maintenance (renamed `opencode-glibc`) | **Stable mainline** (since 27/28) |
 | Runtime | glibc via bun-termux-loader userland exec | Pure Bionic (zero glibc deps) |
-| Scope | Full: TUI + run + serve + web | Headless only: `run` / `serve` |
-| TUI | Works | **Broken** (bun:ffi dlopen; @opentui is glibc-only) |
+| Scope | Full: TUI + run + serve + web | TUI + `run` / `serve` (TUI verified on-device) |
+| TUI | Works | Works (bionic libopentui.so; W10a deep smoke 5/5) |
 | Requirement | `glibc` + `openssl-glibc` packages | Android API >= 28 |
 
-## Track 1 — glibc wrapper (default recommended)
+## Track 1 — glibc wrapper (appendix maintenance, renamed `opencode-glibc`)
 
 ```bash
 # apt/pkg
 apt install -y glibc-repo
 apt update
 apt install -y glibc openssl-glibc
-dpkg -i /path/to/opencode_<version>_aarch64.deb
+dpkg -i /path/to/opencode-glibc_<version>_aarch64.deb
 
 # pacman
 pacman -Syu
 pacman -S glibc openssl-glibc
-pacman -U /path/to/opencode-<version>-aarch64.pkg.tar.xz
+pacman -U /path/to/opencode-glibc-<version>-1-aarch64.pkg.tar.xz
 ```
 
-## Track 2 — native (experimental, headless only)
+## Track 2 — native (stable mainline since 27/28)
 
 Built from the transplant revival pipeline (`make transplant VER=<x>` →
 `artifacts/transplant/<ver>/opencode-native-revived`), packaged by
@@ -80,19 +80,18 @@ dpkg -i /path/to/opencode-native_<version>_aarch64.deb
 pacman -U /path/to/opencode-native-<version>-1-aarch64.pkg.tar.xz
 ```
 
-Constraints (also stated in the package description/postinst — never silent):
+Constraints:
 
 - Zero glibc runtime dependencies (pure Bionic).
 - Requires Android API >= 28.
-- Headless only: `opencode run "..."` and `opencode serve` work; the TUI is
-  broken (bun:ffi TinyCC/dlopen disabled, `@opentui/solid` is glibc-only).
+- Full TUI: works via the self-built bionic `libopentui.so` (W10a deep smoke 5/5); `opencode run "..."` and `opencode serve` work.
 - Installing it removes the glibc provider package and vice versa.
 
 ## Switching providers
 
 ```bash
 dpkg -i opencode-native_<v>_aarch64.deb   # glibc -> native
-dpkg -i opencode_<v>_aarch64.deb          # native -> glibc
+dpkg -i opencode-glibc_<v>_aarch64.deb    # native -> glibc
 ```
 
 Both packages ship `/data/data/com.termux/files/usr/bin/opencode`; dpkg/pacman
@@ -100,9 +99,9 @@ resolve the conflict by replacing the other provider.
 
 ## Release assets naming
 
-- glibc wrapper line (default recommended): `opencode_<ver>_aarch64.deb`,
-  `opencode-<ver>-aarch64.pkg.tar.*`
-- native line (experimental): `opencode-native_<ver>_aarch64.deb`,
+- native mainline (stable since 27/28): `opencode-native_<ver>_aarch64.deb`,
   `opencode-native-<ver>-1-aarch64.pkg.tar.*`,
   raw binary `opencode-<ver>-aarch64-android-native`, plus
   `opencode-<ver>-report.json` and `opencode-<ver>-watcher.tar.gz`
+- glibc appendix (renamed `opencode-glibc`): `opencode-glibc_<ver>_aarch64.deb`,
+  `opencode-glibc-<ver>-1-aarch64.pkg.tar.*`
