@@ -23,80 +23,58 @@ NATIVE_DIR = artifacts/transplant/$(NATIVE_VER)
 
 OUTPUT_ROOT := $(if $(ODIR),$(ODIR),$(CURDIR)/packing)
 
-.PHONY: help all runtime stage deb pacman deb-native pacman-native native-pkg batch clean status steps matrix selfcheck release-upload test transplant transplant-predict transplant-check transplant-upx seccomp-harden
+.PHONY: help all runtime stage deb pacman deb-native pacman-native native-pkg batch clean status steps matrix selfcheck release-upload test transplant transplant-predict transplant-check transplant-upx seccomp-harden family-glibc family-native family-compressed range-build fleet-upx fleet-status sha-stage push-stage clean-artifacts
 
 help:
 	@echo "OpenCode Termux build helper"
 	@echo
-	@echo "Mainline scope:"
-	@echo "  - Local Termux packaging workflow (deb + pacman)"
-	@echo "  - armv7 CI prebuild handoff is non-mainline/deferred"
-	@echo "  - arm32 adaptation is deferred (tracked outside mainline)"
+	@echo "━━━ [Families] Single-version per-family builds ━━━"
+	@echo "  make family-glibc VER=1.18.21       # glibc wrapper (deb + pacman)"
+	@echo "  make family-native VER=1.18.21      # transplant + seccomp-harden + native pkgs"
+	@echo "  make family-compressed VER=1.18.21  # UPX-compressed variant (local)"
 	@echo
-	@echo "Primary commands:"
-	@echo "  make all VER=1.2.10 PKG=both"
-	@echo "  make all VER=latest PKG=pacman"
-	@echo "  make all VER=1.2.10 PKG=both ODIR=~/oct-out"
-	@echo "  make all VER=1.2.10 PKG=both ODIR=~/oct-out MIX=1"
-	@echo "  make runtime VER=latest"
-	@echo "  make stage"
-	@echo "  make deb"
-	@echo "  make pacman"
+	@echo "━━━ [Range Batch] Multi-version builds ━━━"
+	@echo "  make range-build FROM=1.18.15 TO=1.18.27 LINES=glibc,native"
+	@echo "    Features: continue-on-fail, npm retry ≤3, disk guardrail, SHA256SUMS"
 	@echo
-	@echo "Native provider commands (experimental headless line):"
-	@echo "  make transplant VER=1.18.21       # build native binary first"
-	@echo "  make transplant-upx VER=1.18.21   # OPTIONAL: UPX-pack the revived product (last step!)"
-	@echo "  make seccomp-harden VER=1.18.21   # DT_NEEDED SIGSYS hardening (auto-run by transplant)"
-	@echo "  make deb-native VER=1.18.21       # opencode .deb provider (native mainline)"
-	@echo "  make pacman-native VER=1.18.21    # opencode pacman provider (native mainline)"
-	@echo "  make native-pkg VER=1.18.21       # both native packages"
+	@echo "━━━ [Fleet] Distributed UPX ━━━"
+	@echo "  make fleet-upx VER=1.18.21 NODES=\"miao@host1 miao@host2\""
+	@echo "  make fleet-status                 # probe nodes"
 	@echo
-	@echo "Transplant (native-android) notes:"
-	@echo "  - bun-base pairing constraint: section-format graphs require an android Bun base >= 1.4.0"
-	@echo "    (trailer-format <=1.3.x require a 1.3.x base). Source: tools/transplant/config/bun-bind.json"
-	@echo "    (min_base_for_section=1.4.0)."
-	@echo "  - Dry-run feasibility (no downloads; metadata/local state only):"
-	@echo "      make transplant-predict VER=1.18.22"
-	@echo "      exit codes: 0=OK, 1=FAIL, 2=NEEDS_INFO."
-	@echo "  - QUARANTINE: if android bun base resolve fails, transplant exits non-zero and writes"
-	@echo "      artifacts/transplant/<ver>/bun-base.QUARANTINE.json. Supply a base via"
-	@echo "      tools/transplant/config/bun-bind.json (min_base_for_section) or a cached android bun,"
-	@echo "      then re-run: make transplant VER=<ver>."
+	@echo "━━━ [Release Staging] ━━━"
+	@echo "  make sha-stage                    # regenerate SHA256SUMS-prebatch"
+	@echo "  make push-stage TAG=Push260903 BATCH=prebatch  # dry-run upload"
+	@echo "    Set PUSH=1 to actually execute"
 	@echo
-	@echo "Batch commands:"
-	@echo "  make batch VERS='1.2.10 1.2.11 1.2.12' PKG=both"
-	@echo "  make batch VERS='1.1.[1-20]' PKG=deb ODIR=~/oct-out"
-	@echo "  make batch VERS='1.1.[1-20]' PKG=pacman ODIR=~/oct-out MIX=1"
+	@echo "━━━ [Legacy] Per-target builds ━━━"
+	@echo "  Glibc: make all VER=1.2.10 PKG=both | make runtime | make stage | make deb | make pacman"
+	@echo "  Native: make transplant VER=1.18.21 | make deb-native | make pacman-native | make native-pkg"
+	@echo "  Compressed: make transplant-upx VER=1.18.21"
 	@echo
-	@echo "Version resolution in tools/produce-local.sh:"
-	@echo "  1) explicit version argument"
-	@echo "  2) latest npm version if omitted"
-	@echo "  3) GitHub release fallback if npm version unavailable"
+	@echo "━━━ [Batch/Matrix] ━━━"
+	@echo "  make batch VERS='1.2.10 1.2.11' PKG=both"
+	@echo "  make matrix VERS='1.2.9 1.2.10' TARGET_HOST=192.168.1.22 TARGET_USER=u0_a258"
 	@echo
-	@echo "Output policy:"
-	@echo "  - Default root: ./packing"
-	@echo "  - With ODIR: write to ODIR only (do not use ./packing)"
-	@echo "  - Default layout: deb/ and pacman/ subfolders"
-	@echo "  - MIX=1 or --mix: flatten all artifacts into one directory"
+	@echo "━━━ [Debug/Introspection] ━━━"
+	@echo "  make steps | make status | make selfcheck | make test"
 	@echo
-	@echo "Workspace policy:"
-	@echo "  - Temporary work under project-local ./.work"
-	@echo "  - Auto-clean after runtime wrap"
-	@echo "  - KEEP_WORK=1 keeps workspace for debugging"
+	@echo "━━━ [Housekeeping] ━━━"
+	@echo "  make clean-artifacts VER=1.18.21   # remove transplant artifacts"
+	@echo "  make clean                          # remove glibc staging"
 	@echo
-	@echo "Debug/introspection:"
-	@echo "  make steps"
-	@echo "  make status"
-	@echo "  make selfcheck"
-	@echo "  make matrix VERS='1.2.9 1.2.10' ODIR=~/oct-out"
+	@echo "━━━ [Transplant Notes] ━━━"
+	@echo "  section-format graphs require android Bun base >= 1.4.0"
+	@echo "  make transplant-predict VER=1.18.22   # dry-run feasibility gate"
+	@echo "  QUARANTINE: bun-base resolve failure writes bun-base.QUARANTINE.json"
 	@echo
-	@echo "Wrapper CLI (tools/make-opencode):"
+	@echo "━━━ [Wrapper CLI] ━━━"
 	@echo "  ./tools/make-opencode --all --ver 1.2.10 --pkg both"
-	@echo "  ./tools/make-opencode --all --ver latest --pkg pacman"
-	@echo "  ./tools/make-opencode --batch --vers '1.2.10 1.2.11' --pkg pacman"
-	@echo "  ./tools/make-opencode --batch --vers '1.1.[1-20]' --pkg both --odir ~/oct-out"
-	@echo "  ./tools/make-opencode --all --ver 1.2.10 --pkg both --odir ~/oct-out --mix"
 	@echo "  TARGET_HOST=192.168.1.22 TARGET_USER=u0_a258 ./tools/upgrade-matrix.sh"
+	@echo
+	@echo "━━━ ⚠ Standalone (frozen) ━━━"
+	@echo "  No new standalone builds. Use scripts directly:"
+	@echo "    ./scripts/package/package_deb_standalone.sh"
+	@echo "    ./scripts/package/package_pacman_standalone.sh"
 
 steps:
 	@echo "Build steps: clean -> runtime -> stage -> package"
@@ -349,12 +327,133 @@ seccomp-harden:
 	fi; \
 	cp -p "$$SRC" "$$SRC.pre-crhandler" || exit 1; \
 	python3 tools/transplant/crhandler_patch.py "$$SRC" || exit 1; \
-	echo "seccomp-harden: pre-patch copy kept at $$SRC.pre-crhandler"
+	echo "seccomp-harden: pre-patch copy kept at $$SRC.pre-crhandler"; \
+	@# Post-patch sync: when tui was patched, ensure revived reflects the hardened binary \
+	@# (packaging scripts use opencode-native-revived; transplant.py produces both tui and revived \
+	@# but seccomp-harden patches only the preferred source — typically tui). \
+	if [ "$$SRC" = "$(NATIVE_DIR)/opencode-native-tui" ] && [ -f "$(NATIVE_DIR)/opencode-native-revived" ]; then \
+		if ! grep -aqF libopencode-crhandler.so "$(NATIVE_DIR)/opencode-native-revived"; then \
+			cp -p "$(NATIVE_DIR)/opencode-native-tui" "$(NATIVE_DIR)/opencode-native-revived"; \
+			echo "seccomp-harden: synced hardened tui -> revived"; \
+		fi; \
+	fi
 
 # transplant-check: golden regression across layout families
 # (tests/transplant/test_golden.py; fixtures pre-downloaded by scripts/fetch-fixtures.sh)
 transplant-check:
 	python3 tests/transplant/test_golden.py --fixtures-dir tests/transplant/fixtures/tgz
+
+# ══════════════════════════════════════════════════════════════════════
+# Grouped family targets (single-version per-family builds)
+# ══════════════════════════════════════════════════════════════════════
+
+# family-glibc: build glibc wrapper packages for a single version
+# Usage: make family-glibc VER=1.18.21
+family-glibc: runtime stage
+	@if [ "$(PKG)" = "deb" ]; then \
+		$(MAKE) deb VER=$(VER); \
+	elif [ "$(PKG)" = "pacman" ]; then \
+		$(MAKE) pacman VER=$(VER); \
+	else \
+		$(MAKE) deb VER=$(VER) && $(MAKE) pacman VER=$(VER); \
+	fi
+
+# family-native: transplant + seccomp-harden + native packages for a single version
+# Usage: make family-native VER=1.18.21
+family-native:
+	@if [ -z "$(VER_IS_SET)" ]; then \
+		echo "Error: VER is required. Example: make family-native VER=1.18.21"; \
+		exit 1; \
+	fi
+	$(MAKE) transplant VER=$(VER)
+	$(MAKE) deb-native VER=$(VER) && $(MAKE) pacman-native VER=$(VER)
+
+# family-compressed: UPX-compressed variant (local build)
+# Usage: make family-compressed VER=1.18.21
+family-compressed:
+	@if [ -z "$(VER_IS_SET)" ]; then \
+		echo "Error: VER is required. Example: make family-compressed VER=1.18.21"; \
+		exit 1; \
+	fi
+	$(MAKE) transplant VER=$(VER)
+	$(MAKE) transplant-upx VER=$(VER)
+
+# ══════════════════════════════════════════════════════════════════════
+# Range batch build (multi-version, continue-on-fail)
+# ══════════════════════════════════════════════════════════════════════
+
+# range-build: build multiple versions across families with resilience
+# Usage: make range-build FROM=1.18.15 TO=1.18.27 LINES=glibc,native
+# Features: continue-on-fail, npm retry ≤3, disk guardrail, SHA256SUMS accumulation
+range-build:
+	@if [ -z "$(FROM)" ] || [ -z "$(TO)" ]; then \
+		echo "Error: FROM and TO are required. Example: make range-build FROM=1.18.15 TO=1.18.27 LINES=glibc,native"; \
+		exit 1; \
+	fi
+	@if [ -z "$(LINES)" ]; then \
+		echo "Error: LINES is required (glibc,native[,compressed])"; \
+		exit 1; \
+	fi
+	bash scripts/range-build.sh FROM=$(FROM) TO=$(TO) LINES=$(LINES)
+
+# ══════════════════════════════════════════════════════════════════════
+# Fleet UPX (distributed compression)
+# ══════════════════════════════════════════════════════════════════════
+
+# fleet-upx: distribute UPX compression across multiple nodes
+# Usage: make fleet-upx VER=1.18.21 NODES="miao@100.98.3.121 miao@100.110.50.37"
+# Features: sshpass -p 0, xz -9 outbound, opportunistic dispatch, local verify
+fleet-upx:
+	@if [ -z "$(VER)" ] || [ -z "$(NODES)" ]; then \
+		echo "Error: VER and NODES are required. Example: make fleet-upx VER=1.18.21 NODES=\"miao@host1 miao@host2\""; \
+		exit 1; \
+	fi
+	bash scripts/fleet-upx.sh VER=$(VER) NODES="$(NODES)"
+
+# fleet-status: probe fleet nodes for availability
+fleet-status:
+	bash scripts/fleet-upx.sh --status
+
+# ══════════════════════════════════════════════════════════════════════
+# Release staging
+# ══════════════════════════════════════════════════════════════════════
+
+# sha-stage: regenerate SHA256SUMS-prebatch.txt from packing/
+sha-stage:
+	bash scripts/sha-stage.sh
+
+# push-stage: build gh release create command (dry-run by default)
+# Usage: make push-stage TAG=Push260903 BATCH=prebatch
+# Set PUSH=1 to actually execute upload
+push-stage:
+	@if [ -z "$(TAG)" ]; then \
+		echo "Error: TAG is required. Example: make push-stage TAG=Push260903 BATCH=prebatch"; \
+		exit 1; \
+	fi
+	bash scripts/push-stage.sh TAG=$(TAG) BATCH=$(BATCH)$(if $(PUSH),PUSH=1)
+
+# ══════════════════════════════════════════════════════════════════════
+# Housekeeping
+# ══════════════════════════════════════════════════════════════════════
+
+# clean-artifacts: remove transplant artifacts for a specific version
+# Usage: make clean-artifacts VER=1.18.21
+clean-artifacts:
+	@if [ -z "$(VER_IS_SET)" ]; then \
+		echo "Error: VER is required. Example: make clean-artifacts VER=1.18.21"; \
+		exit 1; \
+	fi
+	rm -rf artifacts/transplant/$(VER)
+	@echo "Cleaned artifacts for $(VER)"
+
+# ══════════════════════════════════════════════════════════════════════
+# Standalone (frozen, warning banner)
+# ══════════════════════════════════════════════════════════════════════
+
+# Standalone targets are FROZEN. No new builds. Use scripts directly:
+#   ./scripts/package/package_deb_standalone.sh
+#   ./scripts/package/package_pacman_standalone.sh
+# ══════════════════════════════════════════════════════════════════════
 
 clean:
 	rm -rf artifacts/staged packing/dpkg/work packing/pacman/pkg packing/pacman/src
