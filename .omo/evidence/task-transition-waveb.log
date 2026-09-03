@@ -1,0 +1,43 @@
+Wave B Build-Side Execution Log
+Started: 2026-09-03 (continuation from prior sessions)
+
+== B1: glibc package rename ==
+[1] packing/deb/DEBIAN/control: Package→opencode-glibc, Replaces: opencode, Breaks: opencode (<< ${OPENCODE_VERSION}), Conflicts: opencode-native — VERIFIED
+[2] packing/pacman/PKGBUILD: pkgname=opencode-glibc, conflicts=('opencode' 'opencode-compressed'), replaces=('opencode') — VERIFIED (committed earlier in 05c4ee0)
+[3] scripts/package/package_pacman.sh: tmp filenames renamed .makepkg-opencode.conf→.makepkg-opencode-glibc.conf, .PKGBUILD.opencode.tmp→.PKGBUILD.opencode-glibc.tmp — VERIFIED
+[4] scripts/package/package_pacman_native.sh: comments updated "Stable mainline provider" + "full TUI (stable mainline since 27/28)" — VERIFIED
+B1 status: PASS
+
+== B2: opencode-glibc-standalone rollback package ==
+[1] packing/pacman/PKGBUILD.standalone: pkgname=opencode-glibc-standalone, provides=('opencode-glibc'), conflicts=() — VERIFIED
+[2] packing/deb-standalone/DEBIAN/control: Package=opencode-glibc-standalone, zero Conflicts/Replaces/Breaks against opencode — VERIFIED
+[3] bin/opencode-glibc: bash launcher script, resolves runtime via ../lib/opencode-glibc/runtime/opencode — VERIFIED
+[4] scripts/build.sh: STANDALONE=1 mode — lib/opencode-glibc/ prefix, bin/opencode-glibc entry, prefix-standalone staging dir — VERIFIED
+[5] scripts/package/package_pacman_standalone.sh: builds standalone with correct prefix, no Conflicts — VERIFIED
+[6] scripts/package/package_deb_standalone.sh: builds standalone deb with deb-standalone/DEBIAN/control template — VERIFIED
+B2 status: PASS
+
+== B3: native stable channel build-side ==
+[1] Makefile: NATIVE=1 already present (line 19), release-upload supports native assets — ALREADY COMMITTED in 05c4ee0
+[2] packing/pacman/PKGBUILD.native: pkgname=opencode, conflicts=('opencode-compressed'), "stable mainline since 27/28" in desc — VERIFIED
+[3] scripts/package/package_pacman_native.sh: comments updated to stable mainline — VERIFIED (part of B1 commit)
+B3 status: PASS
+
+== F1: acceptance gate ==
+[1] make selfcheck: EXIT=0 (all checks pass, only warns for missing blocklist.json and omo config) — VERIFIED
+[2] 互斥矩阵:
+  - opencode ↔ opencode-glibc: MUTUALLY EXCLUSIVE (glibc conflicts='opencode'; deb Replaces/Breaks/Conflicts)
+  - opencode ↔ opencode-glibc-standalone: CAN COEXIST (standalone zero Conflicts on opencode)
+  - opencode-glibc-standalone provides opencode-glibc virtual name — VERIFIED
+F1 status: PASS
+
+== chore: delete stale .so ==
+tools/shim/libopencode-crhandler.so (untracked, zero-export junk) — DELETED
+
+== commits ==
+B1: feat(package): rename glibc line to opencode-glibc
+B2: feat(package): add opencode-glibc-standalone rollback package
+chore: remove stale zero-export libopencode-crhandler.so
+(WAVEB-OK 2 B1/B2 commits + 1 chore)
+
+WAVEB-OK 8557303 432a359 5d98f8b
