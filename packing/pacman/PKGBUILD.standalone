@@ -1,0 +1,40 @@
+pkgname=opencode-glibc-standalone
+pkgver=1.2.10
+pkgrel=1
+# Single frozen version for rollback only. Coexists with `opencode` (native)
+# and `opencode-glibc`: different bin name (opencode-glibc) and independent
+# lib prefix (usr/lib/opencode-glibc/). No Conflicts against literal `opencode`.
+pkgdesc='OpenCode glibc standalone (frozen single-version rollback package)'
+arch=('aarch64')
+url='https://github.com/anomalyco/opencode'
+license=('MIT')
+options=('!strip' '!debug')
+
+# Provides the opencode-glibc virtual name without conflicting with the
+# mainline opencode-glibc package (different bin/lib layout, frozen version).
+provides=('opencode-glibc')
+conflicts=()
+
+_prefix="${PREFIX:-/data/data/com.termux/files/usr}"
+_repo_root="${REPO_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}"
+_staged_prefix="${STAGED_PREFIX:-${_repo_root}/artifacts/staged/prefix}"
+
+prepare() {
+  [[ -x "${_staged_prefix}/lib/opencode-glibc/runtime/opencode" ]] || {
+    error "missing runtime at ${_staged_prefix}/lib/opencode-glibc/runtime/opencode"
+    return 1
+  }
+  [[ -x "${_staged_prefix}/bin/opencode-glibc" ]] || {
+    error "missing launcher at ${_staged_prefix}/bin/opencode-glibc"
+    return 1
+  }
+}
+
+build() {
+  true
+}
+
+package() {
+  mkdir -p "$pkgdir${_prefix}"
+  cp -a "${_staged_prefix}/." "$pkgdir${_prefix}/"
+}

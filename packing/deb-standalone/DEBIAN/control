@@ -1,0 +1,13 @@
+Package: opencode-glibc-standalone
+Version: ${OPENCODE_VERSION}
+Architecture: ${ARCHITECTURE}
+Maintainer: Hope2333(幽零小喵) <u0catmiao@proton.me>
+Section: utils
+Priority: optional
+Depends: glibc, openssl-glibc, bash, ncurses
+Description: OpenCode glibc standalone (frozen single-version rollback package)
+ Single frozen version for rollback only. Coexists with both the native
+ `opencode` package and the `opencode-glibc` package: different command
+ entry `opencode-glibc` and independent lib prefix usr/lib/opencode-glibc/.
+ No Conflicts/Replaces/Breaks against the literal name `opencode`, so it
+ will not displace the native or glibc mainline providers.
