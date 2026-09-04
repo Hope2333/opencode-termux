@@ -40,22 +40,57 @@ from collections import deque
 
 # ───────────────────── 配置 ─────────────────────
 
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PKG_DIR = os.path.join(REPO_ROOT, "packing", "pacman")
-OUT_DIR = os.path.join(REPO_ROOT, "packing", "fleet")
-EVID_DIR = os.path.join(REPO_ROOT, ".omo", "evidence", "fleet")
-LOG_PATH = os.path.join(REPO_ROOT, ".omo", "evidence",
-                        "task-fleet-compressed-push.log")
+def _find_repo(start):
+    d = start
+    while d != "/":
+        if os.path.isdir(os.path.join(d, ".git")):
+            return d
+        d = os.path.dirname(d)
+    return None
+
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = _find_repo(_SCRIPT_DIR)
+HOME_BASE = os.path.expanduser("~/opc-fleet")
+INBOX = os.path.join(HOME_BASE, "inbox")          # 节点常驻模式的包源
+PKG_DIR = (os.path.join(REPO_ROOT, "packing", "pacman") if REPO_ROOT
+           else INBOX)
+OUT_DIR = (os.path.join(REPO_ROOT, "packing", "fleet") if REPO_ROOT
+           else os.path.join(HOME_BASE, "out"))
+EVID_DIR = (os.path.join(REPO_ROOT, ".omo", "evidence", "fleet") if REPO_ROOT
+            else os.path.join(HOME_BASE, "logs"))
+LOG_PATH = (os.path.join(REPO_ROOT, ".omo", "evidence",
+                         "task-fleet-compressed-push.log") if REPO_ROOT
+            else os.path.join(HOME_BASE, "logs", "fleet-push.log"))
 
 RELEASE_TAG = "Push260903"
 ASSET_TMPL = "opencode-native-{ver}-upx.xz"
 PKG_TMPL = "opencode-{ver}-1-aarch64.pkg.tar.xz"
 
-NODES = {                       # None = 本机
+_DEFAULT_NODES = {              # None = 本机
     "local":  None,
     "miao1":  "ssh miao1",
     "miao2":  "ssh miao2",
 }
+
+
+def _parse_nodes():
+    env = os.environ.get("FLEET_NODES")
+    if not env:
+        return dict(_DEFAULT_NODES)
+    out = {}
+    for part in env.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        if "=" in part:
+            name, cmd = part.split("=", 1)
+            out[name.strip()] = None if cmd.strip() in ("local", "-") else cmd.strip()
+        else:
+            out[part] = None
+    return out
+
+
+NODES = _parse_nodes()
 RDIR = "~/opc-fleet/{ver}"
 CLEAN_REMOTE = True
 MAX_ATTEMPTS = 3
@@ -657,8 +692,62 @@ def discover(include_artifacts):
     return vers
 
 
+def _seed(hostspec):
+    """手机侧: 把全部包 + 本脚本投送到目标机 ~/opc-fleet/, 逐文件自建进度条"""
+    pkgs = [f for f in sorted(os.listdir(PKG_DIR))
+            if re.match(r"^opencode-[\d.]+-1-aarch64\.pkg\.tar\.xz$", f)] \
+        if os.path.isdir(PKG_DIR) else []
+    if not pkgs:
+        print(f"包源目录无匹配: {PKG_DIR}"); return 1
+    total = sum(os.path.getsize(os.path.join(PKG_DIR, f)) for f in pkgs)
+    print(f"SEED → {hostspec}  文件 {len(pkgs)}+1  总量 {mib(total)}")
+    jobs = [(f, os.path.join(PKG_DIR, f)) for f in pkgs]
+    jobs.append(("fleet-push.py", os.path.abspath(__file__)))
+    ok = 0
+    for name, path in jobs:
+        dest = "~/opc-fleet/inbox/" if name != "fleet-push.py" else "~/opc-fleet/"
+        size = os.path.getsize(path)
+        cmd = (f"{hostspec} 'mkdir -p ~/opc-fleet/inbox && cat > {dest}{name}'")
+        proc = subprocess.Popen(cmd, shell=True, stdin=subprocess.PIPE,
+                                stdout=subprocess.DEVNULL,
+                                stderr=subprocess.PIPE)
+        sent = 0
+        try:
+            with open(path, "rb") as f, proc.stdin as w:
+                while True:
+                    chunk = f.read(1048576)
+                    if not chunk:
+                        break
+                    w.write(chunk); sent += len(chunk)
+                    pct = 100.0 * sent / size
+                    sys.stdout.write(f"\r  {name:44} [{bar(pct)}] {pct:5.1f}% "
+                                     f"{mib(sent)}/{mib(size)}")
+                    sys.stdout.flush()
+            proc.stdin.close()
+            rc = proc.wait(timeout=600)
+        except Exception as e:
+            rc = -1; print(f"\r  {name} 异常 {e}")
+        print()  # 换行
+        if rc == 0:
+            ok += 1
+        else:
+            err = (proc.stderr.read() or b"").decode("utf-8", "replace").strip()[:120] \
+                if proc.stderr else ""
+            print(f"  ✖ {name} rc={rc} {err}")
+    script_ok = any(n == "fleet-push.py" for n, _ in jobs[:ok]) or ok == len(jobs)
+    print(f"\nSEED-DONE {ok}/{len(jobs)}")
+    if ok == len(jobs):
+        print("目标机执行:\n"
+              "  cd ~/opc-fleet && python3 fleet-push.py --plan\n"
+              "  (可选第二槽) FLEET_NODES='local,miao2=ssh <miao2>' \\n"
+              "  正式: python3 fleet-push.py")
+    return 0 if ok == len(jobs) else 2
+
+
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument("--seed", metavar="HOSTSPEC",
+                    help="手机侧投送: 如 'ssh miao@host' 或 'sshpass -p 0 ssh miao@host'")
     ap.add_argument("--plan", action="store_true")
     ap.add_argument("--dry-run", type=int, metavar="SEC")
     ap.add_argument("--tag", default=RELEASE_TAG)
@@ -668,19 +757,28 @@ def main():
     ap.add_argument("--no-remote-upload", action="store_true")
     ap.add_argument("--verify-download", action="store_true")
     ap.add_argument("--no-clean", dest="clean", action="store_false", default=True)
+    ap.add_argument("--repo", default="Hope2333/opencode-termux",
+                    help="节点上无 gh repo 上下文时的显式仓库")
     o = ap.parse_args()
     o.no_remote_upload = o.no_remote_upload
+
+    if o.seed:
+        return _seed(o.seed)
 
     f = Fleet()
     f.vers = discover(o.include_artifacts)
     if o.versions:
         f.vers = {k: v for k, v in f.vers.items() if k in o.versions}
-    try:
-        f.repo = subprocess.run(["gh", "repo", "view", "--json", "nameWithOwner",
-                                 "-q", ".nameWithOwner"], capture_output=True,
-                                text=True, cwd=REPO_ROOT).stdout.strip()
-    except Exception:
-        f.repo = ""
+    f.repo = o.repo
+    if REPO_ROOT:
+        try:
+            r = subprocess.run(["gh", "repo", "view", "--json", "nameWithOwner",
+                                "-q", ".nameWithOwner"], capture_output=True,
+                               text=True, cwd=REPO_ROOT)
+            if r.returncode == 0 and r.stdout.strip():
+                f.repo = r.stdout.strip()
+        except Exception:
+            pass
     if o.plan:
         print(f"repo={f.repo} tag={o.tag}")
         for v in sorted(f.vers.values(), key=lambda x: x.ver):
