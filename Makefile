@@ -38,7 +38,8 @@ help:
 	@echo "    Features: continue-on-fail, npm retry ≤3, disk guardrail, SHA256SUMS"
 	@echo
 	@echo "━━━ [Fleet] Distributed UPX ━━━"
-	@echo "  make fleet-upx VER=1.18.21 NODES=\"miao@host1 miao@host2\""
+	@echo "  python3 tools/fleet-push.py        # 推荐: 节点常驻 release 自源(断点续传)"
+	@echo "  make fleet-upx VER=1.18.21 NODES=\"miao@host1 miao@host2\"   # 旧法: 本机分发"
 	@echo "  make fleet-status                 # probe nodes"
 	@echo
 	@echo "━━━ [Release Staging] ━━━"

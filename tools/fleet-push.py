@@ -758,6 +758,43 @@ def release_crosscheck(f, tag):
     return bad
 
 
+def update_checksums(f, tag, repo):
+    """把本次新增 upx 资产的 sha 并入 release 的 SHA256SUMS.txt 并回传"""
+    with f.lock:
+        done = [v for v in f.vers.values()
+                if v.state == Ver.DONE and v.sha_node and not v.pre_existing]
+    if not done:
+        return
+    r = subprocess.run(["gh", "release", "download", tag, "-p", "SHA256SUMS.txt",
+                        "-O", "-"], capture_output=True, text=True, cwd=REPO_ROOT)
+    existing = {}
+    if r.returncode == 0:
+        for line in r.stdout.splitlines():
+            parts = line.split(None, 1)
+            if len(parts) == 2:
+                existing[parts[1].lstrip("*").strip()] = parts[0]
+    new_lines = []
+    for v in sorted(done, key=lambda x: x.ver):
+        if v.asset not in existing:
+            new_lines.append(f"{v.sha_node}  {v.asset}")
+    if not new_lines:
+        print("—— SHA256SUMS 无需更新")
+        return
+    merged = [f"{sha}  {name}" for name, sha in sorted(existing.items())] + new_lines
+    tmp = os.path.join(HOME_BASE if not REPO_ROOT else "/data/data/com.termux/files/usr/tmp",
+                       "SHA256SUMS.txt")
+    os.makedirs(os.path.dirname(tmp), exist_ok=True)
+    with open(tmp, "w") as fh:
+        fh.write("\n".join(merged) + "\n")
+    up = subprocess.run(["gh", "release", "upload", tag, tmp, "--repo", repo,
+                         "--clobber"], capture_output=True, text=True, cwd=REPO_ROOT)
+    if up.returncode == 0:
+        print(f"—— SHA256SUMS.txt 已更新 (+{len(new_lines)}) 并回传 release")
+        log(f"CHECKSUMS-UPDATED +{len(new_lines)}")
+    else:
+        print(f"—— SHA256SUMS 上传失败: {up.stderr.strip()[:160]}")
+
+
 def final_table(f, o):
     with f.lock:
         vers = sorted(f.vers.values(), key=lambda x: x.ver)
@@ -905,6 +942,8 @@ def main():
     ap.add_argument("--no-remote-upload", action="store_true")
     ap.add_argument("--verify-download", action="store_true")
     ap.add_argument("--no-clean", dest="clean", action="store_false", default=True)
+    ap.add_argument("--no-checksums", action="store_true",
+                    help="结束后不把新资产 sha 并入 SHA256SUMS.txt")
     ap.add_argument("--repo", default="Hope2333/opencode-termux",
                     help="节点上无 gh repo 上下文时的显式仓库")
     ap.add_argument("--source", choices=["auto", "inbox", "release"], default="auto",
@@ -1060,6 +1099,8 @@ def main():
         print("—— release 对账（尺寸核对）")
         release_crosscheck(f, o.tag)
     final_table(f, o)
+    if not o.no_checksums:
+        update_checksums(f, o.tag, f.repo)
     if o.verify_download:
         print("—— verify-download: 逐资产回下载校验（gh release download）")
         okn = 0
