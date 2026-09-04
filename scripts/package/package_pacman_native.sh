@@ -60,3 +60,15 @@ sed -i "s/^pkgrel=.*/pkgrel=$PKGREL/" "$TMP_PKGBUILD"
 OPENCODE_NATIVE_BIN="$NATIVE_BIN" REPO_ROOT="$ROOT_DIR" makepkg --config "$TMP_MAKEPKG_CONF" -f --noconfirm -p "$TMP_PKGBUILD"
 
 echo "Native pacman package created under: $ROOT_DIR/packing/pacman"
+
+# --- Regression guard: reject packages with data/ payload paths (double-prefix bug) ---
+BUILT_PKG=$(ls "$ROOT_DIR/packing/pacman/opencode-${VERSION}-${PKGREL}-aarch64.pkg.tar.xz" 2>/dev/null || true)
+if [[ -n "$BUILT_PKG" ]]; then
+    DATA_PAYLOAD=$(bsdtar -tf "$BUILT_PKG" | grep -E '^data/.*/(bin|lib)/' | head -1 || true)
+    if [[ -n "$DATA_PAYLOAD" ]]; then
+        echo "FATAL: regression guard triggered — found data/ payload path: $DATA_PAYLOAD" >&2
+        echo "Ensure PKGBUILD stages to \$pkgdir/usr/ (relative), not \$pkgdir\$prefix." >&2
+        exit 1
+    fi
+    echo "Regression guard: OK (no data/ payload paths)"
+fi

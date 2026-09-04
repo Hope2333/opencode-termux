@@ -15,7 +15,7 @@ options=('!strip' '!debug')
 provides=('opencode-glibc')
 conflicts=('opencode-glibc')
 
-_prefix="${PREFIX:-/data/data/com.termux/files/usr}"
+# FIX: use /usr (relative staging) not the full prefix path.
 _repo_root="${REPO_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}"
 _staged_prefix="${STAGED_PREFIX:-${_repo_root}/artifacts/staged/prefix}"
 
@@ -35,6 +35,6 @@ build() {
 }
 
 package() {
-  mkdir -p "$pkgdir${_prefix}"
-  cp -a "${_staged_prefix}/." "$pkgdir${_prefix}/"
+  mkdir -p "$pkgdir/usr"
+  cp -a "${_staged_prefix}/." "$pkgdir/usr/"
 }

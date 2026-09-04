@@ -13,7 +13,8 @@ makedepends=()
 source=()
 sha256sums=()
 
-_prefix="${PREFIX:-/data/data/com.termux/files/usr}"
+# FIX: use /usr (relative staging) not the full prefix path, so tarball paths
+# are usr/bin/opencode — avoids double-prefix on `pacman -U` install.
 _repo_root="${REPO_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}"
 _staged_prefix="${STAGED_PREFIX:-${_repo_root}/artifacts/staged/prefix}"
 
@@ -33,8 +34,8 @@ build() {
 }
 
 package() {
-  mkdir -p "$pkgdir${_prefix}"
-  cp -a "${_staged_prefix}/." "$pkgdir${_prefix}/"
+  mkdir -p "$pkgdir/usr"
+  cp -a "${_staged_prefix}/." "$pkgdir/usr/"
 }
 
 post_install() {

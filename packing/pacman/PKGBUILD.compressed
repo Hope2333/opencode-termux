@@ -26,15 +26,15 @@ sha256sums=()
 : "${OPENCODE_COMPRESSED_BIN:?OPENCODE_COMPRESSED_BIN must point to opencode-native-revived-upx}"
 
 package() {
-    local prefix="${PREFIX:-/data/data/com.termux/files/usr}"
     if [[ -z "$OPENCODE_COMPRESSED_BIN" || ! -f "$OPENCODE_COMPRESSED_BIN" ]]; then
         error "OPENCODE_COMPRESSED_BIN not set or missing"
         return 1
     fi
 
     msg "Installing compressed runtime from $OPENCODE_COMPRESSED_BIN"
-    mkdir -p "$pkgdir$prefix/bin"
-    install -m755 "$OPENCODE_COMPRESSED_BIN" "$pkgdir$prefix/bin/opencode"
+    # FIX: stage to $pkgdir/usr/ (NOT $pkgdir$prefix/) — same double-prefix fix.
+    mkdir -p "$pkgdir/usr/bin"
+    install -m755 "$OPENCODE_COMPRESSED_BIN" "$pkgdir/usr/bin/opencode"
 }
 
 post_install() {
