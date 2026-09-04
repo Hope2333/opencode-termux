@@ -5,7 +5,7 @@ set -euo pipefail
 #
 # D1 ruling: three mutually exclusive providers —
 #   opencode (native mainline) / opencode-glibc (glibc appendix) / opencode-compressed.
-# This package Provides: opencode (= version) and Conflicts with BOTH other
+# This package Provides: opencode (= version) and Conflicts with ALL other
 # families. It deliberately does NOT declare Replaces: the compressed variant
 # is an alternative, not an upgrade — Replaces would let it silently displace
 # an installed provider and wipe its user data on removal.
@@ -74,12 +74,13 @@ Architecture: $ARCH_DEB
 Maintainer: $MAINTAINER
 Depends:
 Provides: opencode (= $VERSION)
-Conflicts: opencode, opencode-glibc
+Conflicts: opencode, opencode-glibc, opencode-glibc-standalone
 Description: OpenCode compressed variant (UPX-packed native bionic runtime)
  Size-optimized variant of the native mainline: the revived bionic ELF
  packed with UPX. Zero glibc dependencies, Android API >= 28, bin-direct
  (no wrapper). Mutually exclusive with opencode (native mainline) and
- opencode-glibc (glibc appendix); no Replaces by design - installing this
+ opencode-glibc (glibc appendix) and opencode-glibc-standalone (frozen
+ rollback); no Replaces by design - installing this
  variant never silently displaces another provider or wipes its data.
 EOF
 
@@ -92,7 +93,7 @@ set -e
 echo "OpenCode compressed variant installed (UPX-packed native bionic runtime)"
 echo "Run: opencode --version"
 echo "Scope: same runtime as the native mainline, UPX-packed for size."
-echo "Mutually exclusive with opencode and opencode-glibc (no Replaces: variant, not upgrade)."
+echo "Mutually exclusive with opencode, opencode-glibc and opencode-glibc-standalone (no Replaces: variant, not upgrade)."
 exit 0
 POSTINST
 chmod 755 "$DEB_ROOT/DEBIAN/postinst"
