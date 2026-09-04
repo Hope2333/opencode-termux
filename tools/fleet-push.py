@@ -216,6 +216,7 @@ class Fleet:
         self.health: dict = {}
         self.health_fails: dict = {}
         self.slots: list = []
+        self.slot_cmd: dict = {}
         self.stop = threading.Event()
         self.t0 = time.time()
         self.repo = ""
@@ -932,7 +933,9 @@ def main():
         return 0
     if o.dry_run:
         f.slots = ([f"local#{i+1}" for i in range(LOCAL_SLOTS)]
-                   + [(n, c) for n, c in NODES.items() if n != "local"])
+                   + [n for n in NODES if n != "local"])
+        f.slot_cmd = {**{f"local#{i+1}": None for i in range(LOCAL_SLOTS)},
+                      **{n: c for n, c in NODES.items() if n != "local"}}
         import random
         for i, v in enumerate(sorted(f.vers.values(), key=lambda x: x.ver)):
             v.upx_in, v.upx_out, v.upx_ratio = 179807785, 51891796, "28.86"
@@ -970,7 +973,9 @@ def main():
 
     sched = Scheduler(f, o)
     f.slots = ([f"local#{i+1}" for i in range(LOCAL_SLOTS)]
-               + [(n, c) for n, c in NODES.items() if n != "local"])
+               + [n for n in NODES if n != "local"])
+    f.slot_cmd = {**{f"local#{i+1}": None for i in range(LOCAL_SLOTS)},
+                  **{n: c for n, c in NODES.items() if n != "local"}}
     stopped = threading.Event()
 
     def on_sig(_sig, _frm):
@@ -989,7 +994,7 @@ def main():
             if not stopped.is_set():
                 for slot in list(f.slots):
                     node = slot.rsplit("#", 1)[0] if slot.startswith("local#") else slot
-                    cmd = NODES.get(node)
+                    cmd = f.slot_cmd.get(slot)
                     with f.lock:
                         busy = slot in f.slot_job
                     if busy:
