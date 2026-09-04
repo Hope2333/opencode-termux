@@ -852,6 +852,17 @@ def main():
         return _seed(o.seed)
 
     f = Fleet()
+    f.repo = o.repo
+    if REPO_ROOT:
+        try:
+            r = subprocess.run(["gh", "repo", "view", "--json", "nameWithOwner",
+                                "-q", ".nameWithOwner"], capture_output=True,
+                               text=True, cwd=REPO_ROOT)
+            if r.returncode == 0 and r.stdout.strip():
+                f.repo = r.stdout.strip()
+        except Exception:
+            pass
+
     if o.source == "auto":
         have = (os.path.isdir(PKG_DIR) and any(
             re.match(r"^opencode-[\d.]+-1-aarch64\.pkg\.tar\.xz$", fn)
@@ -864,16 +875,6 @@ def main():
         f.vers = discover(o.include_artifacts)
     if o.versions:
         f.vers = {k: v for k, v in f.vers.items() if k in o.versions}
-    f.repo = o.repo
-    if REPO_ROOT:
-        try:
-            r = subprocess.run(["gh", "repo", "view", "--json", "nameWithOwner",
-                                "-q", ".nameWithOwner"], capture_output=True,
-                               text=True, cwd=REPO_ROOT)
-            if r.returncode == 0 and r.stdout.strip():
-                f.repo = r.stdout.strip()
-        except Exception:
-            pass
     if o.plan:
         pre = sum(1 for v in f.vers.values() if v.pre_existing)
         print(f"repo={f.repo} tag={o.tag} source={o.source} "
