@@ -1,0 +1,39 @@
+# bionic build fixes for OpenTUI packages/core/src/zig (task-tui-common-fix):
+# build.zig must linkLibC + use prebuilt uucode tables; build.zig.zon path fixes.
+diff --git a/packages/core/src/zig/build.zig b/packages/core/src/zig/build.zig
+index 5a8bcb87..45d14ff6 100644
+--- a/packages/core/src/zig/build.zig
++++ b/packages/core/src/zig/build.zig
+@@ -9,6 +9,7 @@ const SupportedZigVersion = struct {
+ 
+ const SUPPORTED_ZIG_VERSIONS = [_]SupportedZigVersion{
+     .{ .major = 0, .minor = 15, .patch = 2 },
++    .{ .major = 0, .minor = 16, .patch = 0 },
+ };
+ 
+ const SupportedTarget = struct {
+@@ -272,6 +273,10 @@ fn buildTarget(
+         .root_module = module,
+         .linkage = .dynamic,
+     });
++    // Bionic cross-build: force linking the Android libc so symbols such as
++    // getauxval resolve against libc.so (otherwise the shared object is emitted
++    // with an unresolved getauxval and fails to dlopen on device).
++    lib.linkLibC();
+ 
+     const install_dir = b.addInstallArtifact(lib, .{
+         .dest_dir = .{
+diff --git a/packages/core/src/zig/build.zig.zon b/packages/core/src/zig/build.zig.zon
+index e863a096..d31446a4 100644
+--- a/packages/core/src/zig/build.zig.zon
++++ b/packages/core/src/zig/build.zig.zon
+@@ -5,8 +5,7 @@
+     .minimum_zig_version = "0.15.2",
+     .dependencies = .{
+         .uucode = .{
+-            .url = "https://github.com/jacobsandlund/uucode/archive/84ceda8561a17ba4a9b96ac5c583f779660bbd4e.tar.gz",
+-            .hash = "uucode-0.1.0-ZZjBPtA_TQCWp5PIKmfm5tu1WOkKWFmBGFEMxircPfkA",
++            .path = "zig-pkg/uucode-0.1.0-ZZjBPtA_TQCWp5PIKmfm5tu1WOkKWFmBGFEMxircPfkA",
+         },
+     },
+     .paths = .{
