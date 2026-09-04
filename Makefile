@@ -350,10 +350,10 @@ seccomp-harden:
 	fi; \
 	cp -p "$$SRC" "$$SRC.pre-crhandler" || exit 1; \
 	python3 tools/transplant/crhandler_patch.py "$$SRC" || exit 1; \
-	echo "seccomp-harden: pre-patch copy kept at $$SRC.pre-crhandler"; \
-	@# Post-patch sync: when tui was patched, ensure revived reflects the hardened binary \
-	@# (packaging scripts use opencode-native-revived; transplant.py produces both tui and revived \
-	@# but seccomp-harden patches only the preferred source — typically tui). \
+	echo "seccomp-harden: pre-patch copy kept at $$SRC.pre-crhandler";
+	@# Post-patch sync: when tui was patched, ensure revived reflects the
+	@# hardened binary. transplant.py produces both tui and revived, but
+	@# seccomp-harden patches only the preferred source (typically tui).
 	if [ "$$SRC" = "$(NATIVE_DIR)/opencode-native-tui" ] && [ -f "$(NATIVE_DIR)/opencode-native-revived" ]; then \
 		if ! grep -aqF libopencode-crhandler.so "$(NATIVE_DIR)/opencode-native-revived"; then \
 			rm -f "$(NATIVE_DIR)/opencode-native-revived"; \

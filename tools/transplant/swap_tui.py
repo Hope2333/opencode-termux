@@ -14,6 +14,7 @@ Usage:
   python3 tools/transplant/swap_tui.py --binary <in> --tui-lib <libopentui.so> --out <out>
 """
 import argparse
+import os
 import struct
 import sys
 
@@ -282,6 +283,7 @@ def main() -> int:
     assert len(out) == len(data), "output length drifted"
     with open(args.out, "wb") as f:
         f.write(out)
+    os.chmod(args.out, 0o755)  # product is an executable; tui_probe/pty gates exec it directly
     print(f"swap_tui: wrote {args.out} ({len(out)} bytes)")
     return 0
 

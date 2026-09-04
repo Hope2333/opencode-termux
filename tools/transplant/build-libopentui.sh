@@ -4,13 +4,19 @@
 #
 # Context: MiMo/opencode embed a glibc-built libopentui.so. On Android (bionic)
 # that library cannot dlopen, so the main TUI hangs. This script rebuilds a
-# *bionic* libopentui.so from OpenTUI 0.1.101 source using Zig 0.15.2 — run
-# under the Termux glibc loader (Zig 0.15.2 itself is a glibc binary) but
-# emitting an android/bionic ELF.
+# *bionic* libopentui.so from OpenTUI source.
 #
-# Fallback policy (user decision 2026-08-30): when a prebuilt historical
-# package cannot be located, use glibc Zig 0.15.x purely as a *build tool*
-# (never run the resulting artifact via glibc) to produce the bionic lib.
+# Two source profiles:
+#   native (canonical, w7b recipe — task-w7b-build.log): OpenTUI w7b tree
+#     (packages/native, vendored zig-deps), zig 0.16.0 native aarch64 binary,
+#     `zig build -Dlibrary-target=aarch64-linux-android` + BIONIC_* env +
+#     runtime-generated libc.txt (hdrfix-merge include dir + bionic crt dir)
+#     + LD_PRELOAD w7b-shim.so (hardlink EPERM under Android SELinux ->
+#     copy fallback). Output: lib/aarch64-android/libopentui.so.
+#   core (legacy 0.1.101): packages/core/src/zig layout, glibc-hosted zig
+#     0.15.2 via the glibc loader, uucode prebuilt tables. Kept for history;
+#     its export surface (~249 dynsyms) does NOT satisfy the 1.18.x host
+#     (createEventSink et al), so do not use it for opencode swaps.
 #
 # Hard-won requirements (do not "simplify" these away):
 #   1. The OpenTUI build.zig must call `lib.linkLibC()` on the `addLibrary`
@@ -38,16 +44,24 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 # --- configurable locations (override via env) ---------------------------------
-OPENTUI_ZIG_DIR="${OPENTUI_ZIG_DIR:-/data/data/com.termux/files/home/develop/OpenTUI-0.1.101/packages/core/src/zig}"
+OPENTUI_ZIG_DIR="${OPENTUI_ZIG_DIR:-$HOME/develop/OpenTUI-w7b-native/packages/native}"
 PATCH_DIR="${PATCH_DIR:-$REPO_ROOT/patches/opentui}"
 INSTALL_PATH="${INSTALL_PATH:-$REPO_ROOT/artifacts/transplant/opentui-bionic/libopentui.so}"
 GLIBC_LD="${GLIBC_LD:-/data/data/com.termux/files/usr/glibc/lib/ld-linux-aarch64.so.1}"
 GLIBC_LIB="${GLIBC_LIB:-/data/data/com.termux/files/usr/glibc/lib}"
-ZIG_BIN="${ZIG_BIN:-/data/data/com.termux/files/usr/tmp/zig-0.15.2/zig-aarch64-linux-0.15.2/zig}"
-# Corrected bionic libc spec (MUST include lib_dir + dynamic_linker).
-LIBC_SPEC="${LIBC_SPEC:-/data/data/com.termux/files/usr/tmp/w7b-libc.txt}"
+# Native profile toolchain (w7b recipe). ZIG 0.16.0 native aarch64 build.
+ZIG_BIN="${ZIG_BIN:-${TMPDIR:-/tmp}/zig-0.16.0/zig}"
+BIONIC_SYSROOT="${BIONIC_SYSROOT:-/data/data/com.termux/files/usr}"
+BIONIC_HDRFIX="${BIONIC_HDRFIX:-${TMPDIR:-/tmp}/w7b-hdrfix}"
+BIONIC_LIBM="${BIONIC_LIBM:-/system/lib64/libm.so}"
+HDRFIX_MERGE_DIR="${HDRFIX_MERGE_DIR:-${TMPDIR:-/tmp}/w7b-hdrfix-merge}"
+BIONIC_CRT_DIR="${BIONIC_CRT_DIR:-${TMPDIR:-/tmp}/w7b-bionic-lib}"
+SYS_INCLUDE_DIR="${SYS_INCLUDE_DIR:-/data/data/com.termux/files/usr/include}"
+SHIM_SO="${SHIM_SO:-$REPO_ROOT/tools/transplant/toolchain/w7b-shim.so}"
+# Legacy core-profile knobs (0.1.101 + glibc-hosted zig 0.15.2).
+CORE_ZIG_BIN="${CORE_ZIG_BIN:-/data/data/com.termux/files/usr/tmp/zig-0.15.2/zig-aarch64-linux-0.15.2/zig}"
+CORE_LIBC_SPEC="${CORE_LIBC_SPEC:-/data/data/com.termux/files/usr/tmp/w7b-libc.txt}"
 CACHE_DIR="${ZIG_GLOBAL_CACHE_DIR:-$HOME/.cache/zig}"
-OUT_DIR="${OUT_DIR:-$OPENTUI_ZIG_DIR/lib/aarch64-linux-android}"
 # MiMo embedded slot — incoming lib must be <= this after stripping.
 MAX_SLOT="${MAX_SLOT:-4567704}"
 
@@ -99,18 +113,45 @@ fi
 
 command -v llvm-strip >/dev/null 2>&1 || { echo "llvm-strip not found" >&2; exit 1; }
 
-echo ">> OpenTUI zig dir : $OPENTUI_ZIG_DIR"
+# Profile detection: native layout carries its own build.zig in the zig dir
+# (packages/native/build.zig); core layout's build.zig lives up at
+# packages/core/ (the zig dir is packages/core/src/zig).
+if [ -f "$OPENTUI_ZIG_DIR/build.zig" ]; then
+  PROFILE=native
+else
+  PROFILE=core
+fi
+echo ">> OpenTUI zig dir : $OPENTUI_ZIG_DIR (profile=$PROFILE)"
 echo ">> patch dir       : $PATCH_DIR"
-echo ">> glibc loader    : $GLIBC_LD"
-echo ">> zig binary      : $ZIG_BIN"
-echo ">> libc spec       : $LIBC_SPEC"
 
-[ -x "$GLIBC_LD" ] || { echo "glibc loader missing: $GLIBC_LD" >&2; exit 1; }
-[ -x "$ZIG_BIN" ]  || { echo "zig binary missing: $ZIG_BIN" >&2; exit 1; }
-[ -f "$LIBC_SPEC" ] || { echo "libc spec missing: $LIBC_SPEC" >&2; exit 1; }
+if [ "$PROFILE" = core ]; then
+  ZIG="$CORE_ZIG_BIN"
+  LIBC_SPEC="$CORE_LIBC_SPEC"
+  OUT_DIR="${OUT_DIR:-$OPENTUI_ZIG_DIR/lib/aarch64-linux-android}"
+  echo ">> glibc loader    : $GLIBC_LD"
+  echo ">> zig binary      : $ZIG"
+  echo ">> libc spec       : $LIBC_SPEC"
+  [ -x "$GLIBC_LD" ] || { echo "glibc loader missing: $GLIBC_LD" >&2; exit 1; }
+  [ -f "$LIBC_SPEC" ] || { echo "libc spec missing: $LIBC_SPEC" >&2; exit 1; }
+else
+  ZIG="$ZIG_BIN"
+  OUT_DIR="${OUT_DIR:-$OPENTUI_ZIG_DIR/lib/aarch64-android}"
+  echo ">> zig binary      : $ZIG"
+  echo ">> bionic sysroot  : $BIONIC_SYSROOT"
+  echo ">> hdrfix          : $BIONIC_HDRFIX"
+  echo ">> shim            : $SHIM_SO"
+  [ -x "$ZIG" ] || { echo "zig 0.16 binary missing: $ZIG" >&2; exit 1; }
+  [ -d "$BIONIC_HDRFIX" ] || { echo "hdrfix dir missing: $BIONIC_HDRFIX" >&2; exit 1; }
+  [ -d "$HDRFIX_MERGE_DIR" ] || { echo "hdrfix-merge dir missing: $HDRFIX_MERGE_DIR" >&2; exit 1; }
+  [ -d "$BIONIC_CRT_DIR" ] || { echo "bionic crt dir missing: $BIONIC_CRT_DIR" >&2; exit 1; }
+  [ -f "$SHIM_SO" ] || { echo "LD_PRELOAD shim missing: $SHIM_SO" >&2; exit 1; }
+fi
+[ -x "$ZIG" ] || { echo "zig binary missing: $ZIG" >&2; exit 1; }
 
 # --- phase 0: apply ALL patches/opentui/*.patch (idempotent, fail on reject) ----
-OPENTUI_TREE="$(cd "$OPENTUI_ZIG_DIR/../../../.." && pwd)"
+# tree root = the directory CONTAINING packages/ (handles both layouts:
+# packages/native and packages/core/src/zig)
+OPENTUI_TREE="$(cd "$OPENTUI_ZIG_DIR" && while [ "$(basename "$PWD")" != "packages" ] && [ "$PWD" != "/" ]; do cd ..; done && cd .. && pwd)"
 command -v patch >/dev/null 2>&1 || { echo "patch(1) not found" >&2; exit 1; }
 shopt -s nullglob
 PATCHES=("$PATCH_DIR"/*.patch)
@@ -125,15 +166,18 @@ for p in "${PATCHES[@]}"; do
   elif patch -d "$OPENTUI_TREE" -p1 -N --forward --dry-run < "$p" >/dev/null 2>&1; then
     patch -d "$OPENTUI_TREE" -p1 -N --forward < "$p"
   else
-    echo "ERROR: patch does not apply cleanly to $OPENTUI_TREE (drift between patch and tree)" >&2
-    exit 1
+    # Drift (e.g. tree already carries an equivalent guard with local comment
+    # variants). NOT fatal: the semantic post-check below gates the build on
+    # actual guard presence, so a genuinely unguarded tree still aborts.
+    echo "WARN: patch drift on $OPENTUI_TREE — relying on semantic guard verification"
   fi
 done
 
 # Semantic post-check: regardless of what patch(1) decided, the tree MUST end
 # up with the full guard set. Fail loudly if anything is absent.
-BUF="$OPENTUI_TREE/packages/core/src/zig/buffer.zig"
-RND="$OPENTUI_TREE/packages/core/src/zig/renderer.zig"
+BUF="$(find "$OPENTUI_TREE/packages" -maxdepth 3 -name buffer.zig | head -1)"
+RND="$(find "$OPENTUI_TREE/packages" -maxdepth 3 -name renderer.zig | head -1)"
+[ -n "$BUF" ] && [ -n "$RND" ] || { echo "ERROR: buffer.zig/renderer.zig not found under $OPENTUI_TREE/packages" >&2; exit 1; }
 sem_fail=0
 sem() { grep -qF "$2" "$1" || { echo "ERROR: guard missing in $1: $2" >&2; sem_fail=1; }; }
 sem "$BUF" '@min(scissor.width, 0x7FFFFFFF)'
@@ -145,22 +189,46 @@ sem "$RND" '@min(width, 0x7FFFFFFF)'
 echo ">> semantic patch verification: OK"
 
 cd "$OPENTUI_ZIG_DIR"
-
-# If the prebuilt tables.zig is absent, generate it first WITHOUT --libc (the
-# only step that needs the host toolchain), then the real build reuses it.
-if [ ! -f "zig-pkg/uucode-0.1.0-"*"/prebuilt_tables.zig" ]; then
-  echo ">> phase 1: generate uucode tables.zig (no --libc)"
-  UUCODE_USE_PREBUILT_TABLES= \
-  "$GLIBC_LD" --library-path "$GLIBC_LIB" "$ZIG_BIN" build \
-    -Dtarget=aarch64-linux-android -Doptimize=ReleaseSafe
-fi
-
-echo ">> phase 2: build bionic libopentui.so (with --libc)"
 export ZIG_GLOBAL_CACHE_DIR="$CACHE_DIR"
-export UUCODE_USE_PREBUILT_TABLES=1
-"$GLIBC_LD" --library-path "$GLIBC_LIB" "$ZIG_BIN" build \
-  -Dtarget=aarch64-linux-android -Doptimize=ReleaseSafe \
-  --libc "$LIBC_SPEC"
+
+if [ "$PROFILE" = core ]; then
+  # If the prebuilt tables.zig is absent, generate it first WITHOUT --libc (the
+  # only step that needs the host toolchain), then the real build reuses it.
+  if [ ! -f "zig-pkg/uucode-0.1.0-"*"/prebuilt_tables.zig" ]; then
+    echo ">> phase 1: generate uucode tables.zig (no --libc)"
+    UUCODE_USE_PREBUILT_TABLES= \
+    "$GLIBC_LD" --library-path "$GLIBC_LIB" "$ZIG" build \
+      -Dtarget=aarch64-linux-android -Doptimize=ReleaseSafe
+  fi
+
+  echo ">> phase 2: build bionic libopentui.so (with --libc)"
+  export UUCODE_USE_PREBUILT_TABLES=1
+  "$GLIBC_LD" --library-path "$GLIBC_LIB" "$ZIG" build \
+    -Dtarget=aarch64-linux-android -Doptimize=ReleaseSafe \
+    --libc "$LIBC_SPEC"
+else
+  # w7b recipe: runtime-generated libc.txt (absolute paths from env knobs),
+  # BIONIC_* env consumed by the tree's build.zig android branch, and the
+  # LD_PRELOAD shim to survive Android SELinux's hardlink ban in zig's cache.
+  LIBC_SPEC="$(mktemp "${TMPDIR:-/tmp}/opentui-libc.XXXXXX.txt")"
+  {
+    echo "include_dir=$HDRFIX_MERGE_DIR"
+    echo "sys_include_dir=$SYS_INCLUDE_DIR"
+    echo "crt_dir=$BIONIC_CRT_DIR"
+    echo "msvc_lib_dir="
+    echo "kernel32_lib_dir="
+    echo "gcc_dir="
+  } > "$LIBC_SPEC"
+
+  echo ">> phase 2: build bionic libopentui.so (native zig 0.16, w7b recipe)"
+  LD_PRELOAD="$SHIM_SO" \
+  BIONIC_SYSROOT="$BIONIC_SYSROOT" \
+  BIONIC_HDRFIX="$BIONIC_HDRFIX" \
+  BIONIC_LIBM="$BIONIC_LIBM" \
+  "$ZIG" build \
+    -Dlibrary-target=aarch64-linux-android -Doptimize=ReleaseSafe \
+    --libc "$LIBC_SPEC"
+fi
 
 SO="$OUT_DIR/libopentui.so"
 [ -f "$SO" ] || { echo "build did not produce $SO" >&2; exit 1; }

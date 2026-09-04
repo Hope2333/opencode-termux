@@ -1,0 +1,108 @@
+# ffi-int-truncation-guards (task-tui-common-fix) — P4 extension beyond the
+# 342d68d exemplar fix, targeting the OpenTUI w7b bionic build tree
+# (packages/native, vendored zig-deps): setCellWithAlphaBlendingCellWithoutImages /
+# setCellWithAlphaBlendingRawCell bit31 early-returns, drawGrayscaleBuffer{,Supersampled}
+# + drawTextBufferInternal INT32_MIN negation guards, renderer hit-scissor
+# clamp+saturating ends. Guard presence is enforced semantically by
+# build-libopentui.sh regardless of patch drift.
+--- a/packages/native/src/buffer.zig
++++ b/packages/native/src/buffer.zig
+@@ -908,6 +908,9 @@
+     }
+ 
+     inline fn setCellWithAlphaBlendingCellWithoutImages(self: *OptimizedBuffer, x: u32, y: u32, cell: Cell) void {
++        // FFI defense (task-tui-common-fix): coords crossing FFI with bit31
++        // set (JS negatives as u32) would panic in @intCast below; no-op instead.
++        if (x >= 0x80000000 or y >= 0x80000000) return;
+         if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
+         const opacity = self.getCurrentOpacity();
+         if (isFullyTransparent(opacity, cell.fg, cell.bg)) return;
+@@ -964,6 +967,9 @@
+     }
+ 
+     fn setCellWithAlphaBlendingRawCell(self: *OptimizedBuffer, x: u32, y: u32, cell: Cell) void {
++        // FFI defense (task-tui-common-fix): coords crossing FFI with bit31
++        // set (JS negatives as u32) would panic in @intCast below; no-op instead.
++        if (x >= 0x80000000 or y >= 0x80000000) return;
+         if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
+ 
+         const opacity = self.getCurrentOpacity();
+@@ -1661,6 +1667,8 @@
+ 
+         if (virtual_lines.len == 0) return;
+ 
++        // FFI defense (task-tui-common-fix): INT32_MIN negation would overflow i32.
++        if (y <= -0x40000000) return;
+         const firstVisibleLine: u32 = if (y < 0) @intCast(-y) else 0;
+         const bufferBottomY = self.height;
+         const lastPossibleLine = if (y >= @as(i32, @intCast(bufferBottomY)))
+@@ -2828,6 +2836,9 @@
+         if (srcWidth == 0 or srcHeight == 0) return;
+         if (posX >= @as(i32, @intCast(self.width)) or posY >= @as(i32, @intCast(self.height))) return;
+ 
++        // FFI defense (task-tui-common-fix): INT32_MIN negation would overflow
++        // i32; draws that far offscreen are no-ops anyway.
++        if (posX < -0x40000000 or posY < -0x40000000) return;
+         const startX: u32 = if (posX < 0) @intCast(-posX) else 0;
+         const startY: u32 = if (posY < 0) @intCast(-posY) else 0;
+ 
+@@ -2897,6 +2908,9 @@
+         if (termWidth == 0 or termHeight == 0) return;
+         if (posX >= @as(i32, @intCast(self.width)) or posY >= @as(i32, @intCast(self.height))) return;
+ 
++        // FFI defense (task-tui-common-fix): INT32_MIN negation would overflow
++        // i32; draws that far offscreen are no-ops anyway.
++        if (posX < -0x40000000 or posY < -0x40000000) return;
+         const startX: u32 = if (posX < 0) @intCast(-posX) else 0;
+         const startY: u32 = if (posY < 0) @intCast(-posY) else 0;
+ 
+--- a/packages/native/src/renderer.zig
++++ b/packages/native/src/renderer.zig
+@@ -2824,11 +2824,11 @@
+         const startY = @max(0, clipped.y);
+         const endX = @min(
+             @as(i32, @intCast(self.hitGridWidth)),
+-            clipped.x + @as(i32, @intCast(clipped.width)),
++            clipped.x +| @as(i32, @intCast(@min(clipped.width, 0x7FFFFFFF))),
+         );
+         const endY = @min(
+             @as(i32, @intCast(self.hitGridHeight)),
+-            clipped.y + @as(i32, @intCast(clipped.height)),
++            clipped.y +| @as(i32, @intCast(@min(clipped.height, 0x7FFFFFFF))),
+         );
+ 
+         if (startX >= endX or startY >= endY) return;
+@@ -2885,14 +2885,16 @@
+         const scissor = self.getCurrentHitScissorRect() orelse return buf.ClipRect{
+             .x = x,
+             .y = y,
+-            .width = width,
+-            .height = height,
++            // FFI defense (task-tui-common-fix): clamp before storing so
++            // consumers cannot @intCast a bit31-set width/height.
++            .width = @min(width, 0x7FFFFFFF),
++            .height = @min(height, 0x7FFFFFFF),
+         };
+ 
+-        const rect_end_x = x + @as(i32, @intCast(width));
+-        const rect_end_y = y + @as(i32, @intCast(height));
+-        const scissor_end_x = scissor.x + @as(i32, @intCast(scissor.width));
+-        const scissor_end_y = scissor.y + @as(i32, @intCast(scissor.height));
++        const rect_end_x = x +| @as(i32, @intCast(@min(width, 0x7FFFFFFF)));
++        const rect_end_y = y +| @as(i32, @intCast(@min(height, 0x7FFFFFFF)));
++        const scissor_end_x = scissor.x +| @as(i32, @intCast(@min(scissor.width, 0x7FFFFFFF)));
++        const scissor_end_y = scissor.y +| @as(i32, @intCast(@min(scissor.height, 0x7FFFFFFF)));
+ 
+         const intersect_x = @max(x, scissor.x);
+         const intersect_y = @max(y, scissor.y);
+@@ -2959,8 +2961,8 @@
+ 
+         const startX = @max(0, clipped.x);
+         const startY = @max(0, clipped.y);
+-        const endX = @min(@as(i32, @intCast(self.hitGridWidth)), clipped.x + @as(i32, @intCast(clipped.width)));
+-        const endY = @min(@as(i32, @intCast(self.hitGridHeight)), clipped.y + @as(i32, @intCast(clipped.height)));
++        const endX = @min(@as(i32, @intCast(self.hitGridWidth)), clipped.x +| @as(i32, @intCast(@min(clipped.width, 0x7FFFFFFF))));
++        const endY = @min(@as(i32, @intCast(self.hitGridHeight)), clipped.y +| @as(i32, @intCast(@min(clipped.height, 0x7FFFFFFF))));
+ 
+         if (startX >= endX or startY >= endY) return;
+ 
