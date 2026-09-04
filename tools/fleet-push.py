@@ -149,6 +149,8 @@ class Ver:
         self.size_out = 0
         self.upx_in = self.upx_out = 0
         self.upx_ratio = self.upx_fmt = self.upx_name = ""
+        self.pre_existing = False
+        self.src_size = 0
         self.upx_live = ""
         self.upload_pct = 0.0
         self.live = ""
@@ -253,11 +255,50 @@ urllib.request.urlopen(req)
 print("#U 100")
 '''
 
+FETCH_PY = r'''
+import subprocess, sys, os, urllib.request
+tag, repo, name, out = sys.argv[1:5]
+def gh(*a):
+    return subprocess.run(["gh"]+list(a), capture_output=True, text=True).stdout.strip()
+url = gh("api", "repos/%s/releases/tags/%s" % (repo, tag), "--jq",
+         '.assets[] | select(.name=="%s") | .url' % name)
+tok = gh("auth", "token")
+req = urllib.request.Request(url, headers={"Authorization": "Bearer " + tok,
+                                           "Accept": "application/octet-stream"})
+r = urllib.request.urlopen(req)
+size = int(r.headers.get("Content-Length") or 0)
+done, last = 0, -1
+with open(out, "wb") as f:
+    while True:
+        b = r.read(1 << 20)
+        if not b:
+            break
+        f.write(b); done += len(b)
+        if size:
+            pct = int(100*done/size)
+            if pct != last:
+                sys.stdout.write("#F %d\n" % pct); sys.stdout.flush(); last = pct
+print("#F 100")
+'''
+
 JOB_SH = r'''
 set -uo pipefail
 R="$1"; D="$2"; A="$3"; TAG="$4"; REPO="$5"; RM="$6"
 cd "$R" || exit 9
 say(){ printf '#%s\n' "$*"; }
+if [ ! -s "$D" ]; then
+  say "S fetch"
+  P="$(dirname "$D")"; N="$(basename "$D")"
+  fok=0
+  if command -v python3 >/dev/null 2>&1; then
+    python3 "$R/fetch.py" "$TAG" "$REPO" "$N" "$D" && fok=1
+  fi
+  if [ $fok -eq 0 ]; then
+    gh release download "$TAG" -p "$N" --repo "$REPO" --dir "$P" --clobber && fok=1
+  fi
+  if [ $fok -eq 0 ]; then say "E fetch"; exit 2; fi
+  say "D fetch"
+fi
 say "S untar"
 tar -xJf "$D" -C "$R" || { say "E untar"; exit 2; }
 B="$(find "$R" -type f -name opencode | head -1)"
@@ -305,6 +346,7 @@ def job_argv(node_cmd, v, tag, repo, do_clean):
         d = shlex.quote(f"{r}/{pkg_name}")
         head = f"mkdir -p {r} && cat > {d}"    # 远程: 先收 push 的 stdin
     inner = (f"{head} && echo {b64(UPLOADER_PY)} | base64 -d > {r}/upl.py && "
+             f"echo {b64(FETCH_PY)} | base64 -d > {r}/fetch.py && "
              f"echo {b64(JOB_SH)} | base64 -d > {r}/job.sh && "
              f"bash {r}/job.sh {r} {d} {shlex.quote(v.asset)} "
              f"{shlex.quote(tag)} {shlex.quote(repo)} {1 if do_clean else 0}")
@@ -357,6 +399,12 @@ class PtyJob:
             with self.f.lock:
                 v.stage_pct["upload"] = float(m.group(1))
                 v.upload_pct = float(m.group(1))
+            return
+        m = re.match(r"^#F (\d+)$", line)
+        if m:
+            with self.f.lock:
+                v.stage_pct["fetch"] = float(m.group(1))
+                v.push_pct = float(m.group(1))
             return
         m = re.match(r"^#SHA ([0-9a-f]{64})$", line)
         if m:
@@ -584,7 +632,10 @@ def render(f, o, out):
             lines.append(f" [{node:6}] {DIM}idle{N}")
             continue
         sp = v.stage or ("push" if v.state == Ver.PUSH else "-")
-        if sp == "push":
+        if sp == "fetch":
+            pct = v.push_pct
+            extra = f"{mib(int(v.src_size*pct/100))}/{mib(v.src_size)}"
+        elif sp == "push":
             pct = v.push_pct
             extra = f"{mib(v.push_done)}/{mib(v.push_total)}"
         elif sp == "upx":
@@ -676,6 +727,39 @@ def final_table(f, o):
 # ───────────────────── main ─────────────────────
 
 
+def discover_release(tag, repo):
+    """从 release 资产建版本表: 源=pacman 包; 已存在的 *-upx.xz 标 DONE 跳过"""
+    r = subprocess.run(["gh", "api", f"repos/{repo}/releases/tags/{tag}", "--jq",
+                        '.assets[] | .name + " " + (.size|tostring)'],
+                       capture_output=True, text=True, cwd=REPO_ROOT)
+    assets = {}
+    for line in r.stdout.splitlines():
+        parts = line.rsplit(" ", 1)
+        if len(parts) == 2 and parts[1].isdigit():
+            assets[parts[0]] = int(parts[1])
+    if not assets:
+        print(f"release {tag} 无资产或不可达: {r.stderr.strip()[:200]}")
+        sys.exit(1)
+    vers, pre = {}, []
+    pkg_re = re.compile(r"^opencode-([\d.]+)-1-aarch64\.pkg\.tar\.xz$")
+    for name, size in assets.items():
+        m = pkg_re.match(name)
+        if m:
+            v = Ver(m.group(1), os.path.join(INBOX, name), ASSET_TMPL.format(ver=m.group(1)))
+            v.src_size = size
+            vers[m.group(1)] = v
+        m2 = re.match(r"^opencode-native-([\d.]+)-upx\.xz$", name)
+        if m2:
+            pre.append(m2.group(1))
+    for vp in pre:
+        if vp in vers:
+            vv = vers[vp]
+            vv.state = Ver.DONE
+            vv.pre_existing = True
+            vv.t_done = time.time()
+    return vers, assets
+
+
 def discover(include_artifacts):
     vers = {}
     for fn in sorted(os.listdir(PKG_DIR)) if os.path.isdir(PKG_DIR) else []:
@@ -759,6 +843,8 @@ def main():
     ap.add_argument("--no-clean", dest="clean", action="store_false", default=True)
     ap.add_argument("--repo", default="Hope2333/opencode-termux",
                     help="节点上无 gh repo 上下文时的显式仓库")
+    ap.add_argument("--source", choices=["auto", "inbox", "release"], default="auto",
+                    help="源包来源: inbox=本地包目录, release=从 release 下载")
     o = ap.parse_args()
     o.no_remote_upload = o.no_remote_upload
 
@@ -766,7 +852,16 @@ def main():
         return _seed(o.seed)
 
     f = Fleet()
-    f.vers = discover(o.include_artifacts)
+    if o.source == "auto":
+        have = (os.path.isdir(PKG_DIR) and any(
+            re.match(r"^opencode-[\d.]+-1-aarch64\.pkg\.tar\.xz$", fn)
+            for fn in os.listdir(PKG_DIR)))
+        o.source = "inbox" if have else "release"
+    f.assets = {}
+    if o.source == "release":
+        f.vers, f.assets = discover_release(o.tag, f.repo)
+    else:
+        f.vers = discover(o.include_artifacts)
     if o.versions:
         f.vers = {k: v for k, v in f.vers.items() if k in o.versions}
     f.repo = o.repo
@@ -780,10 +875,17 @@ def main():
         except Exception:
             pass
     if o.plan:
-        print(f"repo={f.repo} tag={o.tag}")
+        pre = sum(1 for v in f.vers.values() if v.pre_existing)
+        print(f"repo={f.repo} tag={o.tag} source={o.source} "
+              f"待处理={len(f.vers)-pre} 已在架跳过={pre}")
         for v in sorted(f.vers.values(), key=lambda x: x.ver):
-            src = "pkg" if v.pkg else "SKIP(无包源)"
-            print(f"  {v.ver:8} ← {src:14} → {v.asset}")
+            if v.pre_existing:
+                print(f"  {v.ver:8} ↷ 已在 release, 跳过")
+            elif o.source == "release":
+                print(f"  {v.ver:8} ← release/{mib(v.src_size):8} → {v.asset}")
+            else:
+                src = "pkg" if v.pkg else "SKIP(无包源)"
+                print(f"  {v.ver:8} ← {src:14} → {v.asset}")
         for n, c in NODES.items():
             print(f"  slot {n:6} {c or '(local)'}")
         print(f"  flow: push(10) → untar(5) → upx(45,原生进度聚合) → xz9(15) "
