@@ -91,6 +91,29 @@ def _parse_nodes():
 
 
 NODES = _parse_nodes()
+
+
+def _local_slots():
+    """CPU 核心检测: 每作业约占 3 核余量(upx 单线程 + xz -9 双线程 + IO),
+    2-4 槽封顶; FLEET_LOCAL_SLOTS 可覆盖; 内存 <4GB 时降到 1 槽"""
+    env = os.environ.get("FLEET_LOCAL_SLOTS")
+    if env and env.isdigit() and int(env) >= 1:
+        return int(env)
+    cpu = os.cpu_count() or 2
+    n = max(1, min(4, cpu // 3))
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                if line.startswith("MemAvailable"):
+                    gb = int(line.split()[1]) / 1048576 / 4
+                    n = min(n, max(1, int(gb)))
+                    break
+    except Exception:
+        pass
+    return n
+
+
+LOCAL_SLOTS = _local_slots()
 RDIR = "~/opc-fleet/{ver}"
 CLEAN_REMOTE = True
 MAX_ATTEMPTS = 3
@@ -191,6 +214,8 @@ class Fleet:
         self.slot_live: dict = {}
         self.events = deque(maxlen=200)
         self.health: dict = {}
+        self.health_fails: dict = {}
+        self.slots: list = []
         self.stop = threading.Event()
         self.t0 = time.time()
         self.repo = ""
@@ -204,6 +229,8 @@ class Fleet:
         if node == "local":
             return True
         with self.lock:
+            if self.health_fails.get(node, 0) >= 3:
+                return False
             ok, ts = self.health.get(node, (None, 0.0))
             if ts and time.time() - ts < HEALTH_TTL:
                 return bool(ok)
@@ -216,8 +243,15 @@ class Fleet:
             ok = False
         with self.lock:
             self.health[node] = (ok, time.time())
-        if not ok:
-            self.ev(f"{node} 不可达 (ssh {SSH_TIMEOUT}s)")
+            if ok:
+                self.health_fails[node] = 0
+            else:
+                self.health_fails[node] = self.health_fails.get(node, 0) + 1
+                if self.health_fails[node] == 3:
+                    self.ev(f"{node} 连续 3 次不可达 → 本会话禁用")
+                elif self.health_fails[node] < 3:
+                    self.ev(f"{node} 不可达 (ssh {SSH_TIMEOUT}s, "
+                            f"{self.health_fails[node]}/3)")
         return ok
 
 
@@ -627,10 +661,11 @@ def render(f, o, out):
     lines.append(f"{B}FLEET-COMPRESSED-PUSH{N}  {time.strftime('%H:%M:%S')}"
                  f"  elapsed {hms(now-f.t0)}  remote-upload={'on' if not o.no_remote_upload else 'off'}")
     lines.append("── slots " + "─" * 56)
-    for node in NODES:
-        v = slot_job.get(node)
+    for slot in f.slots:
+        node = slot.rsplit("#", 1)[0]
+        v = slot_job.get(slot)
         if v is None:
-            lines.append(f" [{node:6}] {DIM}idle{N}")
+            lines.append(f" [{slot:8}] {DIM}idle{N}")
             continue
         sp = v.stage or ("push" if v.state == Ver.PUSH else "-")
         if sp == "fetch":
@@ -648,8 +683,8 @@ def render(f, o, out):
         else:
             pct = v.stage_progress(sp, now) if v.t_state else 0.0
             extra = ""
-        live = slot_live.get(node, "")
-        lines.append(f" [{node:6}] ▶ {v.ver:8} {sp:6} [{bar(pct)}] {pct:5.1f}%  {extra} {DIM}{live}{N}")
+        live = slot_live.get(slot, "")
+        lines.append(f" [{slot:8}] ▶ {v.ver:8} {sp:6} [{bar(pct)}] {pct:5.1f}%  {extra} {DIM}{live}{N}")
     lines.append("── versions " + "─" * 52)
     order = sorted(vers, key=lambda x: x.ver)
     for v in order:
@@ -888,6 +923,8 @@ def main():
             else:
                 src = "pkg" if v.pkg else "SKIP(无包源)"
                 print(f"  {v.ver:8} ← {src:14} → {v.asset}")
+        print(f"  local 并行槽 = {LOCAL_SLOTS} "
+              f"(cpu={os.cpu_count()}, 覆盖: FLEET_LOCAL_SLOTS)")
         for n, c in NODES.items():
             print(f"  slot {n:6} {c or '(local)'}")
         print(f"  flow: push(10) → untar(5) → upx(45,原生进度聚合) → xz9(15) "
@@ -930,6 +967,8 @@ def main():
         f"versions={len(f.vers)} remote_upload={not o.no_remote_upload}")
 
     sched = Scheduler(f, o)
+    f.slots = ([f"local#{i+1}" for i in range(LOCAL_SLOTS)]
+               + [(n, c) for n, c in NODES.items() if n != "local"])
     stopped = threading.Event()
 
     def on_sig(_sig, _frm):
@@ -946,18 +985,19 @@ def main():
             now = time.time()
             sched.poll()
             if not stopped.is_set():
-                for node, cmd in NODES.items():
+                for slot in list(f.slots):
+                    node = slot.rsplit("#", 1)[0] if slot.startswith("local#") else slot
+                    cmd = NODES.get(node)
                     with f.lock:
-                        busy = node in f.slot_job
+                        busy = slot in f.slot_job
                     if busy:
                         continue
                     if not f.health_ok(node, cmd):
                         continue
                     if node == "local":
-                        # 本机槽: 优先 push 之外的计算(包已在本地)
-                        sched.assign("local", node, None, "compute")
+                        sched.assign(slot, node, None, "compute")
                     else:
-                        sched.assign(node, node, cmd, "push")
+                        sched.assign(slot, node, cmd, "push")
             if now - last_draw > 0.3:
                 with f.lock:
                     for s, v in f.slot_job.items():
