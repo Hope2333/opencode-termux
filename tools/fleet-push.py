@@ -151,6 +151,7 @@ class Ver:
         self.upx_ratio = self.upx_fmt = self.upx_name = ""
         self.pre_existing = False
         self.src_size = 0
+        self.rdir = RDIR.format(ver=ver)
         self.upx_live = ""
         self.upload_pct = 0.0
         self.live = ""
