@@ -218,6 +218,7 @@ class Fleet:
         self.slots: list = []
         self.slot_cmd: dict = {}
         self.stop = threading.Event()
+        self.force = False
         self.t0 = time.time()
         self.repo = ""
 
@@ -553,9 +554,20 @@ class PtyJob:
         return self
 
     def kill(self):
-        if self.proc is not None:
+        if self.proc is None:
+            return
+        try:
+            os.killpg(os.getpgid(self.proc.pid), signal.SIGTERM)
+        except Exception:
             try:
                 self.proc.terminate()
+            except Exception:
+                pass
+        try:
+            self.proc.wait(timeout=5)
+        except Exception:
+            try:
+                os.killpg(os.getpgid(self.proc.pid), signal.SIGKILL)
             except Exception:
                 pass
 
@@ -659,6 +671,9 @@ def render(f, o, out):
         slot_live = dict(f.slot_live)
         evs = list(f.events)[-5:]
     lines = []
+    if f.stop.is_set():
+        tail = "强制终止" if f.force else "再按一次 Ctrl+C 强制终止"
+        lines.append(f"{Y}⏸ 收尾中… {tail}{N}")
     lines.append(f"{B}FLEET-COMPRESSED-PUSH{N}  {time.strftime('%H:%M:%S')}"
                  f"  elapsed {hms(now-f.t0)}  remote-upload={'on' if not o.no_remote_upload else 'off'}")
     lines.append("── slots " + "─" * 56)
@@ -756,10 +771,22 @@ def final_table(f, o):
         elif v.state == Ver.SKIPPED:
             print(f" ○ {v.ver:8} 跳过")
     nd = sum(1 for v in vers if v.state == Ver.DONE)
+    nint = 0
+    for v in vers:
+        if v.state in (Ver.PENDING, Ver.PUSH, Ver.COMPUTE, Ver.UPLOAD_WAIT):
+            nint += 1
+            stage = v.stage or v.state
+            pct = v.pct
+            log(f"INTERRUPTED {v.ver} stage={stage} pct={pct:.1f}")
     total = len(vers)
-    print(f"\n{G}FLEET-COMPRESSED-OK {nd}/{total}{N}"
-          if nd == total else f"\n{Y}FLEET-COMPRESSED-PARTIAL {nd}/{total}{N}")
-    log(f"VERDICT FLEET-COMPRESSED-{'OK' if nd == total else 'PARTIAL'} {nd}/{total}")
+    if nint == 0 and nd == total:
+        print(f"\n{G}FLEET-COMPRESSED-OK {nd}/{total}{N}")
+        log(f"VERDICT FLEET-COMPRESSED-OK {nd}/{total}")
+    else:
+        tag = "INTERRUPTED" if nint else "PARTIAL"
+        print(f"\n{Y}FLEET-COMPRESSED-{tag} {nd}/{total} (中断 {nint}){N}"
+              + (f"  {DIM}重跑自动续传(已在架的跳过){N}" if nint else ""))
+        log(f"VERDICT FLEET-COMPRESSED-{tag} {nd}/{total} interrupted={nint}")
 
 # ───────────────────── main ─────────────────────
 
@@ -981,9 +1008,18 @@ def main():
     def on_sig(_sig, _frm):
         if not stopped.is_set():
             stopped.set()
-            f.ev("Ctrl-C: 优雅收尾(等待在跑作业)")
+            f.ev("Ctrl-C: 优雅收尾(等待在跑作业; 再按一次强制)")
+        elif not f.force:
+            f.force = True
+            f.ev("Ctrl-C ×2: 强制终止全部作业")
+            for job in list(sched.jobs.values()):
+                job.kill()
+        else:
+            sys.stdout.write(SHOW_C + ALT_OUT)
+            os._exit(130)
 
     signal.signal(signal.SIGINT, on_sig)
+    signal.signal(signal.SIGTERM, on_sig)
 
     sys.stdout.write(ALT_IN + HIDE_C)
     try:
@@ -1014,6 +1050,11 @@ def main():
             time.sleep(0.15)
     finally:
         sys.stdout.write(SHOW_C + ALT_OUT)
+
+    if f.force:
+        for job in list(sched.jobs.values()):
+            job.kill()
+        time.sleep(0.5)
 
     if not o.no_remote_upload:
         print("—— release 对账（尺寸核对）")
