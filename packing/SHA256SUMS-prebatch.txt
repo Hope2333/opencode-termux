@@ -1,5 +1,34 @@
-# SHA256SUMS for Push260903 prebatch (13 native + 13 glibc, fixed PKGBUILD)
-# Generated: 2026-09-04T09:11:27+08:00
+# SHA256SUMS for Push260903 formal release (13 native + 13 glibc, fixed PKGBUILD)
+# Generated: 2026-09-04T09:48:25+0800
+# Format: sha256  relative-path-from-packing/
+
+1ebe54eb41bb2842cde6321c900bc3c61ecb0469d136c15b7aa173e6d15529fe  dpkg-native/opencode_1.18.15_aarch64.deb
+3f58384f6e19cb8f0cabe5da3a2d3c296faf3bfcaef5bc80050dc445f8b45be5  dpkg-native/opencode_1.18.16_aarch64.deb
+d161926402bfe2dc746c479b776a70b5b5bb4b66ca7fefbbbfb3258a9b6ba10a  dpkg-native/opencode_1.18.17_aarch64.deb
+f6c017b25e6d2f3023f0f4af94833a1d33ebc912bb6ea5ec2feedc0363f81eeb  dpkg-native/opencode_1.18.18_aarch64.deb
+d31c6a5e01f7619c2fde405ee3e12c29b97f107ad89c0dd2a0db3af4cd990d0c  dpkg-native/opencode_1.18.19_aarch64.deb
+56685301373d343993ec3c66addfa52abcbd72d65167f1c210a92c1c0c44546d  dpkg-native/opencode_1.18.20_aarch64.deb
+8d9636517f2fdd14ea85cbee35815c42d368d9bdc1eebbfb43c0b112fe5a9f73  dpkg-native/opencode_1.18.21_aarch64.deb
+790fca272346f79eeff4494d31d618b9af75b98d2304899e907f7f7c998d23aa  dpkg-native/opencode_1.18.22_aarch64.deb
+39150a9395d525a5e9a90c600eb790f868f8393bdcabf3712f0cf3ec456043f6  dpkg-native/opencode_1.18.23_aarch64.deb
+88d299840025f4ffec5cc35c6e3091283d4dd910ae5ed45449e7d78790445691  dpkg-native/opencode_1.18.24_aarch64.deb
+3c058b973f7a252a64442c951e75176951c748db704e90862bf6f6162cb11101  dpkg-native/opencode_1.18.25_aarch64.deb
+d50ba67133cd0e565c587c0a28f48c809a2fde9100e0f1297d319a8199a7a5d5  dpkg-native/opencode_1.18.26_aarch64.deb
+1a0fef973ae991246e9a3bd86f910153e049ee1dd848b820198382a546e6dd4d  dpkg-native/opencode_1.18.27_aarch64.deb
+
+02a7cd74527b90e31a5d2507a58b6bad2dc5239f4148e41b5c230e62d4c42698  dpkg/opencode-glibc_1.18.15_aarch64.deb
+06b34d846321f5849e8318d5fee3aac5841ccde55ca2228795b9378a6e594954  dpkg/opencode-glibc_1.18.16_aarch64.deb
+99ef4d22d494f073a08a7124fd51ae33ec554e0083ac35b9189eafd4ce87a2e4  dpkg/opencode-glibc_1.18.17_aarch64.deb
+8533232be70a8990a752c21b57427c078d4525ab7d3812281fd31b8d46ef95fe  dpkg/opencode-glibc_1.18.18_aarch64.deb
+97836ede7e46b42d751800c5f15b6a2748f8844bb3cc0786235da7ce285f9224  dpkg/opencode-glibc_1.18.19_aarch64.deb
+48b16d69b34efe57e4598b7883c53391f12c47a16663ab2bd4aeba78de7acaa7  dpkg/opencode-glibc_1.18.20_aarch64.deb
+8675fc9ac08220f6d8e689986eec27a90b64c78fefb4377124d257b8ce3d723d  dpkg/opencode-glibc_1.18.21_aarch64.deb
+88d86029bfc342af82bb11727f333513fe6e9f3b6a9e2f263d0beb6b5094d0bf  dpkg/opencode-glibc_1.18.22_aarch64.deb
+48c8f3c0d50f80dcc6a3ba5ae816d8f1fe5d59a3c8aba8cefec5c7a7bfe4a51b  dpkg/opencode-glibc_1.18.23_aarch64.deb
+da28010c33b2b3f064af77b08cc4aa046f3fc0a52f3191e767f96e7d4ad793e0  dpkg/opencode-glibc_1.18.24_aarch64.deb
+1724c9bc7bf03f210a953932fb0b34b3c0380d7570f1590adce0edcaff13b348  dpkg/opencode-glibc_1.18.25_aarch64.deb
+cee70d3ceec33b9061054c0bd045d5af55fb163447e3f24fe5a4df0cb79be0c9  dpkg/opencode-glibc_1.18.26_aarch64.deb
+bb3aeba79fc51945e509b53edcef25db8e1341c8acf402cb119f5afee0f66692  dpkg/opencode-glibc_1.18.27_aarch64.deb
 
 f73fbd0eea2008779850389ac2a8338793f7494a2622a2ffe4e867ea29d968e9  pacman/opencode-1.18.15-1-aarch64.pkg.tar.xz
 b642b4a4d3963468e694fc9562de0374ffdb7f6cf8c96e36fd4d3c095b4967a1  pacman/opencode-1.18.16-1-aarch64.pkg.tar.xz
@@ -14,19 +43,7 @@ d63ceb9cdda9cfcd98615c0020654d10d47d0dac3aadd37d6511637332d6634b  pacman/opencod
 45403abd2ec4a6620bce85a58d675ac402afbaa8f209fb9bb1637627704a56bd  pacman/opencode-1.18.25-1-aarch64.pkg.tar.xz
 30e665c925eab33411c80633effaf1bf3492ba3bd5f3e51bea6ff57f5bd16476  pacman/opencode-1.18.26-1-aarch64.pkg.tar.xz
 b7bbf7fdfb4cfcbbe80200b8c598353eebe58b97073f119436056741fdbf62e3  pacman/opencode-1.18.27-1-aarch64.pkg.tar.xz
-1ebe54eb41bb2842cde6321c900bc3c61ecb0469d136c15b7aa173e6d15529fe  dpkg-native/opencode_1.18.15_aarch64.deb
-3f58384f6e19cb8f0cabe5da3a2d3c296faf3bfcaef5bc80050dc445f8b45be5  dpkg-native/opencode_1.18.16_aarch64.deb
-d161926402bfe2dc746c479b776a70b5b5bb4b66ca7fefbbbfb3258a9b6ba10a  dpkg-native/opencode_1.18.17_aarch64.deb
-f6c017b25e6d2f3023f0f4af94833a1d33ebc912bb6ea5ec2feedc0363f81eeb  dpkg-native/opencode_1.18.18_aarch64.deb
-d31c6a5e01f7619c2fde405ee3e12c29b97f107ad89c0dd2a0db3af4cd990d0c  dpkg-native/opencode_1.18.19_aarch64.deb
-56685301373d343993ec3c66addfa52abcbd72d65167f1c210a92c1c0c44546d  dpkg-native/opencode_1.18.20_aarch64.deb
-8d9636517f2fdd14ea85cbee35815c42d368d9bdc1eebbfb43c0b112fe5a9f73  dpkg-native/opencode_1.18.21_aarch64.deb
-790fca272346f79eeff4494d31d618b9af75b98d2304899e907f7f7c998d23aa  dpkg-native/opencode_1.18.22_aarch64.deb
-39150a9395d525a5e9a90c600eb790f868f8393bdcabf3712f0cf3ec456043f6  dpkg-native/opencode_1.18.23_aarch64.deb
-88d299840025f4ffec5cc35c6e3091283d4dd910ae5ed45449e7d78790445691  dpkg-native/opencode_1.18.24_aarch64.deb
-3c058b973f7a252a64442c951e75176951c748db704e90862bf6f6162cb11101  dpkg-native/opencode_1.18.25_aarch64.deb
-d50ba67133cd0e565c587c0a28f48c809a2fde9100e0f1297d319a8199a7a5d5  dpkg-native/opencode_1.18.26_aarch64.deb
-1a0fef973ae991246e9a3bd86f910153e049ee1dd848b820198382a546e6dd4d  dpkg-native/opencode_1.18.27_aarch64.deb
+
 f4243e04f2a0344a231d388f6774cefddfa2264a5929a235400596eda89b74ad  pacman/opencode-glibc-1.18.15-1-aarch64.pkg.tar.xz
 6c15175832802b37f8e0da1381e853c46663e37c4b646905d9f585d94833cadc  pacman/opencode-glibc-1.18.16-1-aarch64.pkg.tar.xz
 64d2c828645936b9710791b1d4f4c7a5cfc69b2a4da346a591f5f84668fe95bc  pacman/opencode-glibc-1.18.17-1-aarch64.pkg.tar.xz
@@ -40,16 +57,3 @@ c3219667641a4db4489a6e7b220296a37ecb94d5b912a0213909b7185dfdc9c7  pacman/opencod
 c4534d1adc102ca733a8fb67fd573f67748b5795310a87095680d34df0f81aac  pacman/opencode-glibc-1.18.25-1-aarch64.pkg.tar.xz
 2d419d26721a52f8fba6ac01ff200ed58f4c32d3a09a86ae92e268a81cfe8c65  pacman/opencode-glibc-1.18.26-1-aarch64.pkg.tar.xz
 187dd054161e161db305aecacb3d768f2e78a7804e20fd2d8ebf3e601f5fe387  pacman/opencode-glibc-1.18.27-1-aarch64.pkg.tar.xz
-02a7cd74527b90e31a5d2507a58b6bad2dc5239f4148e41b5c230e62d4c42698  dpkg/opencode-glibc_1.18.15_aarch64.deb
-06b34d846321f5849e8318d5fee3aac5841ccde55ca2228795b9378a6e594954  dpkg/opencode-glibc_1.18.16_aarch64.deb
-99ef4d22d494f073a08a7124fd51ae33ec554e0083ac35b9189eafd4ce87a2e4  dpkg/opencode-glibc_1.18.17_aarch64.deb
-8533232be70a8990a752c21b57427c078d4525ab7d3812281fd31b8d46ef95fe  dpkg/opencode-glibc_1.18.18_aarch64.deb
-97836ede7e46b42d751800c5f15b6a2748f8844bb3cc0786235da7ce285f9224  dpkg/opencode-glibc_1.18.19_aarch64.deb
-48b16d69b34efe57e4598b7883c53391f12c47a16663ab2bd4aeba78de7acaa7  dpkg/opencode-glibc_1.18.20_aarch64.deb
-8675fc9ac08220f6d8e689986eec27a90b64c78fefb4377124d257b8ce3d723d  dpkg/opencode-glibc_1.18.21_aarch64.deb
-88d86029bfc342af82bb11727f333513fe6e9f3b6a9e2f263d0beb6b5094d0bf  dpkg/opencode-glibc_1.18.22_aarch64.deb
-48c8f3c0d50f80dcc6a3ba5ae816d8f1fe5d59a3c8aba8cefec5c7a7bfe4a51b  dpkg/opencode-glibc_1.18.23_aarch64.deb
-da28010c33b2b3f064af77b08cc4aa046f3fc0a52f3191e767f96e7d4ad793e0  dpkg/opencode-glibc_1.18.24_aarch64.deb
-1724c9bc7bf03f210a953932fb0b34b3c0380d7570f1590adce0edcaff13b348  dpkg/opencode-glibc_1.18.25_aarch64.deb
-cee70d3ceec33b9061054c0bd045d5af55fb163447e3f24fe5a4df0cb79be0c9  dpkg/opencode-glibc_1.18.26_aarch64.deb
-bb3aeba79fc51945e509b53edcef25db8e1341c8acf402cb119f5afee0f66692  dpkg/opencode-glibc_1.18.27_aarch64.deb
