@@ -231,6 +231,27 @@ transplant:
 	@# + SIGSYS handler/PLT interposer shim). WARN-skips when the toolchain is
 	@# missing; idempotent (already-hardened products are detected and skipped).
 	$(MAKE) --no-print-directory seccomp-harden VER=$(VER)
+# libopentui (task-tui-common-fix): ensure the canonical bionic libopentui.so
+# exists AND carries the FFI negative-coordinate guard. Every transplant-built
+# version equal-length-swaps THIS file, so a stale/unguarded slot lib poisons
+# the whole version family (the 1.18.15-27 batch shipped pre-342d68d guards).
+# Common layer: apply ALL patches/opentui/*.patch -> zig bionic build ->
+# symbol-range guard scan + dlopen hostile-FFI harness -> install to slot.
+# LIBOPENTUI_OPTIONAL=1 downgrades a build failure to a WARN (quarantine path
+# for toolchain-less environments); default is loud.
+libopentui:
+	@if [ -f artifacts/transplant/opentui-bionic/libopentui.so ] && \
+	    bash tools/transplant/build-libopentui.sh --check artifacts/transplant/opentui-bionic/libopentui.so; then \
+		echo "==> libopentui: guard-verified .so present"; \
+	elif bash tools/transplant/build-libopentui.sh; then \
+		echo "==> libopentui: built + guard-verified via common layer"; \
+	elif [ "$(LIBOPENTUI_OPTIONAL)" = "1" ]; then \
+		echo "WARN: libopentui build failed -> transplant will quarantine (tui:absent)"; \
+	else \
+		echo "ERROR: libopentui build failed (common layer); set LIBOPENTUI_OPTIONAL=1 to downgrade to WARN" >&2; \
+		exit 1; \
+	fi
+
 transplant: VER?= latest
 
 # transplant-predict: DRY-RUN feasibility gate (no downloads; metadata/local state only).
@@ -242,6 +263,7 @@ transplant-predict:
 	fi
 	@echo "==> transplant-predict VER=$(VER)"
 	python3 tools/transplant/transplant.py predict --ver $(VER)
+transplant: libopentui
 transplant-predict: VER?= latest
 
 # transplant-upx: OPTIONAL final step — UPX-pack an already-revived native product.
@@ -334,6 +356,7 @@ seccomp-harden:
 	@# but seccomp-harden patches only the preferred source — typically tui). \
 	if [ "$$SRC" = "$(NATIVE_DIR)/opencode-native-tui" ] && [ -f "$(NATIVE_DIR)/opencode-native-revived" ]; then \
 		if ! grep -aqF libopencode-crhandler.so "$(NATIVE_DIR)/opencode-native-revived"; then \
+			rm -f "$(NATIVE_DIR)/opencode-native-revived"; \
 			cp -p "$(NATIVE_DIR)/opencode-native-tui" "$(NATIVE_DIR)/opencode-native-revived"; \
 			echo "seccomp-harden: synced hardened tui -> revived"; \
 		fi; \

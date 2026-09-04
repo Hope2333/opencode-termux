@@ -1,30 +1,14 @@
-# OpenTUI patch: guard negative FFI coords in bufferDrawChar path (crash alpha-260825)
-#
-# Source tree: OpenTUI pin 07910e36c9dda7d952295ee43c0d3588b3c6d2c3 (2026-08-07)
-# Target file: packages/core/src/zig/buffer.zig
-#   (on older pins where native lives at packages/native/src/buffer.zig, apply
-#    with -p2/path adjustment or manually — the hunk content is identical)
-#
-# Root cause (DIAG2, .omo/evidence/task-crash-alpha260825.log):
-#   JS passes negative coordinates / negative-derived scissor sizes across FFI;
-#   they arrive as huge u32 (bit31=1). bufferDrawChar -> isPointInScissor then
-#   does u32->i32 @intCast which panics in ReleaseSafe => SIGABRT of the whole
-#   TUI process when expanding/collapsing thinking blocks.
-#
-# Fix:
-#   1) setVisibleCellWithAlphaBlending: early-return when x/y have bit31 set
-#      (negative coordinate defense at the FFI boundary).
-#   2) isPointInScissor: clamp scissor width/height to i32 range and use
-#      saturating add (+|) so huge u32 clip dims degrade gracefully instead of
-#      panicking on @intCast or i32 overflow.
-#
-# Verified: differential FFI stress probe (old so SIGABRT vs patched so clean,
-# 2000 iters x2 modes) + TUI smoke/interaction regression + transplant goldens.
+# fix-drawchar-negative-coords + full FFI int-truncation guard set (task-tui-common-fix)
+# Target tree: OpenTUI (packages/core/src/zig). Idempotent: reverse-applies cleanly
+# when guards already present. Covers: isPointInScissor/isRectInScissor/clipRectToScissor
+# clamps (exemplar 342d68d), setCellWithAlphaBlending{,Raw} bit31 early-return,
+# drawGrayscaleBuffer{,Supersampled} + drawTextBufferInternal INT32_MIN negation,
+# renderer hit-grid scissor clamp+saturating ends (clipRectToHitScissor/addToHitGrid).
 diff --git a/packages/core/src/zig/buffer.zig b/packages/core/src/zig/buffer.zig
-index 72cc290..ab10cbd 100644
+index 227ac44a..6df6b3ab 100644
 --- a/packages/core/src/zig/buffer.zig
 +++ b/packages/core/src/zig/buffer.zig
-@@ -319,8 +319,13 @@ pub const OptimizedBuffer = struct {
+@@ -296,17 +296,30 @@ pub const OptimizedBuffer = struct {
  
      pub fn isPointInScissor(self: *const OptimizedBuffer, x: i32, y: i32) bool {
          const scissor = self.getCurrentScissorRect() orelse return true;
@@ -40,11 +24,137 @@ index 72cc290..ab10cbd 100644
      }
  
      pub fn isRectInScissor(self: *const OptimizedBuffer, x: i32, y: i32, width: u32, height: u32) bool {
-@@ -922,6 +927,7 @@ pub const OptimizedBuffer = struct {
-     }
+         const scissor = self.getCurrentScissorRect() orelse return true;
  
-     inline fn setVisibleCellWithAlphaBlending(self: *OptimizedBuffer, x: u32, y: u32, cell: Cell, opacity: f32, fully_transparent: bool) void {
-+        if (x >= 0x80000000 or y >= 0x80000000) return; // FFI negative-coordinate defense (crash alpha-260825)
+-        const rect_end_x = x + @as(i32, @intCast(width));
+-        const rect_end_y = y + @as(i32, @intCast(height));
+-        const scissor_end_x = scissor.x + @as(i32, @intCast(scissor.width));
+-        const scissor_end_y = scissor.y + @as(i32, @intCast(scissor.height));
++        // FFI negative-coordinate defense (crash alpha-260825): clamp u32
++        // values that cross FFI as huge u32 (bit31 set) before @intCast, and
++        // use saturating add so end coords never overflow.
++        const w = @as(i32, @intCast(@min(width, 0x7FFFFFFF)));
++        const h = @as(i32, @intCast(@min(height, 0x7FFFFFFF)));
++        const sw = @as(i32, @intCast(@min(scissor.width, 0x7FFFFFFF)));
++        const sh = @as(i32, @intCast(@min(scissor.height, 0x7FFFFFFF)));
++
++        const rect_end_x = x +| w;
++        const rect_end_y = y +| h;
++        const scissor_end_x = scissor.x +| sw;
++        const scissor_end_y = scissor.y +| sh;
+ 
+         return !(x >= scissor_end_x or rect_end_x <= scissor.x or
+             y >= scissor_end_y or rect_end_y <= scissor.y);
+@@ -320,10 +333,18 @@ pub const OptimizedBuffer = struct {
+             .height = height,
+         };
+ 
+-        const rect_end_x = x + @as(i32, @intCast(width));
+-        const rect_end_y = y + @as(i32, @intCast(height));
+-        const scissor_end_x = scissor.x + @as(i32, @intCast(scissor.width));
+-        const scissor_end_y = scissor.y + @as(i32, @intCast(scissor.height));
++        // FFI negative-coordinate defense (crash alpha-260825): clamp u32
++        // values that cross FFI as huge u32 (bit31 set) before @intCast, and
++        // use saturating add so end coords never overflow.
++        const w = @as(i32, @intCast(@min(width, 0x7FFFFFFF)));
++        const h = @as(i32, @intCast(@min(height, 0x7FFFFFFF)));
++        const sw = @as(i32, @intCast(@min(scissor.width, 0x7FFFFFFF)));
++        const sh = @as(i32, @intCast(@min(scissor.height, 0x7FFFFFFF)));
++
++        const rect_end_x = x +| w;
++        const rect_end_y = y +| h;
++        const scissor_end_x = scissor.x +| sw;
++        const scissor_end_y = scissor.y +| sh;
+ 
+         const intersect_x = @max(x, scissor.x);
+         const intersect_y = @max(y, scissor.y);
+@@ -804,6 +825,9 @@ pub const OptimizedBuffer = struct {
+         bg: RGBA,
+         attributes: u32,
+     ) !void {
++        // FFI defense (task-tui-common-fix): coords crossing FFI with bit31
++        // set (JS negatives as u32) would panic in @intCast below; no-op instead.
++        if (x >= 0x80000000 or y >= 0x80000000) return;
          if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
-         if (isFullyOpaque(opacity, cell.fg, cell.bg)) {
-             self.set(x, y, cell);
+ 
+         const opacity = self.getCurrentOpacity();
+@@ -835,6 +859,9 @@ pub const OptimizedBuffer = struct {
+         bg: RGBA,
+         attributes: u32,
+     ) !void {
++        // FFI defense (task-tui-common-fix): coords crossing FFI with bit31
++        // set (JS negatives as u32) would panic in @intCast below; no-op instead.
++        if (x >= 0x80000000 or y >= 0x80000000) return;
+         if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
+ 
+         const opacity = self.getCurrentOpacity();
+@@ -1246,6 +1273,8 @@ pub const OptimizedBuffer = struct {
+         const virtual_lines = view.getVirtualLines();
+         if (virtual_lines.len == 0) return;
+ 
++        // FFI defense (task-tui-common-fix): INT32_MIN negation would overflow i32.
++        if (y <= -0x40000000) return;
+         const firstVisibleLine: u32 = if (y < 0) @intCast(-y) else 0;
+         const bufferBottomY = self.height;
+         const lastPossibleLine = if (y >= @as(i32, @intCast(bufferBottomY)))
+@@ -2128,6 +2157,9 @@ pub const OptimizedBuffer = struct {
+         if (srcWidth == 0 or srcHeight == 0) return;
+         if (posX >= @as(i32, @intCast(self.width)) or posY >= @as(i32, @intCast(self.height))) return;
+ 
++        // FFI defense (task-tui-common-fix): INT32_MIN negation would overflow
++        // i32; draws that far offscreen are no-ops anyway.
++        if (posX < -0x40000000 or posY < -0x40000000) return;
+         const startX: u32 = if (posX < 0) @intCast(-posX) else 0;
+         const startY: u32 = if (posY < 0) @intCast(-posY) else 0;
+ 
+@@ -2197,6 +2229,9 @@ pub const OptimizedBuffer = struct {
+         if (termWidth == 0 or termHeight == 0) return;
+         if (posX >= @as(i32, @intCast(self.width)) or posY >= @as(i32, @intCast(self.height))) return;
+ 
++        // FFI defense (task-tui-common-fix): INT32_MIN negation would overflow
++        // i32; draws that far offscreen are no-ops anyway.
++        if (posX < -0x40000000 or posY < -0x40000000) return;
+         const startX: u32 = if (posX < 0) @intCast(-posX) else 0;
+         const startY: u32 = if (posY < 0) @intCast(-posY) else 0;
+ 
+diff --git a/packages/core/src/zig/renderer.zig b/packages/core/src/zig/renderer.zig
+index 845a815f..8d9babec 100644
+--- a/packages/core/src/zig/renderer.zig
++++ b/packages/core/src/zig/renderer.zig
+@@ -933,11 +933,11 @@ pub const CliRenderer = struct {
+         const startY = @max(0, clipped.y);
+         const endX = @min(
+             @as(i32, @intCast(self.hitGridWidth)),
+-            clipped.x + @as(i32, @intCast(clipped.width)),
++            clipped.x +| @as(i32, @intCast(@min(clipped.width, 0x7FFFFFFF))),
+         );
+         const endY = @min(
+             @as(i32, @intCast(self.hitGridHeight)),
+-            clipped.y + @as(i32, @intCast(clipped.height)),
++            clipped.y +| @as(i32, @intCast(@min(clipped.height, 0x7FFFFFFF))),
+         );
+ 
+         if (startX >= endX or startY >= endY) return;
+@@ -992,14 +992,16 @@ pub const CliRenderer = struct {
+         const scissor = self.getCurrentHitScissorRect() orelse return buf.ClipRect{
+             .x = x,
+             .y = y,
+-            .width = width,
+-            .height = height,
++            // FFI defense (task-tui-common-fix): clamp before storing so
++            // consumers cannot @intCast a bit31-set width/height.
++            .width = @min(width, 0x7FFFFFFF),
++            .height = @min(height, 0x7FFFFFFF),
+         };
+ 
+-        const rect_end_x = x + @as(i32, @intCast(width));
+-        const rect_end_y = y + @as(i32, @intCast(height));
+-        const scissor_end_x = scissor.x + @as(i32, @intCast(scissor.width));
+-        const scissor_end_y = scissor.y + @as(i32, @intCast(scissor.height));
++        const rect_end_x = x +| @as(i32, @intCast(@min(width, 0x7FFFFFFF)));
++        const rect_end_y = y +| @as(i32, @intCast(@min(height, 0x7FFFFFFF)));
++        const scissor_end_x = scissor.x +| @as(i32, @intCast(@min(scissor.width, 0x7FFFFFFF)));
++        const scissor_end_y = scissor.y +| @as(i32, @intCast(@min(scissor.height, 0x7FFFFFFF)));
+ 
+         const intersect_x = @max(x, scissor.x);
+         const intersect_y = @max(y, scissor.y);

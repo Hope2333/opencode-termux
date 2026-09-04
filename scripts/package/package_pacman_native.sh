@@ -34,7 +34,10 @@ if [[ -z "${VERSION:-}" ]]; then
 	fi
 	VERSION="$(basename "${_builds[0]}")"
 fi
-NATIVE_BIN="${OPENCODE_NATIVE_BIN:-$TRANSPLANT_ROOT/$VERSION/opencode-native-revived}"
+# task-tui-common-fix: prefer opencode-native-tui (post-TUI-swap product,
+# seccomp-hardened) with revived as fallback; OPENCODE_NATIVE_BIN still wins.
+NATIVE_BIN="${OPENCODE_NATIVE_BIN:-$TRANSPLANT_ROOT/$VERSION/opencode-native-tui}"
+[[ -x "$NATIVE_BIN" ]] || NATIVE_BIN="$TRANSPLANT_ROOT/$VERSION/opencode-native-revived"
 [[ -x "$NATIVE_BIN" ]] || {
 	echo "Error: missing native runtime $NATIVE_BIN (run: make transplant VER=$VERSION)" >&2
 	exit 1
