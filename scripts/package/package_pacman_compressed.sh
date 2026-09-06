@@ -59,7 +59,8 @@ trap cleanup EXIT
 
 cp /data/data/com.termux/files/usr/etc/makepkg.conf "$TMP_MAKEPKG_CONF"
 printf "\nPACKAGER=%q\n" "$PACKAGER_NAME" >>"$TMP_MAKEPKG_CONF"
-
+# Compressed family uses fast gzip wrap because the payload ELF is already UPX-packed.
+printf "\nPKGEXT='.pkg.tar.gz'\n" >>"$TMP_MAKEPKG_CONF"
 cp "$ROOT_DIR/packing/pacman/PKGBUILD.compressed" "$TMP_PKGBUILD"
 sed -i "s/^pkgver=.*/pkgver=$VERSION/" "$TMP_PKGBUILD"
 sed -i "s/^pkgrel=.*/pkgrel=$PKGREL/" "$TMP_PKGBUILD"
@@ -69,13 +70,22 @@ OPENCODE_COMPRESSED_BIN="$COMPRESSED_BIN" REPO_ROOT="$ROOT_DIR" makepkg --config
 echo "Compressed pacman package created under: $ROOT_DIR/packing/pacman"
 
 # --- Regression guard: reject packages with data/ payload paths (double-prefix bug) ---
-BUILT_PKG=$(ls "$ROOT_DIR/packing/pacman/"*-standalone-* 2>/dev/null || ls "$ROOT_DIR/packing/pacman/"*-compressed-* 2>/dev/null || true)
+BUILT_PKG=$(ls "$ROOT_DIR/packing/pacman/"opencode-compressed-"$VERSION"-"$PKGREL"-*.pkg.* 2>/dev/null || true)
 if [[ -n "$BUILT_PKG" ]]; then
-    DATA_PAYLOAD=$(bsdtar -tf "$BUILT_PKG" | grep -E '^data/.*/(bin|lib)/' | head -1 || true)
+    DATA_PAYLOAD=$(bsdtar -tf "$BUILT_PKG" | grep -E '^data/' | head -1 || true)
     if [[ -n "$DATA_PAYLOAD" ]]; then
         echo "FATAL: regression guard triggered — found data/ payload path: $DATA_PAYLOAD" >&2
         echo "Ensure PKGBUILD stages to \$pkgdir/usr/ (relative), not \$pkgdir\$prefix." >&2
         exit 1
     fi
     echo "Regression guard: OK (no data/ payload paths)"
+fi
+
+# crhandler guard (unconditional): the package MUST contain the shim.
+if [[ -n "$BUILT_PKG" ]]; then
+    if ! bsdtar -tf "$BUILT_PKG" | grep -q 'usr/lib/opencode/libopencode-crhandler.so'; then
+        echo "FATAL: package does not ship libopencode-crhandler.so" >&2
+        exit 1
+    fi
+    echo "crhandler guard: OK (shim shipped)"
 fi

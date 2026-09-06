@@ -12,7 +12,7 @@ pkgdesc='OpenCode compressed variant for Termux (UPX-packed native bionic runtim
 arch=('aarch64')
 url='https://github.com/anomalyco/opencode'
 license=('MIT')
-options=('!strip' '!debug')
+options=('!strip' '!debug' '!emptydirs')
 
 depends=()
 provides=("opencode=$pkgver")
@@ -35,6 +35,11 @@ package() {
     # FIX: stage to $pkgdir/usr/ (NOT $pkgdir$prefix/) — same double-prefix fix.
     mkdir -p "$pkgdir/usr/bin"
     install -m755 "$OPENCODE_COMPRESSED_BIN" "$pkgdir/usr/bin/opencode"
+    # crhandler shim (REQUIRED, unconditional): UPX hides the DT_NEEDED string
+    # from grep, so the shim ships unconditionally (family contract).
+    : "${OPENCODE_CRHANDLER_SO:?OPENCODE_CRHANDLER_SO must point to libopencode-crhandler.so}"
+    mkdir -p "$pkgdir/usr/lib/opencode"
+    install -m755 "$OPENCODE_CRHANDLER_SO" "$pkgdir/usr/lib/opencode/libopencode-crhandler.so"
 }
 
 post_install() {

@@ -44,7 +44,7 @@ OUT_FILE="$OUT_DIR/opencode-glibc_${VERSION}_${ARCH_DEB}.deb"
 rm -rf "$DEB_ROOT"
 mkdir -p "$DEB_ROOT/DEBIAN" "$DEB_ROOT$PREFIX" "$OUT_DIR"
 chmod 755 "$DEB_ROOT" "$DEB_ROOT/DEBIAN"
-cp -a "$STAGED_PREFIX/." "$DEB_ROOT$PREFIX/"
+install -D -m755 "$STAGED_PREFIX/bin/opencode" "$DEB_ROOT$PREFIX/bin/opencode"
 
 cat >"$DEB_ROOT/DEBIAN/control" <<EOF
 Package: opencode-glibc
@@ -53,9 +53,8 @@ Architecture: $ARCH_DEB
 Maintainer: $MAINTAINER
 Section: utils
 Priority: optional
-Replaces: opencode
 Breaks: opencode (<< $VERSION)
-Conflicts: opencode
+Conflicts: opencode, opencode-native, opencode-compressed
 Description: OpenCode AI coding assistant for Termux (glibc appendix, renamed opencode-glibc)
  Alternative provider: opencode-native (stable mainline since 27/28, full TUI).
 Depends: bash, ncurses
@@ -63,43 +62,6 @@ EOF
 
 INSTALLED_SIZE=$(du -sk "$DEB_ROOT" | cut -f1)
 echo "Installed-Size: $INSTALLED_SIZE" >>"$DEB_ROOT/DEBIAN/control"
-
-cat >"$DEB_ROOT/DEBIAN/postinst" <<'POSTINST'
-#!/data/data/com.termux/files/usr/bin/bash
-set -e
-echo "OpenCode for Termux installed"
-echo "Run: opencode --version"
-echo "Runtime: glibc (bun-termux-loader wrapped)"
-echo "Provider: glibc appendix (renamed opencode-glibc); alternative: opencode-native (stable mainline since 27/28)"
-HOOK_RUNNER="/data/data/com.termux/files/usr/lib/opencode/tools/run-system-skills.sh"
-if [[ -x "$HOOK_RUNNER" ]]; then
-  OPENCODE_HOOK_STRICT=0 OPENCODE_HOOK_ENABLE_NETWORK=0 "$HOOK_RUNNER" post_install || true
-fi
-exit 0
-POSTINST
-chmod 755 "$DEB_ROOT/DEBIAN/postinst"
-
-cat >"$DEB_ROOT/DEBIAN/prerm" <<'PRERM'
-#!/data/data/com.termux/files/usr/bin/bash
-set -e
-HOOK_RUNNER="/data/data/com.termux/files/usr/lib/opencode/tools/run-system-skills.sh"
-if [[ -x "$HOOK_RUNNER" ]]; then
-  OPENCODE_HOOK_STRICT=0 OPENCODE_HOOK_ENABLE_NETWORK=0 "$HOOK_RUNNER" pre_remove || true
-fi
-exit 0
-PRERM
-chmod 755 "$DEB_ROOT/DEBIAN/prerm"
-
-cat >"$DEB_ROOT/DEBIAN/postrm" <<'POSTRM'
-#!/data/data/com.termux/files/usr/bin/bash
-set -e
-HOOK_RUNNER="/data/data/com.termux/files/usr/lib/opencode/tools/run-system-skills.sh"
-if [[ -x "$HOOK_RUNNER" ]]; then
-  OPENCODE_HOOK_STRICT=0 OPENCODE_HOOK_ENABLE_NETWORK=0 "$HOOK_RUNNER" post_remove || true
-fi
-exit 0
-POSTRM
-chmod 755 "$DEB_ROOT/DEBIAN/postrm"
 
 dpkg-deb --build "$DEB_ROOT" "$OUT_FILE"
 echo "DEB package created: $OUT_FILE"

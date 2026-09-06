@@ -7,7 +7,7 @@ pkgdesc='OpenCode native Android runtime for Termux (stable mainline since 27/28
 arch=('aarch64')
 url='https://github.com/anomalyco/opencode'
 license=('MIT')
-options=('!strip' '!debug')
+options=('!strip' '!debug' '!emptydirs')
 
 depends=()
 # NOTE: no conflict on the literal 'opencode-glibc' name: opencode-glibc-standalone

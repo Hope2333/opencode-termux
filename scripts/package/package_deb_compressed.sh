@@ -63,6 +63,17 @@ chmod 755 "$DEB_ROOT" "$DEB_ROOT/DEBIAN"
 
 install -m755 "$COMPRESSED_BIN" "$DEB_ROOT$PREFIX/bin/opencode"
 
+# crhandler shim (REQUIRED, unconditional): the compressed input is always the
+# hardened native runtime whose DT_NEEDED libopencode-crhandler.so resolves via
+# DT_RUNPATH $ORIGIN/../lib/opencode. UPX compression hides the DT_NEEDED string
+# from grep, so detection-by-grep is impossible — the shim ships unconditionally.
+SHIM_SO="${OPENCODE_CRHANDLER_SO:-}"
+[[ -n "$SHIM_SO" && -f "$SHIM_SO" ]] || {
+	echo "FATAL: OPENCODE_CRHANDLER_SO unset or missing — the compressed family always ships libopencode-crhandler.so" >&2
+	exit 1
+}
+install -D -m755 "$SHIM_SO" "$DEB_ROOT$PREFIX/lib/opencode/libopencode-crhandler.so"
+
 # Field order matters (B1 lesson): Conflicts MUST precede Description or it
 # gets swallowed into the description text (illegal field order).
 cat >"$DEB_ROOT/DEBIAN/control" <<EOF
@@ -98,5 +109,13 @@ exit 0
 POSTINST
 chmod 755 "$DEB_ROOT/DEBIAN/postinst"
 
-dpkg-deb --build "$DEB_ROOT" "$OUT_FILE"
+# Compressed family uses fast gzip wrap because the payload ELF is already UPX-packed.
+dpkg-deb --build -Zgzip -z6 "$DEB_ROOT" "$OUT_FILE"
 echo "Compressed DEB package created: $OUT_FILE"
+
+# crhandler guard (unconditional): the deb MUST contain the shim.
+dpkg-deb -c "$OUT_FILE" | grep -q "lib/opencode/libopencode-crhandler.so" || {
+	echo "FATAL: deb does not ship libopencode-crhandler.so" >&2
+	exit 1
+}
+echo "crhandler guard: OK (shim shipped)"
