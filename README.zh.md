@@ -59,6 +59,15 @@ dpkg -i opencode_<version>_aarch64.deb
 pacman -U opencode-<version>-1-aarch64.pkg.tar.xz
 ```
 
+**从 hope2333 软件源安装（推荐）**：
+
+```bash
+curl -fsSL https://hope2333.github.io/repo/install.sh | sh -s -- --install opencode   # 配置 + 安装
+pacman -Syu   # 后续升级
+```
+
+详见[软件源](#软件源)与 [wiki 安装指引](https://hope2333.github.io/wiki/guides/install.html)。
+
 ```bash
 opencode --version   # → 1.18.x
 opencode run "hi"
@@ -163,6 +172,71 @@ artifact（CI 不执行产物）。**CI 绿 ≠ 可跑**：最终验收必须本
 
 ---
 
+## Make 构建体系
+
+Make 构建体系是所有构建和打包操作的最高优先级入口。单个工具采用 help-first 原则：
+先运行 `--help`，再读源码。仅在出问题时才读或改项目源码。
+
+```bash
+# 全家族打包
+make family=glibc,native,compressed VER=1.18.27
+
+# 按家族构建
+make deb-native VER=1.18.27
+make pacman-native VER=1.18.27
+
+# 移植
+make transplant VER=1.18.27
+
+# 验证
+make selfcheck
+make matrix VERS='1.18.[15-27]' TARGET_HOST=<host> TARGET_USER=<user>
+```
+
+维护操作（上传、fleet push、缓存清理）见 `docs/make-maintainer.md` 与
+`tools/maintain.sh --help`。
+
+---
+
+## 软件源
+
+分两个渠道分发：
+
+**Pacman**（per-repo db）：`https://hope2333.github.io/repo/Termux/pacman/<repo>.db.tar.gz`
+—— `opencode-termux` db 包含全部三个家族（`opencode` / `opencode-compressed` /
+`opencode-glibc`，均为 1.18.27-1）。
+
+**Apt flat index**：`https://github.com/Hope2333/opencode-termux/releases/latest/download/Packages.gz`
+（40 条目：13 native + 13 compressed + 13 glibc + 1 standalone）。
+
+默认安装优先级：per-repo mirrorlist 服务器（release CDN）优先，Pages 托管源作为回退。
+
+**一行命令配置 + 安装**：
+
+```bash
+curl -fsSL https://hope2333.github.io/repo/install.sh | sh -s -- --install opencode
+```
+
+后续升级：`pacman -Syu`（pacman）/ `apt update && apt upgrade`（apt）——详见
+[wiki 安装指引](https://hope2333.github.io/wiki/guides/install.html)。
+
+---
+
+## 插件管理
+
+推荐使用内置 `opencode plugin` 命令管理插件：
+
+```bash
+opencode plugin install <plugin>
+opencode plugin list
+opencode plugin remove <plugin>
+```
+
+`file://` 注册路径在快照/回退场景下仍然有效。`opencode.json` 中的裸名插件条目
+属 1.2.x 时代遗留。完整参考见 `docs/plugin-management.md`。
+
+---
+
 ## 附录：glibc wrapper 线（继承自 pure-android 线）
 
 bun-termux-loader 包装方案：上游 `opencode-linux-arm64` 是 glibc 链接的
@@ -172,12 +246,15 @@ Bun 单文件应用（Bun runtime + JS 编译进单个 ELF）。loader 在其前
 （userland exec，不走 execve），使 `/proc/self/exe` 保持指向自身、
 Bun 的 JS 定位不被破坏。
 
+`opencode-glibc` 包**自包含**：无需安装 Termux 的 `glibc` 或
+`ca-certificates-glibc` 包即可在裸 Termux 上运行。打包为 bin-only（单一二进制
+位于 `usr/bin/opencode`），无 postinst/prerm/postrm 钩子，无 full-prefix 拷贝。
+TUI 经 bionic libopentui.so swap 正常工作（docs/tui-common-fix.md）。
+
 ### 依赖
 
 | Package | Required? | Why |
 |---------|-----------|-----|
-| `glibc` | ✅ Yes | OpenCode binary is glibc-linked; wrapper loads it via glibc's ld.so |
-| `openssl-glibc` | ✅ Yes | HTTPS/TLS for API calls |
 | `bash` | ✅ Yes | Launcher script |
 | `ncurses` | ✅ Yes | TUI support |
 
@@ -185,14 +262,9 @@ Bun 的 JS 定位不被破坏。
 
 ```bash
 # Path A: apt/pkg
-apt install -y glibc-repo
-apt update
-apt install -y glibc openssl-glibc
 dpkg -i opencode-glibc_<version>_aarch64.deb
 
 # Path B: pacman
-pacman -Syu
-pacman -S glibc openssl-glibc
 pacman -U opencode-glibc-<version>-1-aarch64.pkg.tar.xz
 ```
 
@@ -265,6 +337,7 @@ docs/
   transplant.md               Native 线手术权威文档
   comparison-runtime-lines.md 各运行线对比
   dual-track-install.md       各包家族间的 provider 选择
+  make-maintainer.md          维护者构建/上传/缓存操作
   native-android-research.md  零 glibc 研究史
 ```
 

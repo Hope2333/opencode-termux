@@ -64,6 +64,16 @@ dpkg -i opencode_<version>_aarch64.deb
 pacman -U opencode-<version>-1-aarch64.pkg.tar.xz
 ```
 
+**From the hope2333 software source (recommended)**:
+
+```bash
+curl -fsSL https://hope2333.github.io/repo/install.sh | sh -s -- --install opencode   # configure + install
+pacman -Syu   # upgrade later
+```
+
+See [Software source](#software-source) and the
+[wiki install guide](https://hope2333.github.io/wiki/guides/install.html).
+
 ```bash
 opencode --version   # -> 1.18.x
 opencode run "hi"
@@ -175,6 +185,74 @@ For the full surgery principles, config schema, failure playbooks and FAQ see
 
 ---
 
+## Make system
+
+The Make system is the highest-priority entry for all build and package operations.
+Individual tools are help-first: run `--help` before reading source. Read or modify
+project source only when something actually breaks.
+
+```bash
+# Package all families for a version
+make family=glibc,native,compressed VER=1.18.27
+
+# Per-family targets
+make deb-native VER=1.18.27
+make pacman-native VER=1.18.27
+
+# Native transplant
+make transplant VER=1.18.27
+
+# Validation
+make selfcheck
+make matrix VERS='1.18.[15-27]' TARGET_HOST=<host> TARGET_USER=<user>
+```
+
+For maintainer operations (upload, fleet push, cache cleanup), see
+`docs/make-maintainer.md` and `tools/maintain.sh --help`.
+
+---
+
+## Software source
+
+Packages are distributed through two channels:
+
+**Pacman** (per-repo db): `https://hope2333.github.io/repo/Termux/pacman/<repo>.db.tar.gz`
+— the `opencode-termux` db carries all three families (`opencode` / `opencode-compressed`
+/ `opencode-glibc`, all at 1.18.27-1).
+
+**Apt flat index**: `https://github.com/Hope2333/opencode-termux/releases/latest/download/Packages.gz`
+(40 entries: 13 native + 13 compressed + 13 glibc + 1 standalone).
+
+Default install priority: per-repo mirrorlist servers (release CDN) first, Pages-hosted
+source as fallback.
+
+**One-line configure + install**:
+
+```bash
+curl -fsSL https://hope2333.github.io/repo/install.sh | sh -s -- --install opencode
+```
+
+Upgrades: `pacman -Syu` (pacman) / `apt update && apt upgrade` (apt) — details in the
+[wiki install guide](https://hope2333.github.io/wiki/guides/install.html).
+
+---
+
+## Plugin management
+
+The recommended way to manage plugins is the built-in `opencode plugin` command:
+
+```bash
+opencode plugin install <plugin>
+opencode plugin list
+opencode plugin remove <plugin>
+```
+
+The `file://` registration path remains valid for snapshot/rollback scenarios.
+Bare-name plugin entries in `opencode.json` are legacy (1.2.x-era). See
+`docs/plugin-management.md` for the full reference.
+
+---
+
 ## Appendix: glibc wrapper line (inherited from the pure-android line)
 
 The bun-termux-loader wrapping approach: upstream `opencode-linux-arm64` is a
@@ -184,12 +262,15 @@ metadata, extracts the embedded opencode binary, then mmaps glibc's ld.so and ju
 its entry (userland exec, no execve), keeping `/proc/self/exe` pointing at itself so
 Bun's JS location stays intact.
 
+The `opencode-glibc` package is **self-contained**: it runs on bare Termux without
+the Termux `glibc` or `ca-certificates-glibc` packages. Packaging is bin-only (single
+binary at `usr/bin/opencode`), with no postinst/prerm/postrm hooks and no full-prefix
+copy. Working TUI via bionic libopentui.so swap (docs/tui-common-fix.md).
+
 ### Dependencies
 
 | Package | Required? | Why |
 |---|---|---|
-| `glibc` | ✅ Yes | OpenCode binary is glibc-linked; wrapper loads it via glibc's ld.so |
-| `openssl-glibc` | ✅ Yes | HTTPS/TLS for API calls |
 | `bash` | ✅ Yes | Launcher script |
 | `ncurses` | ✅ Yes | TUI support |
 
@@ -197,14 +278,9 @@ Bun's JS location stays intact.
 
 ```bash
 # Path A: apt/pkg
-apt install -y glibc-repo
-apt update
-apt install -y glibc openssl-glibc
 dpkg -i opencode-glibc_<version>_aarch64.deb
 
 # Path B: pacman
-pacman -Syu
-pacman -S glibc openssl-glibc
 pacman -U opencode-glibc-<version>-1-aarch64.pkg.tar.xz
 ```
 
@@ -279,6 +355,7 @@ docs/
   transplant.md               Authoritative native-line surgery doc
   comparison-runtime-lines.md Comparison of the runtime lines
   dual-track-install.md       Provider choice across the package families
+  make-maintainer.md          Maintainer build/upload/cache operations
   native-android-research.md  Zero-glibc research history
 ```
 

@@ -13,8 +13,9 @@ This directory is the single source of truth for the current Termux packing/runt
 - `incidents/2026-02-23-opencode-web-termux-so-avalanche.md` — `.so` snowball restart-storm RCA note
 - `local-production.md` — local final packaging policy and boundaries
 - `transplant.md` — native-android transplant pipeline (revived: dual-format revive + TUI + alpha channel)
-- `dual-track-install.md` — opencode provider selection (glibc default recommended vs opencode-native alpha, full TUI)
+- `dual-track-install.md` — opencode provider selection (native mainline `opencode` vs appendix `opencode-glibc`, full TUI)；包名时代分界（哪个 Push tag 的 `opencode` 资产属于哪个家族）→ [`dual-track-install.md#push-tag--包名家族分界`](./dual-track-install.md#push-tag--包名家族分界)
 - `plugin-management.md` — plugin install/update/rollback commands
+- `make-maintainer.md` — maintainer build/upload/cache operations (Make system doctrine, `tools/maintain.sh`, fleet push, cache cleanup)
 - `ci-prebuild-armv7.md` — Phase A armv7-only CI prebuild handoff scope
 - `plugin-packaging-design.md` — package-manager-driven plugin model for apt/pacman
 - `OCTPLUGIN-PREBRANCH-RESEARCH.md` — single-file pre-split plugin research baseline
@@ -57,6 +58,8 @@ This directory is the single source of truth for the current Termux packing/runt
 
 ## Install policy summary
 
-- Default path: Termux apt/pkg with `glibc` + `openssl-glibc` required.
-- Pacman path: Termux pacman environments use the same required deps.
+- Default path: the Make system is the highest-priority entry (`make family=glibc,native,compressed VER=<ver>`); individual tools are help-first.
+- The native mainline `opencode` package has zero glibc runtime dependencies (Android API >= 28).
+- The glibc appendix `opencode-glibc` package is self-contained (bash + ncurses only; no glibc/openssl-glibc packages needed).
+- Pacman path: Termux pacman environments use the same package families.
 - `glibc-runner` is optional fallback tooling (not a primary runtime dependency).

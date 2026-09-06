@@ -35,3 +35,17 @@ tests/vendor/
 
 # Python bytecode
 tools/transplant/__pycache__/
+
+# session/work dirs with local-only content
+.opencode-dream/
+.claude/
+.opencode-autopilot/
+.opencode/
+packing/dpkg-standalone/work/
+packing/dpkg-compressed/work/
+
+# generated indexes/outputs (release assets are the canonical copies)
+packing/Packages.gz
+packing/SHA256SUMS.txt
+packing/deb-compressed/
+tools/__pycache__/
