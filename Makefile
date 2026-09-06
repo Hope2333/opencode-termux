@@ -1,7 +1,7 @@
 # OpenCode for Termux - local build orchestrator
 
 SHELL := /data/data/com.termux/files/usr/bin/bash
-.DEFAULT_GOAL := help
+.DEFAULT_GOAL := $(if $(strip $(family)),family,help)
 
 VER ?= latest
 VERS ?=
@@ -20,10 +20,13 @@ NATIVE ?=
 VER_IS_SET = $(filter-out file default,$(origin VER))
 NATIVE_VER = $(if $(VER_IS_SET),$(VER),$(VERS))
 NATIVE_DIR = artifacts/transplant/$(NATIVE_VER)
+# family array knob: family=glibc,native,compressed (comma or space separated, order preserved)
+comma := ,
+FAMILY_LIST = $(strip $(subst $(comma), ,$(family)))
 
 OUTPUT_ROOT := $(if $(ODIR),$(ODIR),$(CURDIR)/packing)
 
-.PHONY: help all runtime stage deb pacman deb-native pacman-native native-pkg batch clean status steps matrix selfcheck release-upload test transplant transplant-predict transplant-check transplant-upx seccomp-harden family-glibc family-native family-compressed range-build fleet-upx fleet-status sha-stage push-stage clean-artifacts
+.PHONY: help all runtime stage deb pacman deb-native pacman-native native-pkg batch clean status steps matrix selfcheck release-upload test transplant transplant-predict transplant-check transplant-upx seccomp-harden family-glibc family-native family-compressed deb-compressed pacman-compressed range-build fleet-upx fleet-status sha-stage push-stage clean-artifacts
 
 help:
 	@echo "OpenCode Termux build helper"
@@ -401,8 +404,106 @@ family-compressed:
 	fi
 	$(MAKE) transplant VER=$(VER)
 	$(MAKE) transplant-upx VER=$(VER)
+	$(MAKE) deb-compressed VER=$(VER) && $(MAKE) pacman-compressed VER=$(VER)
+
+# family: array dispatcher over the three family chains (FEATURE: family as ARRAY)
+# Usage: make family=glibc,native,compressed VER=1.18.21   (comma or space separated)
+#        Order is preserved as given; canonical order is glibc -> native -> compressed.
+.PHONY: family
+family:
+	@if [ -z "$(VER_IS_SET)" ]; then \
+		echo "Error: VER is required. Example: make family=glibc,native VER=1.18.21"; \
+		exit 1; \
+	fi
+	@if [ -z "$(FAMILY_LIST)" ]; then \
+		echo "Error: family is empty. Valid entries: glibc, native, compressed (comma or space separated)."; \
+		exit 1; \
+	fi
+	@invalid=""; \
+	for f in $(FAMILY_LIST); do \
+		case "$$f" in glibc|native|compressed) ;; *) invalid="$$invalid $$f" ;; esac; \
+	done; \
+	if [ -n "$$invalid" ]; then \
+		echo "Error: unknown family:$$invalid (valid: glibc, native, compressed)"; \
+		exit 1; \
+	fi
+	@for f in $(FAMILY_LIST); do \
+		echo "==> family chain: $$f (VER=$(VER))"; \
+		$(MAKE) --no-print-directory family-$$f VER=$(VER) || exit 1; \
+	done
+	@echo "==> family chains complete: [$(FAMILY_LIST)] VER=$(VER)"
+
+# maintain-upload: maintainer fleet upload via tools/maintain.sh
+# Usage: make maintain-upload TAG=Push260906 [FAMILY=compressed] [ATTEMPTS=3] [DRY=1] [VERSIONS=V1,V2] [NODES=n1,n2]
+.PHONY: maintain-upload
+maintain-upload:
+	@if [ -z "$(strip $(TAG))" ] || [ "$(strip $(TAG))" = "$(TAG)" ] && [ -z "$(origin TAG)" ]; then \
+		echo "Error: TAG is required. Example: make maintain-upload TAG=Push260906 FAMILY=compressed"; \
+		exit 1; \
+	fi
+	bash tools/maintain.sh --upload --tag "$(TAG)" \
+		$(if $(FAMILY),--family "$(FAMILY)") \
+		$(if $(VERSIONS),--versions "$(VERSIONS)") \
+		$(if $(ATTEMPTS),--attempts $(ATTEMPTS)) \
+		$(if $(NODES),--nodes "$(NODES)") \
+		$(if $(SOURCE),--source $(SOURCE)) \
+		$(if $(DRY),--dry-run) \
+		$(if $(NO_UPLOAD),--no-upload)
+
+# sync-db: refresh unified hope2333.db.tar.gz on the 5 release CDNs
+# Usage: make sync-db [DRY=1]   (also: tools/maintain.sh --sync-db)
+.PHONY: sync-db
+sync-db:
+	bash tools/maintain.sh --sync-db $(if $(DRY),--dry-run)
+
+# clear: maintainer cache-layer cleanup (mutually exclusive with build surfaces)
+# Usage: make clear                          -> statistics only (non-destructive)
+#        make clear LAYERS=layer1,layer2 CONFIRM=1
+#        make clear LAYERS=npm-cacache,npx-cache CONFIRM=1  (npm/npx download-chain caches)
+# Post-upload one-shot: tools/maintain.sh --upload ... --auto-clean
+.PHONY: clear
+clear:
+	@if [ "$(words $(filter-out clear,$(MAKECMDGOALS)))" -gt 0 ]; then \
+		echo "Error: clear is mutually exclusive with other targets: $(filter-out clear,$(MAKECMDGOALS))"; \
+		exit 1; \
+	fi
+	@if [ -n "$(strip $(VERS))" ]; then \
+		echo "Error: clear is mutually exclusive with VERS=$(VERS)"; \
+		exit 1; \
+	fi
+	@if [ -n "$(strip $(BATCH))" ]; then \
+		echo "Error: clear is mutually exclusive with BATCH=$(BATCH)"; \
+		exit 1; \
+	fi
+	@if [ -n "$(strip $(PUSH))" ]; then \
+		echo "Error: clear is mutually exclusive with PUSH=$(PUSH)"; \
+		exit 1; \
+	fi
+	@if [ -n "$(strip $(family))" ]; then \
+		echo "Error: clear is mutually exclusive with family=$(family)"; \
+		exit 1; \
+	fi
+	@if [ "$(strip $(VER))" != "latest" ] && [ "$(strip $(VER))" != "" ]; then \
+		echo "Error: clear is mutually exclusive with VER=$(VER)"; \
+		exit 1; \
+	fi
+	bash tools/maintain.sh --clear LAYERS="$(LAYERS)" $(if $(CONFIRM),CONFIRM=1) $(if $(DRY),DRY=1)
 
 # ══════════════════════════════════════════════════════════════════════
+deb-compressed:
+	@if [ -z "$(VER_IS_SET)" ]; then \
+		echo "Error: VER is required. Example: make deb-compressed VER=1.18.21"; \
+		exit 1; \
+	fi
+	VERSION=$(VER) OPENCODE_COMPRESSED_BIN=$(NATIVE_DIR)/opencode-native-$(VER)-upx OPENCODE_CRHANDLER_SO=$(NATIVE_DIR)/libopencode-crhandler.so bash scripts/package/package_deb_compressed.sh
+
+pacman-compressed:
+	@if [ -z "$(VER_IS_SET)" ]; then \
+		echo "Error: VER is required. Example: make pacman-compressed VER=1.18.21"; \
+		exit 1; \
+	fi
+	VERSION=$(VER) OPENCODE_COMPRESSED_BIN=$(NATIVE_DIR)/opencode-native-$(VER)-upx OPENCODE_CRHANDLER_SO=$(NATIVE_DIR)/libopencode-crhandler.so bash scripts/package/package_pacman_compressed.sh
+
 # Range batch build (multi-version, continue-on-fail)
 # ══════════════════════════════════════════════════════════════════════
 
@@ -426,7 +527,7 @@ range-build:
 
 # fleet-upx: distribute UPX compression across multiple nodes
 # Usage: make fleet-upx VER=1.18.21 NODES="miao@100.98.3.121 miao@100.110.50.37"
-# Features: sshpass -p 0, xz -9 outbound, opportunistic dispatch, local verify
+# Features: NODE_PASSWORD env / -p, sshpass -e, xz -9 outbound, opportunistic dispatch, local verify
 fleet-upx:
 	@if [ -z "$(VER)" ] || [ -z "$(NODES)" ]; then \
 		echo "Error: VER and NODES are required. Example: make fleet-upx VER=1.18.21 NODES=\"miao@host1 miao@host2\""; \
