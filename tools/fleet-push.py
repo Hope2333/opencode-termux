@@ -36,6 +36,8 @@ import subprocess
 import sys
 import threading
 import time
+import glob
+import platform
 from collections import deque
 
 # ───────────────────── 配置 ─────────────────────
@@ -114,8 +116,86 @@ def _local_slots():
 
 
 LOCAL_SLOTS = _local_slots()
+
+def _auto_slots():
+    """按架构自动计算本地并行槽位:
+    - 逻辑核 = os.sched_getaffinity(0) 或 os.cpu_count()
+    - 物理核 = /proc/cpuinfo 中 unique (physical id, core id) 对数;
+      回退: /sys/devices/system/cpu/cpu*/topology/ 下 unique pair;
+      再回退: physical = logical
+    - SMT 判定: physical < logical
+    - amd64 且有 SMT → slots = physical (留睿频余量)
+    - 其他(arm64/riscv等) 或 amd64 无 SMT → slots = max(1, physical - 1)"""
+    import platform
+    logical = len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else (os.cpu_count() or 1)
+    physical = None
+    # 尝试 /proc/cpuinfo: 解析每对 (physical id, core id)
+    try:
+        pairs = set()
+        cur_pid = cur_cid = None
+        with open("/proc/cpuinfo") as f:
+            for line in f:
+                if line.startswith("physical id"):
+                    cur_pid = line.split(":")[1].strip()
+                elif line.startswith("core id"):
+                    cur_cid = line.split(":")[1].strip()
+                    if cur_pid is not None:
+                        pairs.add((cur_pid, cur_cid))
+        if len(pairs) >= 2:
+            physical = len(pairs)
+    except Exception:
+        pass
+    if physical is None:
+        # 回退: /sys/devices/system/cpu/cpu*/topology/
+        try:
+            pairs = set()
+            for cpu_dir in glob.glob("/sys/devices/system/cpu/cpu[0-9]*/topology"):
+                pid = (cpu_dir.rsplit("/", 2)[1] +
+                       open(os.path.join(cpu_dir, "physical_package_id")).read().strip()
+                       if os.path.exists(os.path.join(cpu_dir, "physical_package_id")) else "")
+                cid = open(os.path.join(cpu_dir, "core_id")).read().strip()
+                pairs.add((pid, cid))
+            if pairs:
+                physical = len(pairs)
+        except Exception:
+            pass
+    if physical is None:
+        physical = logical
+    smt = physical < logical
+    is_amd64 = "x86_64" in platform.machine() or "amd64" in platform.machine()
+    if is_amd64 and smt:
+        return physical
+    return max(1, physical - 1)
+
+def _classify_err(text):
+    """确定性失败分类: True=确定性不重试(跳过剩余尝试直接FAIL)
+    匹配 UPX/打包/解压/取包的确定性错误模式, 瞬态错误(超时/网络/OOM)走正常重试"""
+    if not text:
+        return False
+    t = text.lower()
+    patterns = [
+        "filealreadyexistsexception", "cantpackexception",
+        "notcompressibleexception", "already packed",
+        "cantunpackexception",
+        "e no-elf", "e untar",
+    ]
+    # HTTP 404 / release not found 模式
+    if "404" in t:
+        return True
+    if "not found" in t and ("release" in t or "fetch" in t):
+        return True
+    for p in patterns:
+        if p in t:
+            return True
+    return False
+
 RDIR = "~/opc-fleet/{ver}"
 CLEAN_REMOTE = True
+NODE_FAIL_LIMIT = 3  # 节点连续不可达次数上限, 触发隔离
+
+# ─────────────── 预取线程注册表 ───────────────
+_PREFETCH_REG: dict = {}      # ver → Popen
+_PREFETCH_REG_LOCK = threading.Lock()
 MAX_ATTEMPTS = 3
 SSH_TIMEOUT = 8
 HEALTH_TTL = 60
@@ -174,6 +254,9 @@ class Ver:
         self.upx_ratio = self.upx_fmt = self.upx_name = ""
         self.pre_existing = False
         self.src_size = 0
+        self.fetch_done = 0
+        self.fetch_total = 0
+        self.fetching = False
         self.rdir = RDIR.format(ver=ver)
         self.upx_live = ""
         self.upload_pct = 0.0
@@ -186,6 +269,36 @@ class Ver:
             return 0.0
         now = now if now is not None else time.time()
         return min(95.0, 100.0 * (now - self.t_state) / max(1, STAGE_ETA.get(stage, 120)))
+
+    def live_pct(self, now=None):
+        """计算进行中版本的加权实时进度, 供 render() 每帧刷新.
+        阶段顺序匹配 WEIGHTS keys; 当前阶段取真实源(push→push_pct,
+        upx/upload→stage_pct, untar/xz9→封顶 ETA), 后续阶段为 0."""
+        if self.state == Ver.DONE or self.pre_existing:
+            return 100.0
+        if self.state == Ver.FAILED:
+            return self.pct
+        if not self.node:
+            return 0.0
+        order = ["push", "untar", "upx", "xz9", "upload"]
+        now = now if now is not None else time.time()
+        idx = order.index(self.stage) if self.stage in order else -1
+        if idx < 0:
+            return 0.0
+        total = 0.0
+        for i, s in enumerate(order):
+            if i < idx:
+                total += WEIGHTS[s]
+            elif i == idx:
+                if s == "push":
+                    p = self.push_pct / 100.0 if self.push_pct else 0.0
+                elif s in ("upx", "upload"):
+                    p = self.stage_pct.get(s, 0.0) / 100.0
+                else:
+                    p = min(0.99, self.stage_progress(s, now) / 100.0)
+                total += WEIGHTS[s] * p
+            # else: i > idx → 0
+        return total * 100.0
 
     def recompute(self, now=None):
         comp = ["untar", "upx", "xz9"]
@@ -231,7 +344,7 @@ class Fleet:
         if node == "local":
             return True
         with self.lock:
-            if self.health_fails.get(node, 0) >= 3:
+            if self.health_fails.get(node, 0) >= NODE_FAIL_LIMIT:
                 return False
             ok, ts = self.health.get(node, (None, 0.0))
             if ts and time.time() - ts < HEALTH_TTL:
@@ -249,11 +362,20 @@ class Fleet:
                 self.health_fails[node] = 0
             else:
                 self.health_fails[node] = self.health_fails.get(node, 0) + 1
-                if self.health_fails[node] == 3:
-                    self.ev(f"{node} 连续 3 次不可达 → 本会话禁用")
-                elif self.health_fails[node] < 3:
+                if self.health_fails[node] >= NODE_FAIL_LIMIT:
+                    self.ev(f"{node} 隔离: 连续{NODE_FAIL_LIMIT}次不可达")
+                    # 从 slot 列表移除, 后续不再探测
+                    self.slots = [s for s in self.slots
+                                  if not s.startswith(node) and s != node]
+                    # 检查是否全部远程节点被隔离
+                    has_remote = any(
+                        not s.startswith("local#") for s in self.slots
+                    )
+                    if not has_remote:
+                        self.ev("仅本地槽位运行")
+                elif self.health_fails[node] < NODE_FAIL_LIMIT:
                     self.ev(f"{node} 不可达 (ssh {SSH_TIMEOUT}s, "
-                            f"{self.health_fails[node]}/3)")
+                            f"{self.health_fails[node]}/{NODE_FAIL_LIMIT})")
         return ok
 
 
@@ -315,6 +437,7 @@ with open(out, "wb") as f:
             pct = int(100*done/size)
             if pct != last:
                 sys.stdout.write("#F %d\n" % pct); sys.stdout.flush(); last = pct
+                sys.stdout.write("#FB %d %d\n" % (done, size)); sys.stdout.flush()
 print("#F 100")
 '''
 
@@ -328,12 +451,12 @@ if [ ! -s "$D" ]; then
   P="$(dirname "$D")"; N="$(basename "$D")"
   fok=0
   if command -v python3 >/dev/null 2>&1; then
-    python3 "$R/fetch.py" "$TAG" "$REPO" "$N" "$D" && fok=1
+    python3 "$R/fetch.py" "$TAG" "$REPO" "$N" "$D" 2>"$R/fetch.err" && fok=1
   fi
   if [ $fok -eq 0 ]; then
-    gh release download "$TAG" -p "$N" --repo "$REPO" --dir "$P" --clobber && fok=1
+    gh release download "$TAG" -p "$N" --repo "$REPO" --dir "$P" --clobber 2>"$R/fetch.err" && fok=1
   fi
-  if [ $fok -eq 0 ]; then say "E fetch"; exit 2; fi
+  if [ $fok -eq 0 ]; then say "E fetch err=$(tail -c 160 "$R/fetch.err" 2>/dev/null | tr '\n' ' ')"; exit 2; fi
   say "D fetch"
 fi
 say "S untar"
@@ -341,13 +464,15 @@ tar -xJf "$D" -C "$R" || { say "E untar"; exit 2; }
 B="$(find "$R" -type f -name opencode | head -1)"
 [ -n "$B" ] || { say "E no-elf"; exit 2; }
 say "D untar"
+rm -f "$R/packed" "$R"/packed.tmp.* "$R/out.xz"
 say "S upx"
-upx --best -o "$R/packed" "$B"
+upx --best -o "$R/packed.tmp.$$" "$B" 2>"$R/upx.err"
 rc=$?
 say "D upx"
-[ $rc -eq 0 ] || { say "E upx rc=$rc"; exit 3; }
+[ $rc -eq 0 ] && mv -f "$R/packed.tmp.$$" "$R/packed"
+[ $rc -eq 0 ] || { say "E upx rc=$rc err=$(tail -c 160 "$R/upx.err" 2>/dev/null | tr '\n' ' ')"; exit 3; }
 say "S xz9"
-xz -9 -c "$R/packed" > "$R/out.xz" || { say "E xz9"; exit 4; }
+xz -9 -c "$R/packed" > "$R/out.xz" 2>"$R/xz9.err" || { say "E xz9 err=$(tail -c 160 "$R/xz9.err" 2>/dev/null | tr '\n' ' ')"; exit 4; }
 say "D xz9"
 printf '#SHA %s\n' "$(sha256sum "$R/out.xz" | cut -d' ' -f1)"
 printf '#SIZE %s\n' "$(wc -c < "$R/out.xz")"
@@ -415,14 +540,23 @@ class PtyJob:
         m = re.match(r"^#S (\S+)$", line)
         if m:
             with self.f.lock:
-                v.stage = m.group(1)
+                stage = m.group(1)
+                # fetch 归入 push 阶段桶 (下载/传输统一展示)
+                if stage == "fetch":
+                    stage = "push"
+                    v.fetching = True
+                v.stage = stage
                 v.t_state = time.time()
             return
         m = re.match(r"^#D (\S+)$", line)
         if m:
             with self.f.lock:
-                v.stage_pct[m.group(1)] = 100.0
-                if v.stage == m.group(1):
+                stage = m.group(1)
+                if stage == "fetch":
+                    stage = "push"
+                    v.fetching = False
+                v.stage_pct[stage] = 100.0
+                if v.stage == stage:
                     v.stage = None
             return
         m = re.match(r"^#E (.+)$", line)
@@ -442,6 +576,16 @@ class PtyJob:
             with self.f.lock:
                 v.stage_pct["fetch"] = float(m.group(1))
                 v.push_pct = float(m.group(1))
+            return
+        m = re.match(r"^#FB (\d+) (\d+)$", line)
+        if m:
+            with self.f.lock:
+                v.fetch_done = int(m.group(1))
+                v.fetch_total = int(m.group(2))
+                v.fetching = True
+                if v.fetch_total:
+                    v.push_pct = 100.0 * v.fetch_done / v.fetch_total
+                    v.stage_pct["fetch"] = v.push_pct
             return
         m = re.match(r"^#SHA ([0-9a-f]{64})$", line)
         if m:
@@ -640,11 +784,13 @@ class Scheduler:
                         f"({v.upx_ratio}%) fmt={v.upx_fmt}")
                     self.f.ev(f"{ver} ✔ 完成 {mib(v.size_out)} ({v.upx_ratio}%)")
                 else:
-                    if v.attempt >= self.o.attempts:
+                    if _classify_err(v.err) or v.attempt >= self.o.attempts:
                         v.state = Ver.FAILED
                         v.t_done = time.time()
-                        log(f"FAIL {ver} rc={rc} err={v.err} attempts={v.attempt}")
-                        self.f.ev(f"{ver} ✖ 失败 rc={rc} ({v.attempt} 次尝试)")
+                        log(f"FAIL {ver} rc={rc} err={v.err} attempts={v.attempt}"
+                            + (" [确定性不重试]" if _classify_err(v.err) else ""))
+                        self.f.ev(f"{ver} ✖ 失败 {v.err} ({v.attempt} 次)"
+                                  + (" [确定性]" if _classify_err(v.err) else ""))
                     else:
                         v.state = Ver.PENDING
                         v.node = None
@@ -670,6 +816,9 @@ def render(f, o, out):
         slot_job = dict(f.slot_job)
         slot_live = dict(f.slot_live)
         evs = list(f.events)[-5:]
+        for _v in vers:
+            if _v.node:
+                _v.pct = _v.live_pct(now)
     lines = []
     if f.stop.is_set():
         tail = "强制终止" if f.force else "再按一次 Ctrl+C 强制终止"
@@ -684,9 +833,14 @@ def render(f, o, out):
             lines.append(f" [{slot:8}] {DIM}idle{N}")
             continue
         sp = v.stage or ("push" if v.state == Ver.PUSH else "-")
-        if sp == "fetch":
+        if sp == "push" and v.fetching:
             pct = v.push_pct
-            extra = f"{mib(int(v.src_size*pct/100))}/{mib(v.src_size)}"
+            if v.fetch_total:
+                extra = f"{mib(v.fetch_done)}/{mib(v.fetch_total)}"
+            elif v.src_size:
+                extra = f"{mib(int(v.src_size*pct/100))}/{mib(v.src_size)}"
+            else:
+                extra = ""
         elif sp == "push":
             pct = v.push_pct
             extra = f"{mib(v.push_done)}/{mib(v.push_total)}"
@@ -719,11 +873,18 @@ def render(f, o, out):
             lines.append(f" {DIM}◌ {v.ver:8} 排队{N}")
     total = sum(v.pct for v in vers) / max(1, len(vers))
     nd = sum(1 for v in vers if v.state == Ver.DONE)
-    nr = sum(1 for v in vers if v.node)
+    nrun = sum(1 for v in vers
+               if v.node and v.state not in (Ver.DONE, Ver.FAILED, Ver.SKIPPED)
+               and not v.pre_existing)
     nf = sum(1 for v in vers if v.state == Ver.FAILED)
+    nqueue = sum(1 for v in vers
+                 if not v.node and v.state not in (Ver.DONE, Ver.FAILED, Ver.SKIPPED))
+    nskip = sum(1 for v in vers if v.pre_existing or v.state == Ver.SKIPPED)
     lines.append("── total " + "─" * 56)
+    skip_marker = f" {DIM}○{nskip}{N}" if nskip else ""
     lines.append(f" {B}TOTAL{N} [{bar(total, 40)}] {total:5.1f}%   "
-                 f"{G}✔{nd}{N} {Y}▶{nr}{N} {DIM}◌{len(vers)-nd-nr-nf}{N}"
+                 f"{G}✔{nd}{N} {Y}▶{nrun}{N} {DIM}◌{nqueue}{N}"
+                 + skip_marker
                  + (f" {R}✖{nf}{N}" if nf else ""))
     if evs:
         lines.append("── events " + "─" * 55)
@@ -735,15 +896,24 @@ def render(f, o, out):
 
 
 def release_crosscheck(f, tag):
-    """gh release view 对账: DONE 资产存在且尺寸与节点报告一致"""
-    r = subprocess.run(["gh", "release", "view", tag, "--json", "assets", "--jq",
+    """gh release view 对账: DONE 资产存在且尺寸与节点报告一致.
+    仅作信息性核查: gh 失败时优雅降级, 不标记任何版本为缺失. ——never blocks."""
+    r = subprocess.run(["gh", "release", "view", tag, "--repo", f.repo,
+                        "--json", "assets", "--jq",
                         '.assets[] | .name + " " + (.size|tostring)'],
                        capture_output=True, text=True, cwd=REPO_ROOT)
+    if r.returncode != 0 or (not r.stdout.strip() and r.returncode == 0):
+        err_msg = r.stderr.strip()[:120] if r.stderr else "空输出"
+        print(f"  — 对账失败（gh 错误/网络）——跳过对账，不影响判定 ({err_msg})")
+        return 0
     assets = {}
     for line in r.stdout.splitlines():
         parts = line.rsplit(" ", 1)
         if len(parts) == 2 and parts[1].isdigit():
             assets[parts[0]] = int(parts[1])
+    if not assets:
+        print("  — 对账失败（gh 返回空资产列表）——跳过对账，不影响判定")
+        return 0
     bad = 0
     with f.lock:
         done = [v for v in f.vers.values() if v.state == Ver.DONE]
@@ -752,7 +922,9 @@ def release_crosscheck(f, tag):
         if got is None:
             print(f"  ✖ {v.ver} 资产缺失于 release"); bad += 1
         elif v.size_out and got != v.size_out:
-            print(f"  ✖ {v.ver} 尺寸不一致 release={got} node={v.size_out}"); bad += 1
+            rel_mib = got / 1048576
+            loc_mib = v.size_out / 1048576
+            print(f"  ✖ {v.ver} 尺寸不符：release {rel_mib:.1f} MiB vs 本地 {loc_mib:.1f} MiB"); bad += 1
         else:
             print(f"  ✔ {v.ver} {v.asset} {mib(got or 0)}")
     return bad
@@ -801,7 +973,8 @@ def final_table(f, o):
     print("\n" + B + "══ 最终表 ══" + N)
     for v in vers:
         if v.state == Ver.DONE:
-            print(f" ✔ {v.ver:8} {v.asset}  {mib(v.size_out)}  sha={v.sha_node[:16]}…"
+            sha_str = v.sha_node[:16] if v.sha_node else "—(复用)"
+            print(f" ✔ {v.ver:8} {v.asset}  {mib(v.size_out)}  sha={sha_str}…"
                   f"  upx {v.upx_in}→{v.upx_out} ({v.upx_ratio}%) {v.upx_fmt}")
         elif v.state == Ver.FAILED:
             print(f" ✖ {v.ver:8} 失败: {v.err}")
@@ -858,6 +1031,18 @@ def discover_release(tag, repo):
             vv.state = Ver.DONE
             vv.pre_existing = True
             vv.t_done = time.time()
+            # 复用路径: 若本地 job 目录存在 out.xz, 计算其 sha256 填充 sha_node
+            _reuse_out = os.path.expanduser(os.path.join(RDIR.format(ver=vv.ver), "out.xz"))
+            if os.path.isfile(_reuse_out):
+                try:
+                    import hashlib as _hl
+                    _h = _hl.sha256()
+                    with open(_reuse_out, "rb") as _fsh:
+                        for _chunk in iter(lambda: _fsh.read(1 << 20), b""):
+                            _h.update(_chunk)
+                    vv.sha_node = _h.hexdigest()
+                except Exception:
+                    pass
     return vers, assets
 
 
@@ -929,27 +1114,181 @@ def _seed(hostspec):
     return 0 if ok == len(jobs) else 2
 
 
+def _sweep_local_residue(fleet, vers):
+    """清扫本地中断残留: 每个版本的本地工作目录中的 stale packed/out.xz"""
+    for v in vers:
+        r = os.path.expanduser(v.rdir)
+        for stale in ["packed", "packed.tmp.*", "out.xz"]:
+            for p in glob.glob(os.path.join(r, stale)):
+                try:
+                    os.remove(p)
+                except OSError:
+                    pass
+        if any(os.path.exists(os.path.join(r, x)) for x in ["packed", "out.xz"]):
+            fleet.ev(f"{v.ver} 清扫中断残留")
+
+
+def _prefetch_thread(fleet, tag, repo, versions, slots):
+    """后台预取线程: 用 curl -C - 并发下载缺失的源包到 INBOX/.part,
+    大小校验后 os.replace 到 v.pkg. 失败保留 .part 供下次续传.
+    纯机会性加速, 任何预取失败由 job.sh 自身的 gh fetch 兜底."""
+    # 快照: 只读 f.vers 字段, 不持锁
+    todo = []
+    for v in versions:
+        if v.state in (Ver.DONE, Ver.SKIPPED):
+            continue
+        if v.pre_existing:
+            continue
+        pkg_path = v.pkg
+        if pkg_path and os.path.isfile(pkg_path) and os.path.getsize(pkg_path) > 0:
+            continue
+        todo.append(v)
+    if not todo:
+        return
+    total = len(todo)
+    ok_count = 0
+    concurrent = min(slots, 4)
+    sem = threading.Semaphore(concurrent)
+    done_evt = threading.Event()
+    completed = 0
+    completed_lock = threading.Lock()
+
+    def _download(v):
+        nonlocal ok_count, completed
+        name = os.path.basename(v.pkg)
+        part_path = os.path.join(INBOX, name + ".part")
+        url = f"https://github.com/{repo}/releases/download/{tag}/{name}"
+        try:
+            sem.acquire()
+            with completed_lock:
+                completed += 1
+            log(f"PREFETCH-START {v.ver}")
+            # curl -fsSL -C - 静默续传下载到 .part (-S 保留错误输出)
+            p = subprocess.Popen(
+                ["curl", "-fsSL", "-C", "-", "-o", part_path, url],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            with _PREFETCH_REG_LOCK:
+                _PREFETCH_REG[v.ver] = p
+            try:
+                _, err = p.communicate(timeout=3600)
+            finally:
+                with _PREFETCH_REG_LOCK:
+                    _PREFETCH_REG.pop(v.ver, None)
+            if p.returncode != 0:
+                err = (err or "").strip()[:160]
+                log(f"PREFETCH-ERR {v.ver} {err}")
+                return
+            # 大小校验
+            actual = os.path.getsize(part_path)
+            if actual != v.src_size:
+                os.remove(part_path)
+                log(f"PREFETCH-ERR {v.ver} size mismatch {actual}!={v.src_size}")
+                return
+            # 竞态检查: 如果 job 已拿到同名非空包, 跳过重命名
+            if os.path.isfile(v.pkg) and os.path.getsize(v.pkg) == v.src_size:
+                try:
+                    os.remove(part_path)
+                except OSError:
+                    pass
+                with completed_lock:
+                    ok_count += 1
+                log(f"PREFETCH-OK {v.ver} {mib(v.src_size)} (already present)")
+                return
+            os.replace(part_path, v.pkg)
+            with completed_lock:
+                ok_count += 1
+            log(f"PREFETCH-OK {v.ver} {mib(v.src_size)}")
+        except Exception as e:
+            log(f"PREFETCH-ERR {v.ver} {str(e)[:160]}")
+        finally:
+            sem.release()
+
+    threads = []
+    for v in todo:
+        t = threading.Thread(target=_download, args=(v,), daemon=True)
+        t.start()
+        threads.append(t)
+    # 等待所有下载完成
+    for t in threads:
+        t.join()
+    log(f"PREFETCH-DONE {ok_count}/{total}")
+
 def main():
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser(
+        description="三节点 fleet 压缩推送调度器（PTY 屏幕流归整 + 实时进度聚合）",
+        epilog=(
+            "流程（每版本, 包源=packing/pacman/opencode-<v>-1-aarch64.pkg.tar.xz）:\n"
+            "  push   本机→节点: python 分块写 ssh stdin, 自建进度条        (10%)\n"
+            "  untar  节点解包取 ELF                                         (5%)\n"
+            "  upx    upx --best, 原生进度条实时聚合                          (45%)\n"
+            "  xz9    xz -9 压缩产物                                         (15%)\n"
+            "  upload 节点直传 gh release(已录认证): python3 分块上传自建进度条 (25%)\n\n"
+            "示例:\n"
+            "  python3 tools/fleet-push.py --plan --tag Push260905 --attempts 3 --source auto\n"
+            "  python3 tools/fleet-push.py --plan --tag Push260905 --attempts 3 --source auto --slots 2\n"
+            "  python3 tools/fleet-push.py --dry-run 30 --tag Push260905 --attempts 3 --source auto\n"
+            "  python3 tools/fleet-push.py --tag Push260905 --versions <v1> <v2> --attempts 3 --source auto --slots 2\n"
+            "  python3 tools/fleet-push.py --source inbox --no-remote-upload --tag Push260905 --attempts 3\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     ap.add_argument("--seed", metavar="HOSTSPEC",
-                    help="手机侧投送: 如 'ssh miao@host' 或 'sshpass -p 0 ssh miao@host'")
-    ap.add_argument("--plan", action="store_true")
-    ap.add_argument("--dry-run", type=int, metavar="SEC")
-    ap.add_argument("--tag", default=RELEASE_TAG)
-    ap.add_argument("--versions", nargs="*")
-    ap.add_argument("--attempts", type=int, default=MAX_ATTEMPTS)
-    ap.add_argument("--include-artifacts", action="store_true")
-    ap.add_argument("--no-remote-upload", action="store_true")
-    ap.add_argument("--verify-download", action="store_true")
-    ap.add_argument("--no-clean", dest="clean", action="store_false", default=True)
+                    help="手机侧投送: 如 'ssh miao@<host>' 或 'sshpass -p <pw> ssh miao@<host>'")
+    ap.add_argument("--plan", action="store_true",
+                    help="仅打印计划，不执行推送")
+    ap.add_argument("--dry-run", type=int, metavar="SEC",
+                    help="演练模式: 运行 SEC 秒后停止")
+    ap.add_argument("--tag",
+                    help="release tag (必填)")
+    ap.add_argument("--versions", nargs="*", metavar="VER",
+                    help="限定版本列表")
+    ap.add_argument("--attempts", type=int,
+                    help="每个版本最大重试次数 (必填)")
+    ap.add_argument("--include-artifacts", action="store_true",
+                    help="包含非主资产")
+    ap.add_argument("--no-remote-upload", action="store_true",
+                    help="跳过远程上传阶段")
+    ap.add_argument("--verify-download", action="store_true",
+                    help="上传后回下载校验 sha256")
+    ap.add_argument("--no-clean", dest="clean", action="store_false", default=True,
+                    help="保留中间产物")
     ap.add_argument("--no-checksums", action="store_true",
                     help="结束后不把新资产 sha 并入 SHA256SUMS.txt")
     ap.add_argument("--repo", default="Hope2333/opencode-termux",
                     help="节点上无 gh repo 上下文时的显式仓库")
-    ap.add_argument("--source", choices=["auto", "inbox", "release"], default="auto",
-                    help="源包来源: inbox=本地包目录, release=从 release 下载")
+    ap.add_argument("--source", choices=["auto", "inbox", "release"],
+                    help="源包来源: auto=release 清单全集+本地逐版本缓存(缺则起跑时fetch), inbox=纯本地包目录, release=同 auto")
+    ap.add_argument("--slots", type=int, default=None,
+                    help="本地并行槽位数 (缺省=按架构自动: arm64/riscv/无超线程 amd64=物理核-1, amd64 超线程=物理核数; 不用逻辑核数, 留睿频余量; 显式传值则覆盖, >=1)")
     o = ap.parse_args()
     o.no_remote_upload = o.no_remote_upload
+
+    if len(sys.argv) == 1:
+        ap.print_help()
+        return 2
+    o = ap.parse_args()
+    o.no_remote_upload = o.no_remote_upload
+
+    # ── 必填参数校验 ──
+    _slots_explicit = o.slots is not None
+    if not o.seed:
+        _missing = []
+        if not o.tag:
+            _missing.append("--tag")
+        if not o.attempts:
+            _missing.append("--attempts")
+        if not o.source:
+            _missing.append("--source")
+        if _missing:
+            print(f"Error: missing required options: {', '.join(_missing)}")
+            print("Run: python3 tools/fleet-push.py --help")
+            return 2
+        if o.slots is not None and o.slots < 1:
+            print("Error: --slots must be >= 1")
+            print("Run: python3 tools/fleet-push.py --help")
+            return 2
+        if o.slots is None:
+            o.slots = _auto_slots()
 
     if o.seed:
         return _seed(o.seed)
@@ -966,18 +1305,43 @@ def main():
         except Exception:
             pass
 
-    if o.source == "auto":
-        have = (os.path.isdir(PKG_DIR) and any(
-            re.match(r"^opencode-[\d.]+-1-aarch64\.pkg\.tar\.xz$", fn)
-            for fn in os.listdir(PKG_DIR)))
-        o.source = "inbox" if have else "release"
     f.assets = {}
-    if o.source == "release":
+    if o.source == "auto":
+        # 始终从 release 清单构建全集, 本地包作为逐版本缓存
+        f.vers, f.assets = discover_release(o.tag, f.repo)
+        _cache_hits = 0
+        for v in f.vers.values():
+            _name = PKG_TMPL.format(ver=v.ver)
+            _local_pkg = os.path.join(PKG_DIR, _name)
+            _inbox_pkg = os.path.join(INBOX, _name)
+            if os.path.isfile(_local_pkg) and _local_pkg != _inbox_pkg:
+                v.pkg = _local_pkg          # repo checkout: 本地 packing/pacman 缓存
+                _cache_hits += 1
+            elif os.path.isfile(_inbox_pkg):
+                v.pkg = _inbox_pkg          # 手机: inbox 缓存, 缺则 job.sh 起跑时 fetch
+                _cache_hits += 1
+        if _cache_hits:
+            f.ev(f"auto: {_cache_hits}/{len(f.vers)} 版本命中本地缓存")
+    elif o.source == "release":
         f.vers, f.assets = discover_release(o.tag, f.repo)
     else:
         f.vers = discover(o.include_artifacts)
+    _sweep_local_residue(f, f.vers.values())
     if o.versions:
         f.vers = {k: v for k, v in f.vers.items() if k in o.versions}
+    # ── 后台预取: 缺包版本起跑前自源下载 ──
+    if not o.plan and not o.dry_run and o.source in ("auto", "release"):
+        _prefetch_vers = [v for v in f.vers.values()
+                          if v.state not in (Ver.DONE, Ver.SKIPPED)
+                          and not v.pre_existing
+                          and (not v.pkg or not os.path.isfile(v.pkg)
+                               or os.path.getsize(v.pkg) == 0)]
+        if _prefetch_vers:
+            _pt = threading.Thread(
+                target=_prefetch_thread,
+                args=(f, o.tag, f.repo, list(_prefetch_vers), o.slots),
+                daemon=True, name="prefetch")
+            _pt.start()
     if o.plan:
         pre = sum(1 for v in f.vers.values() if v.pre_existing)
         print(f"repo={f.repo} tag={o.tag} source={o.source} "
@@ -987,20 +1351,40 @@ def main():
                 print(f"  {v.ver:8} ↷ 已在 release, 跳过")
             elif o.source == "release":
                 print(f"  {v.ver:8} ← release/{mib(v.src_size):8} → {v.asset}")
+            elif o.source == "auto":
+                _name = PKG_TMPL.format(ver=v.ver)
+                _local = os.path.join(PKG_DIR, _name)
+                _inbox = os.path.join(INBOX, _name)
+                if v.pkg and os.path.isfile(v.pkg):
+                    print(f"  {v.ver:8} ← pkg(本地缓存)     → {v.asset}")
+                else:
+                    print(f"  {v.ver:8} ← release/{mib(v.src_size):8} (起跑时fetch) → {v.asset}")
             else:
                 src = "pkg" if v.pkg else "SKIP(无包源)"
                 print(f"  {v.ver:8} ← {src:14} → {v.asset}")
-        print(f"  local 并行槽 = {LOCAL_SLOTS} "
-              f"(cpu={os.cpu_count()}, 覆盖: FLEET_LOCAL_SLOTS)")
+        _slot_desc = "指定" if _slots_explicit else f"自动: arch={platform.machine()}"
+        print(f"  local 并行槽 = {o.slots} ({_slot_desc})")
+        if o.source in ("auto", "release"):
+            _prefetch_vers = [v for v in f.vers.values()
+                              if v.state not in (Ver.DONE, Ver.SKIPPED)
+                              and not v.pre_existing
+                              and (not v.pkg or not os.path.isfile(v.pkg)
+                                   or os.path.getsize(v.pkg) == 0)]
+            _cache_vers = [v for v in f.vers.values()
+                           if v.pkg and os.path.isfile(v.pkg)
+                           and os.path.getsize(v.pkg) > 0]
+            _existing = sum(1 for v in f.vers.values() if v.pre_existing)
+            print(f"  预取: {len(_prefetch_vers)} 版缺包(起跑时将自源下载) / "
+                  f"{len(_cache_vers)} 版已本地缓存 / {_existing} 版已在架跳过")
         for n, c in NODES.items():
             print(f"  slot {n:6} {c or '(local)'}")
         print(f"  flow: push(10) → untar(5) → upx(45,原生进度聚合) → xz9(15) "
               f"→ upload(25,{'节点直传' if not o.no_remote_upload else '本机回传'})")
         return 0
     if o.dry_run:
-        f.slots = ([f"local#{i+1}" for i in range(LOCAL_SLOTS)]
+        f.slots = ([f"local#{i+1}" for i in range(o.slots)]
                    + [n for n in NODES if n != "local"])
-        f.slot_cmd = {**{f"local#{i+1}": None for i in range(LOCAL_SLOTS)},
+        f.slot_cmd = {**{f"local#{i+1}": None for i in range(o.slots)},
                       **{n: c for n, c in NODES.items() if n != "local"}}
         import random
         for i, v in enumerate(sorted(f.vers.values(), key=lambda x: x.ver)):
@@ -1038,9 +1422,9 @@ def main():
         f"versions={len(f.vers)} remote_upload={not o.no_remote_upload}")
 
     sched = Scheduler(f, o)
-    f.slots = ([f"local#{i+1}" for i in range(LOCAL_SLOTS)]
+    f.slots = ([f"local#{i+1}" for i in range(o.slots)]
                + [n for n in NODES if n != "local"])
-    f.slot_cmd = {**{f"local#{i+1}": None for i in range(LOCAL_SLOTS)},
+    f.slot_cmd = {**{f"local#{i+1}": None for i in range(o.slots)},
                   **{n: c for n, c in NODES.items() if n != "local"}}
     stopped = threading.Event()
 
@@ -1053,12 +1437,23 @@ def main():
             f.ev("Ctrl-C ×2: 强制终止全部作业")
             for job in list(sched.jobs.values()):
                 job.kill()
+            # 终止预取线程的 curl 子进程 (下载可 -C - 续传)
+            try:
+                with _PREFETCH_REG_LOCK:
+                    for _v, _p in list(_PREFETCH_REG.items()):
+                        try:
+                            _p.terminate()
+                        except Exception:
+                            pass
+            except Exception:
+                pass
         else:
             sys.stdout.write(SHOW_C + ALT_OUT)
             os._exit(130)
 
     signal.signal(signal.SIGINT, on_sig)
     signal.signal(signal.SIGTERM, on_sig)
+    signal.signal(signal.SIGHUP, on_sig)
 
     sys.stdout.write(ALT_IN + HIDE_C)
     try:
@@ -1066,6 +1461,14 @@ def main():
         while not (stopped.is_set() and not sched.jobs):
             now = time.time()
             sched.poll()
+            # 自然完成检查: 全部版本到达终态 → 退出循环
+            with f.lock:
+                all_terminal = all(
+                    (v.state in (Ver.DONE, Ver.FAILED, Ver.SKIPPED)
+                     or v.pre_existing)
+                    for v in f.vers.values())
+            if all_terminal:
+                break
             if not stopped.is_set():
                 for slot in list(f.slots):
                     node = slot.rsplit("#", 1)[0] if slot.startswith("local#") else slot
@@ -1089,6 +1492,17 @@ def main():
             time.sleep(0.15)
     finally:
         sys.stdout.write(SHOW_C + ALT_OUT)
+
+    # 自然完成: 终止预取线程的 curl 子进程
+    try:
+        with _PREFETCH_REG_LOCK:
+            for _v, _p in list(_PREFETCH_REG.items()):
+                try:
+                    _p.terminate()
+                except Exception:
+                    pass
+    except Exception:
+        pass
 
     if f.force:
         for job in list(sched.jobs.values()):

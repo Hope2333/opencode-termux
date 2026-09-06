@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # push-stage.sh — Build gh release create command (dry-run by default)
-# Usage: push-stage.sh TAG=Push260903 BATCH=prebatch[,compressed]
+# Usage: push-stage.sh TAG=Push260905 BATCH=prebatch[,compressed,push260905]
 # Set PUSH=1 to actually execute upload
 set -uo pipefail
 
@@ -18,7 +18,7 @@ for arg in "$@"; do
 done
 
 if [ -z "$TAG" ]; then
-    echo "Usage: push-stage.sh TAG=PushYYMMDD BATCH=prebatch[,compressed]"
+    echo "Usage: push-stage.sh TAG=PushYYMMDD BATCH=prebatch[,compressed,push260905]"
     exit 1
 fi
 
@@ -38,6 +38,24 @@ if echo "$BATCH" | grep -q "prebatch"; then
     done
 fi
 
+if echo "$BATCH" | grep -q "push260905"; then
+    echo "Collecting push260905 assets..."
+    for i in $(seq 15 27); do
+        v="1.18.$i"
+        for f in \
+            "$REPO/packing/dpkg/opencode-glibc_${v}_aarch64.deb" \
+            "$REPO/packing/dpkg-native/opencode_${v}_aarch64.deb" \
+            "$REPO/packing/pacman/opencode-${v}-1-aarch64.pkg.tar.xz" \
+            "$REPO/packing/pacman/opencode-glibc-${v}-1-aarch64.pkg.tar.xz"; do
+            if [ ! -f "$f" ]; then
+                echo "ERROR: missing expected file: $f" >&2
+                exit 1
+            fi
+            ASSETS+=("$f") && echo "  $(basename "$f")"
+        done
+    done
+fi
+
 if echo "$BATCH" | grep -q "compressed"; then
     echo "Collecting compressed assets..."
     for f in "$REPO/packing/dpkg-compressed/opencode-compressed_"*.deb \
@@ -47,10 +65,20 @@ if echo "$BATCH" | grep -q "compressed"; then
 fi
 
 # SHA256SUMS
-SUMS="$REPO/packing/SHA256SUMS-prebatch.txt"
-if [ -f "$SUMS" ]; then
-    ASSETS+=("$SUMS")
-    echo "  SHA256SUMS-prebatch.txt"
+if echo "$BATCH" | grep -q "push260905"; then
+    SUMS_FILE="$REPO/packing/SHA256SUMS.txt"
+    SUMS_BASENAME="SHA256SUMS.txt"
+    echo "Regenerating SHA256SUMS.txt..."
+    (cd "$REPO/packing" && for f in "${ASSETS[@]}"; do sha256sum "$f" | sed 's|.*/||'; done > SHA256SUMS.txt.tmp && mv SHA256SUMS.txt.tmp SHA256SUMS.txt)
+    ASSETS+=("$SUMS_FILE")
+    echo "  $SUMS_BASENAME"
+else
+    SUMS_FILE="$REPO/packing/SHA256SUMS-prebatch.txt"
+    SUMS_BASENAME="SHA256SUMS-prebatch.txt"
+    if [ -f "$SUMS_FILE" ]; then
+        ASSETS+=("$SUMS_FILE")
+        echo "  $SUMS_BASENAME"
+    fi
 fi
 
 echo ""
@@ -78,6 +106,8 @@ if [ "$PUSH_MODE" -eq 1 ]; then
         echo "Creating release $TAG..."
         NOTES=$(cat <<EOF
 OpenCode for Termux — $TAG
+
+Supersedes Push260903 (demoted old batch). Compressed family assets arrive via the UPX fleet pipeline.
 
 ## Families
 - **opencode**: Native bionic mainline (stable since 27/28). Zero glibc deps.

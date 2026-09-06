@@ -6,10 +6,13 @@ TARGET_PORT="${TARGET_PORT:-8022}"
 TARGET_USER="${TARGET_USER:-u0_a258}"
 TARGET_HOME="/data/data/com.termux/files/home"
 # SSH auth/hardening knobs (override via env):
-#   TARGET_PASSWORD    password for sshpass (default preserves legacy behavior)
+#   TARGET_PASSWORD    password for sshpass (required via env)
 #   SSH_STRICT_HOST_KEY StrictHostKeyChecking mode; 'accept-new' detects key
 #                       changes (MITM) after first trust, unlike the old 'no'
-TARGET_PASSWORD="${TARGET_PASSWORD:-0}"
+TARGET_PASSWORD="${TARGET_PASSWORD:-}"
+if [ -z "$TARGET_PASSWORD" ]; then
+	die "TARGET_PASSWORD is required. Set it via env var."
+fi
 SSH_STRICT_HOST_KEY="${SSH_STRICT_HOST_KEY:-accept-new}"
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ODIR="${ODIR:-$REPO_DIR/packing/deb}"
