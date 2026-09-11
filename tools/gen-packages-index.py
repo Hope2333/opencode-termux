@@ -86,12 +86,20 @@ def main():
                 for chunk in iter(lambda: fh.read(1 << 20), b''):
                     h.update(chunk)
                     sz += len(chunk)
+            relationships = [
+                '%s: %s' % (key, f[key])
+                for key in (
+                    'Pre-Depends', 'Depends', 'Recommends', 'Suggests', 'Enhances',
+                    'Conflicts', 'Breaks', 'Replaces', 'Provides',
+                )
+                if f.get(key)
+            ]
             stanzas.append('\n'.join([
                 'Package: %s' % pkg,
                 'Version: %s' % ver,
                 'Architecture: %s' % f.get('Architecture', 'aarch64'),
                 'Installed-Size: %s' % f.get('Installed-Size', '0'),
-                'Depends: %s' % f.get('Depends', ''),
+            ] + relationships + [
                 'Description: %s' % f.get('Description', ''),
                 'Filename: %s' % name,
                 'Size: %d' % sz,
