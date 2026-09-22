@@ -180,6 +180,23 @@ _GUARD_OWNER_SUBSTRINGS = (
     "pushScissorRect",
 )
 
+def is_glibc_linked(lib: bytes) -> bool:
+    """Reject glibc-linked libs: they carry versioned DT_NEEDED sonames
+    (libc.so.6, libm.so.6, ...) that cannot dlopen on bionic. Byte-scan is
+    sufficient: these NUL-terminated sonames only occur in .dynstr as
+    DT_NEEDED/DT_VERNEED entries. Catches the failure mode where a glibc
+    store lib is grafted because the bionic build was absent (issue #20)."""
+    return any(
+        s in lib
+        for s in (
+            b"libc.so.6\x00",
+            b"libm.so.6\x00",
+            b"libdl.so.2\x00",
+            b"libpthread.so.0\x00",
+            b"librt.so.1\x00",
+        )
+    )
+
 def has_ffi_guard(lib: bytes) -> bool:
     """Guard verification (task-tui-common-fix): scan the code ranges of all
     guard-owning symbols for the compiled guard patterns: `mov wN,
@@ -268,6 +285,15 @@ def main() -> int:
             file=sys.stderr,
         )
         return 4
+
+    if is_glibc_linked(lib):
+        print(
+            "swap_tui: REFUSED — tui-lib is glibc-linked (DT_NEEDED libc.so.6 "
+            "& co) and cannot dlopen on bionic; build via "
+            "tools/transplant/build-libopentui.sh",
+            file=sys.stderr,
+        )
+        return 6
 
     if not has_ffi_guard(lib):
         print(

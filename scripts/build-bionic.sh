@@ -112,14 +112,41 @@ NEEDED_SYMS=(cancelKittyImageTransport editBufferSetTabWidth getBufferWidthMetho
   getKittyImageTransport imageCreateFromPixels imageUpdatePixels pollKittyImageTransport \
   processKittyImageReply setKittyImageTransport pthread_tryjoin_np)
 
-# ── ALWAYS deploy verified bionic .so to store (bun install may overwrite with glibc version) ──
+# ── rc2 (#20): ALWAYS deploy verified bionic .so to EVERY candidate store key ──
+# bun may keep the store under SRC_DIR/node_modules/.bun OR
+# SRC_DIR/packages/cli/node_modules/.bun; deploy to every @opentui+core-linux-arm64@ /
+# @opentui+core@ key found so a later build.ts resolution can never pick up a glibc lib.
 BUILTIN="$ROOT_DIR/artifacts/transplant/opentui-bionic/libopentui.so"
-STORE_DIR="$(ls -d "$STORE"/@opentui+core-linux-arm64@*/node_modules/@opentui/core-linux-arm64/ 2>/dev/null | head -n1 || ls -d "$STORE"/@opentui+core@*/node_modules/@opentui/core/ 2>/dev/null | head -n1 || true)"
-if [[ -n "$STORE_DIR" && -f "$BUILTIN" ]]; then
-  cp -p "$BUILTIN" "$STORE_DIR/libopentui.so"
-  echo "    deployed verified bionic libopentui.so to store"
+if [[ ! -f "$BUILTIN" ]]; then
+  echo "Error: bionic libopentui.so not found at $BUILTIN — refusing to bundle glibc store lib (issue #20)" >&2
+  echo "       build it first: bash tools/transplant/build-libopentui.sh" >&2
+  exit 1
 fi
-TUI_SO="$(ls "$STORE"/@opentui+core-linux-arm64@*/node_modules/@opentui/core-linux-arm64/libopentui.so 2>/dev/null | head -n1 || ls "$STORE"/@opentui+core@*/node_modules/@opentui/core/libopentui.so 2>/dev/null | head -n1 || true)"
+if readelf -d "$BUILTIN" 2>/dev/null | grep -Eq 'NEEDED.*lib(c|m|dl|pthread|rt)\.so\.[0-9]'; then
+  echo "Error: $BUILTIN itself is glibc-linked (NEEDED libc.so.6 & co) — refusing to deploy a broken lib" >&2
+  exit 1
+fi
+GLIBC_SO_KEYS=()
+for st in "$STORE" "$SRC_DIR/node_modules/.bun" "$SRC_DIR/packages/cli/node_modules/.bun"; do
+  [[ -d "$st" ]] || continue
+  while IFS= read -r key; do
+    GLIBC_SO_KEYS+=("$key")
+    cp -p "$BUILTIN" "$key/libopentui.so"
+    echo "    deployed bionic libopentui.so -> $key"
+  done < <(ls -d "$st"/@opentui+core-linux-arm64@*/node_modules/@opentui/core-linux-arm64 2>/dev/null; ls -d "$st"/@opentui+core@*/node_modules/@opentui/core 2>/dev/null)
+done
+if [[ ${#GLIBC_SO_KEYS[@]} -eq 0 ]]; then
+  echo "Error: no @opentui core store key found under any candidate store — cannot verify TUI linkage" >&2
+  exit 1
+fi
+TUI_SO="${GLIBC_SO_KEYS[0]}/libopentui.so"
+
+# ── rc2 (#20): verify deployed lib is bionic, not glibc (DT_NEEDED scan) ──
+if readelf -d "$TUI_SO" 2>/dev/null | grep -Eq 'NEEDED.*lib(c|m|dl|pthread|rt)\.so\.[0-9]'; then
+  echo "Error: deployed libopentui.so is glibc-linked (NEEDED libc.so.6 & co) — cannot dlopen on bionic" >&2
+  echo "       deploy the bionic build: make libopentui" >&2
+  exit 1
+fi
 
 # ── Verify FFI symbols ──
 TUI_OK=0
