@@ -118,8 +118,25 @@ STORE_DIR="$(ls -d "$STORE"/@opentui+core-linux-arm64@*/node_modules/@opentui/co
 if [[ -n "$STORE_DIR" && -f "$BUILTIN" ]]; then
   cp -p "$BUILTIN" "$STORE_DIR/libopentui.so"
   echo "    deployed verified bionic libopentui.so to store"
+elif [[ -n "$STORE_DIR" ]]; then
+  # Without the bionic build the store keeps the stock glibc
+  # @opentui/core-linux-arm64 libopentui.so, which cannot dlopen on bionic —
+  # bundling it ships a broken TUI (shipped in the v2.0.x RC1 debs, issue #20).
+  echo "Error: $BUILTIN not found — refusing to bundle the glibc store libopentui.so" >&2
+  echo "       build it first: make libopentui (tools/transplant/build-libopentui.sh)" >&2
+  exit 1
 fi
 TUI_SO="$(ls "$STORE"/@opentui+core-linux-arm64@*/node_modules/@opentui/core-linux-arm64/libopentui.so 2>/dev/null | head -n1 || ls "$STORE"/@opentui+core@*/node_modules/@opentui/core/libopentui.so 2>/dev/null | head -n1 || true)"
+
+# ── Verify bionic linkage: the FFI symbol check below does NOT discriminate
+#    the glibc store lib (it exports the same symbols but needs libc.so.6) ──
+if [[ -n "$TUI_SO" && -f "$TUI_SO" ]]; then
+  if readelf -d "$TUI_SO" 2>/dev/null | grep -Eq 'NEEDED.*lib(c|m|dl|pthread|rt)\.so\.[0-9]'; then
+    echo "Error: $TUI_SO is glibc-linked (NEEDED libc.so.6 & co) — cannot dlopen on bionic" >&2
+    echo "       deploy the bionic build: make libopentui" >&2
+    exit 1
+  fi
+fi
 
 # ── Verify FFI symbols ──
 TUI_OK=0
