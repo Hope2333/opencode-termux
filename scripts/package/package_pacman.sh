@@ -46,7 +46,7 @@ sed -i "s/^pkgrel=.*/pkgrel=$PKGREL/" "$TMP_PKGBUILD"
 # Bin-only: ship ONLY usr/bin/opencode (no full-prefix copy)
 # The PKGBUILD template is already edited for bin-only; these sed commands
 # enforce it on the temp copy as a safety net.
-sed -i '/^package() {/,/^}/c\package() {\n  mkdir -p "$pkgdir/usr/bin"\n  install -D -m755 "${_staged_prefix}/bin/opencode" "$pkgdir/usr/bin/opencode"\n}' "$TMP_PKGBUILD" 2>/dev/null || true
+sed -i '/^package() {/,/^}/c\package() {\n  mkdir -p "$pkgdir/usr/bin"\n  install -D -m755 "${_staged_prefix}/bin/opencode" "$pkgdir/usr/bin/opencode1"\n}' "$TMP_PKGBUILD" 2>/dev/null || true
 # Remove hook scripts that reference dropped files (run-system-skills.sh)
 sed -i '/^post_install() {/,/^}/d; /^post_upgrade() {/,/^}/d; /^pre_remove() {/,/^}/d; /^post_remove() {/,/^}/d' "$TMP_PKGBUILD" 2>/dev/null || true
 

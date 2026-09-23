@@ -54,8 +54,8 @@ NATIVE_BIN="$TRANSPLANT_ROOT/$VERSION/opencode-native-tui"
 
 # v1 (1.x) packages are renamed opencode1 (coexist with v2); v2 keeps `opencode`.
 case "$VERSION" in
-	1.*) PKG_NAME="opencode1" ;;
-	*)   PKG_NAME="opencode" ;;
+	1.*) PKG_NAME="opencode1"; PKG_CONFLICTS="opencode1-wrapper, opencode1-compressed, opencode1-wrapper-standalone"; PKG_REPLACES="opencode (<< 2.0.0)" ;;
+	*)   PKG_NAME="opencode";  PKG_CONFLICTS="opencode-wrapper"; PKG_REPLACES="" ;;
 esac
 
 DEB_ROOT="$ROOT_DIR/packing/dpkg-native/work"
@@ -66,7 +66,8 @@ rm -rf "$DEB_ROOT"
 mkdir -p "$DEB_ROOT/DEBIAN" "$DEB_ROOT$PREFIX/bin" "$OUT_DIR"
 chmod 755 "$DEB_ROOT" "$DEB_ROOT/DEBIAN"
 
-install -m755 "$NATIVE_BIN" "$DEB_ROOT$PREFIX/bin/opencode"
+if [[ "$VERSION" == 1.* ]]; then BIN_NAME="opencode1"; LIB_DIR="opencode1"; else BIN_NAME="opencode"; LIB_DIR="opencode"; fi
+install -m755 "$NATIVE_BIN" "$DEB_ROOT$PREFIX/bin/$BIN_NAME"
 
 # W11: ship the self-activating seccomp shim when the binary references it
 # (DT_NEEDED libopencode-crhandler.so). It must land in $PREFIX/lib/opencode/
@@ -78,9 +79,9 @@ if grep -aqF libopencode-crhandler.so "$NATIVE_BIN"; then
 		echo "       (run: make seccomp-harden VER=$VERSION)" >&2
 		exit 1
 	fi
-	mkdir -p "$DEB_ROOT$PREFIX/lib/opencode"
-	install -m644 "$SHIM_SO" "$DEB_ROOT$PREFIX/lib/opencode/libopencode-crhandler.so"
-	echo "Packaging seccomp shim: $SHIM_SO -> $PREFIX/lib/opencode/"
+	mkdir -p "$DEB_ROOT$PREFIX/lib/$LIB_DIR"
+	install -m644 "$SHIM_SO" "$DEB_ROOT$PREFIX/lib/$LIB_DIR/libopencode-crhandler.so"
+	echo "Packaging seccomp shim: $SHIM_SO -> $PREFIX/lib/$LIB_DIR/"
 else
 	echo "Note: binary is not seccomp-hardened; shipping without libopencode-crhandler.so"
 fi
@@ -93,7 +94,8 @@ Maintainer: $MAINTAINER
 Section: utils
 Priority: optional
 Depends:
-Conflicts: opencode-wrapper, opencode-compressed
+Conflicts: $PKG_CONFLICTS
+Replaces: opencode1-wrapper-standalone${PKG_REPLACES:+, $PKG_REPLACES}
 Description: OpenCode native bionic mainline (stable since 27/28). Full TUI via bionic libopentui.so (W10a deep smoke 5/5). Zero glibc dependencies.
 EOF
 
@@ -103,11 +105,25 @@ echo "Installed-Size: $INSTALLED_SIZE" >>"$DEB_ROOT/DEBIAN/control"
 cat >"$DEB_ROOT/DEBIAN/postinst" <<'POSTINST'
 #!/data/data/com.termux/files/usr/bin/bash
 set -e
-echo "OpenCode Native for Termux installed (stable mainline since 27/28)"
-echo "Run: opencode --version"
-echo "Scope: full TUI via bionic libopentui.so (W10a deep smoke 5/5). Zero glibc runtime deps."
-echo "Requires Android API >= 28; zero glibc runtime deps."
-echo "The glibc wrapper line is now the appendix (renamed opencode-wrapper); native is the stable mainline."
+# v1 (opencode1) or v2 (opencode) install hook.
+# v1: auto-migrate any pre-v2-era config under ~/.config/opencode (etc.) into
+#     the opencode1-isolated dirs, exactly once, never clobbering existing
+#     opencode1 data. Requires scripts/migrate-to-opencode1.sh to be on PATH.
+CFG_DIR="$(printf '%s' "${XDG_CONFIG_HOME:-$HOME/.config}/opencode")"
+case "$PKG_NAME" in
+  opencode1)
+    echo "OpenCode1 (v1 family) installed — coexists with v2 opencode."
+    if [ -e "$CFG_DIR" ] && [ ! -e "${CFG_DIR}1" ] && command -v migrate-to-opencode1.sh >/dev/null 2>&1; then
+      echo "Detected pre-v2-era opencode config; migrating to ${CFG_DIR}1 ..."
+      migrate-to-opencode1.sh isolate >/dev/null 2>&1 && echo "Migrated: v1 config now under *opencode1 dirs." || echo "Migration skipped (already isolated or no v1 data)."
+    else
+      echo "No legacy v1 config found (or already isolated); nothing to migrate."
+    fi
+    ;;
+  opencode)
+    echo "OpenCode v2 (mainline) installed — coexists with v1 opencode1."
+    ;;
+esac
 exit 0
 POSTINST
 chmod 755 "$DEB_ROOT/DEBIAN/postinst"

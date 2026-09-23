@@ -5,7 +5,7 @@
 # opencode=<pkgver>. No replaces=(): the compressed variant is an
 # alternative, not an upgrade - it must never silently displace an
 # installed provider or wipe its user data.
-pkgname=opencode-compressed
+pkgname=opencode1-compressed
 pkgver=0.0.0
 pkgrel=1
 pkgdesc='OpenCode compressed variant for Termux (UPX-packed native bionic runtime, zero glibc)'
@@ -15,9 +15,9 @@ license=('MIT')
 options=('!strip' '!debug' '!emptydirs')
 
 depends=()
-provides=("opencode=$pkgver")
-conflicts=('opencode' 'opencode-wrapper')
-replaces=()
+provides=("opencode1=$pkgver")
+conflicts=('opencode1' 'opencode1-wrapper')
+replaces=('opencode-compressed' 'opencode-wrapper-standalone')
 
 source=()
 sha256sums=()
@@ -34,20 +34,20 @@ package() {
     msg "Installing compressed runtime from $OPENCODE_COMPRESSED_BIN"
     # FIX: stage to $pkgdir/usr/ (NOT $pkgdir$prefix/) — same double-prefix fix.
     mkdir -p "$pkgdir/usr/bin"
-    install -m755 "$OPENCODE_COMPRESSED_BIN" "$pkgdir/usr/bin/opencode"
+    install -m755 "$OPENCODE_COMPRESSED_BIN" "$pkgdir/usr/bin/opencode1"
     # crhandler shim (REQUIRED, unconditional): UPX hides the DT_NEEDED string
     # from grep, so the shim ships unconditionally (family contract).
     : "${OPENCODE_CRHANDLER_SO:?OPENCODE_CRHANDLER_SO must point to libopencode-crhandler.so}"
-    mkdir -p "$pkgdir/usr/lib/opencode"
-    install -m755 "$OPENCODE_CRHANDLER_SO" "$pkgdir/usr/lib/opencode/libopencode-crhandler.so"
+    mkdir -p "$pkgdir/usr/lib/opencode1"
+    install -m755 "$OPENCODE_CRHANDLER_SO" "$pkgdir/usr/lib/opencode1/libopencode-crhandler.so"
 }
 
 post_install() {
     echo ""
-    echo "OpenCode compressed variant installed (UPX-packed native bionic runtime)"
-    echo "Usage: opencode --version"
+    echo "OpenCode1 compressed variant installed (UPX-packed native bionic runtime)"
+    echo "Usage: opencode1 --version"
     echo "Scope: same runtime as the native mainline, UPX-packed for size."
-    echo "Mutually exclusive with opencode and opencode-wrapper (no Replaces: variant, not upgrade)."
+    echo "v1 compressed variant (coexists with v2 opencode)."
 }
 
 post_upgrade() {

@@ -6,15 +6,15 @@ arch=('aarch64')
 url='https://github.com/anomalyco/opencode'
 license=('MIT')
 options=('!strip' '!debug' '!emptydirs')
-replaces=('opencode1-glibc')
-conflicts=('opencode' 'opencode1-compressed')
+replaces=('opencode1-glibc' 'opencode-wrapper<2.0.0' 'opencode-glibc')
+conflicts=('opencode<2.0.0' 'opencode1-compressed' 'opencode1-wrapper-standalone' 'opencode1-native')
 
 makedepends=()
 source=()
 sha256sums=()
 
 # FIX: use /usr (relative staging) not the full prefix path, so tarball paths
-# are usr/bin/opencode — avoids double-prefix on `pacman -U` install.
+# are usr/bin/opencode1 — v1 bin-direct binary named opencode1 to coexist with v2 opencode on `pacman -U` install.
 _repo_root="${REPO_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}"
 _staged_prefix="${STAGED_PREFIX:-${_repo_root}/artifacts/staged/prefix}"
 
@@ -35,5 +35,5 @@ build() {
 
 package() {
   mkdir -p "$pkgdir/usr/bin"
-  install -D -m755 "${_staged_prefix}/bin/opencode" "$pkgdir/usr/bin/opencode"
+  install -D -m755 "${_staged_prefix}/bin/opencode" "$pkgdir/usr/bin/opencode1"
 }

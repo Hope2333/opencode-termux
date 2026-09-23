@@ -1,7 +1,13 @@
 #!/data/data/com.termux/files/usr/bin/bash
 set -euo pipefail
 
-# Build the opencode-compressed pacman provider (UPX-packed native variant).
+# Build the opencode1-compressed pacman provider (UPX-packed native variant).
+#
+# V2-era ruling: v1 family carries the opencode1* name (install binary
+# bin/opencode1 + lib/opencode1) so v1 AND v2 can coexist; "opencode"
+# belongs to v2 mainline. This package provides the versioned virtual name
+# opencode1=<ver> and conflicts only with other v1 families
+# (opencode1-native / opencode1-wrapper); no replaces=() vs v2 (variant).
 #
 # D1 ruling: three mutually exclusive providers — opencode (native mainline),
 # opencode-wrapper (glibc appendix), opencode-compressed. This package provides
@@ -55,8 +61,8 @@ OPENCODE_CRHANDLER_SO="$(readlink -f "${OPENCODE_CRHANDLER_SO:?OPENCODE_CRHANDLE
 cd "$ROOT_DIR/packing/pacman"
 rm -rf "$ROOT_DIR/packing/pacman/pkg" "$ROOT_DIR/packing/pacman/src"
 
-TMP_MAKEPKG_CONF="$ROOT_DIR/packing/pacman/.makepkg-opencode-compressed.conf"
-TMP_PKGBUILD="$ROOT_DIR/packing/pacman/.PKGBUILD.opencode-compressed.tmp"
+TMP_MAKEPKG_CONF="$ROOT_DIR/packing/pacman/.makepkg-opencode1-compressed.conf"
+TMP_PKGBUILD="$ROOT_DIR/packing/pacman/.PKGBUILD.opencode1-compressed.tmp"
 cleanup() {
 	rm -f "$TMP_MAKEPKG_CONF" "$TMP_PKGBUILD"
 }
@@ -75,7 +81,7 @@ OPENCODE_COMPRESSED_BIN="$COMPRESSED_BIN" REPO_ROOT="$ROOT_DIR" makepkg --config
 echo "Compressed pacman package created under: $ROOT_DIR/packing/pacman"
 
 # --- Regression guard: reject packages with data/ payload paths (double-prefix bug) ---
-BUILT_PKG=$(ls "$ROOT_DIR/packing/pacman/"opencode-compressed-"$VERSION"-"$PKGREL"-*.pkg.* 2>/dev/null || true)
+BUILT_PKG=$(ls "$ROOT_DIR/packing/pacman/"opencode1-compressed-"$VERSION"-"$PKGREL"-*.pkg.* 2>/dev/null || true)
 if [[ -n "$BUILT_PKG" ]]; then
     DATA_PAYLOAD=$(bsdtar -tf "$BUILT_PKG" | grep -E '^data/' | head -1 || true)
     if [[ -n "$DATA_PAYLOAD" ]]; then
@@ -88,7 +94,7 @@ fi
 
 # crhandler guard (unconditional): the package MUST contain the shim.
 if [[ -n "$BUILT_PKG" ]]; then
-    if ! bsdtar -tf "$BUILT_PKG" | grep -q 'usr/lib/opencode/libopencode-crhandler.so'; then
+    if ! bsdtar -tf "$BUILT_PKG" | grep -qE 'usr/lib/(opencode|opencode1)/libopencode-crhandler.so'; then
         echo "FATAL: package does not ship libopencode-crhandler.so" >&2
         exit 1
     fi

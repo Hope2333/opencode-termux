@@ -44,7 +44,7 @@ OUT_FILE="$OUT_DIR/opencode1-wrapper_${VERSION}_${ARCH_DEB}.deb"
 rm -rf "$DEB_ROOT"
 mkdir -p "$DEB_ROOT/DEBIAN" "$DEB_ROOT$PREFIX" "$OUT_DIR"
 chmod 755 "$DEB_ROOT" "$DEB_ROOT/DEBIAN"
-install -D -m755 "$STAGED_PREFIX/bin/opencode" "$DEB_ROOT$PREFIX/bin/opencode"
+install -D -m755 "$STAGED_PREFIX/bin/opencode" "$DEB_ROOT$PREFIX/bin/opencode1"
 
 cat >"$DEB_ROOT/DEBIAN/control" <<EOF
 Package: opencode1-wrapper
@@ -53,10 +53,10 @@ Architecture: $ARCH_DEB
 Maintainer: $MAINTAINER
 Section: utils
 Priority: optional
-Breaks: opencode (<< $VERSION), opencode1-glibc (<< $VERSION)
-Conflicts: opencode, opencode1-native, opencode-compressed, opencode1-glibc
-Replaces: opencode1-glibc
-Description: OpenCode AI coding assistant for Termux (wrapper appendix, renamed opencode-wrapper)
+Breaks: opencode-wrapper (<< $VERSION), opencode1-glibc (<< $VERSION)
+Conflicts: opencode (<< 2.0.0), opencode1-native, opencode1-compressed, opencode1-glibc
+Replaces: opencode-wrapper (<< 2.0.0), opencode-glibc (<< 2.0.0), opencode1-glibc
+Description: OpenCode AI coding assistant for Termux (v1 wrapper; installs as opencode1 alongside v2 opencode)
  Alternative provider: opencode1-native (stable mainline since 27/28, full TUI).
 Depends: bash, ncurses
 EOF

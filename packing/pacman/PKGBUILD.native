@@ -13,7 +13,10 @@ depends=()
 # NOTE: no conflict on the literal 'opencode-wrapper' name: opencode-wrapper-standalone
 # provides that virtual name and MUST coexist with us. Mutual exclusion with the
 # real glibc package is enforced by its own conflicts=('opencode' ...) list.
-conflicts=('opencode-compressed')
+# v1 line installs as opencode1 (bin name + lib dir), v2 as opencode; injected by script.
+: "${OPENCODE_BIN_NAME:?OPENCODE_BIN_NAME must be set (opencode1 | opencode)}"
+# conflicts/replaces are injected by scripts/package/package_pacman_native.sh per version.
+conflicts=('opencode')
 replaces=()
 
 source=()
@@ -33,7 +36,7 @@ package() {
     # usr/bin/opencode — avoids double-prefix on `pacman -U` install (RootDir
     # /data/data/com.termux/files + usr/bin/opencode = correct single-prefix).
     mkdir -p "$pkgdir/usr/bin"
-    install -m755 "$OPENCODE_NATIVE_BIN" "$pkgdir/usr/bin/opencode"
+    install -m755 "$OPENCODE_NATIVE_BIN" "$pkgdir/usr/bin/$OPENCODE_BIN_NAME"
 
     # W11: ship the self-activating seccomp shim when the binary references it
     # (DT_NEEDED libopencode-crhandler.so). It must land in usr/lib/opencode/
@@ -45,9 +48,9 @@ package() {
             error "hardened binary references libopencode-crhandler.so but $shim_so is missing (run: make seccomp-harden)"
             return 1
         fi
-        mkdir -p "$pkgdir/usr/lib/opencode"
-        install -m644 "$shim_so" "$pkgdir/usr/lib/opencode/libopencode-crhandler.so"
-        msg "Packaging seccomp shim: $shim_so -> usr/lib/opencode/"
+        mkdir -p "$pkgdir/usr/lib/$OPENCODE_BIN_NAME"
+        install -m644 "$shim_so" "$pkgdir/usr/lib/$OPENCODE_BIN_NAME/libopencode-crhandler.so"
+        msg "Packaging seccomp shim: $shim_so -> usr/lib/$OPENCODE_BIN_NAME/"
     else
         msg "binary is not seccomp-hardened; shipping without libopencode-crhandler.so"
     fi
@@ -55,11 +58,9 @@ package() {
 
 post_install() {
     echo ""
-    echo "OpenCode Native installed (stable mainline since 27/28)"
-    echo "Usage: opencode --version"
-    echo "Scope: full TUI and run/serve. Stable mainline since 27/28."
-    echo "Requires Android API >= 28; zero glibc runtime deps."
-    echo "Glibc appendix alternative: package 'opencode-wrapper'."
+    echo "OpenCode Native installed"
+    echo "Usage: $OPENCODE_BIN_NAME --version"
+    echo "Coexistence: v1 (${OPENCODE_BIN_NAME}=opencode1) and v2 (opencode) install side-by-side; data isolated via *opencode1 dirs."
 }
 
 post_upgrade() {

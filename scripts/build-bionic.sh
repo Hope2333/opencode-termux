@@ -94,19 +94,48 @@ STORE="$SRC_DIR/node_modules/.bun"
 # ── 0.5 install dependencies (required for store/opentui check) ────────
 echo "==> installing dependencies (bun install --force --ignore-scripts + shim)..."
 cd "$SRC_DIR/packages/cli"
-LD_PRELOAD="$OPENAT2_SHIM" "$ANDROID_BUN" install --force --ignore-scripts 2>&1 | tail -3 || {
-  echo "WARN: bun install failed; continuing without store" >&2
-}
+install_ok=0
+for attempt in 1 2 3 4 5; do
+  if LD_PRELOAD="$OPENAT2_SHIM" "$ANDROID_BUN" install --force --ignore-scripts 2>&1 | tail -3; then
+    install_ok=1
+    break
+  fi
+  echo "    WARN: bun install attempt $attempt failed (transient TLS/network?), retrying in $((attempt * 5))s..." >&2
+  sleep $((attempt * 5))
+done
+if [[ $install_ok -ne 1 ]]; then
+  echo "WARN: bun install failed after 5 attempts; continuing without store" >&2
+fi
 cd "$ROOT_DIR"
 cd "$ROOT_DIR"
 
-# ── 0.6 install platform-specific packages (android reports platform=android) ─
-echo "==> installing platform packages (pty, watcher, fonts)..."
+# ── 0.6 install platform-specific packages one-by-one (rc2, #20) ──
+# A single 404 (e.g. @opentui/solid-linux-arm64 has no npm package) aborted the whole
+# batch in RC1, so @opentui/core-linux-arm64 (which carries libopentui.so) was never
+# installed and the glibc store lib got bundled. Install each target separately:
+# mandatory targets hard-fail, optional (musl/solid) warn-and-continue.
+echo "==> installing platform packages one-by-one (pty, watcher, core, fonts)..."
 cd "$SRC_DIR/packages/cli"
-LD_PRELOAD="$OPENAT2_SHIM" "$ANDROID_BUN" install --force --ignore-scripts --os=linux --cpu=arm64 \
-  @opencode-ai/pty-linux-arm64-gnu@0.1.13 @parcel/watcher-linux-arm64-glibc@2.5.1 \
-  @opentui/core-linux-arm64@0.5.10 @opentui/core-linux-arm64-musl@0.5.10 \
-  @opentui/solid-linux-arm64@0.5.10 2>&1 | tail -3 || echo "WARN: platform package install failed" >&2
+for pkg in "@opencode-ai/pty-linux-arm64-gnu@0.1.13" "@parcel/watcher-linux-arm64-glibc@2.5.1" "@opentui/core-linux-arm64@0.5.10"; do
+  pkg_ok=0
+  for attempt in 1 2 3 4 5; do
+    if LD_PRELOAD="$OPENAT2_SHIM" "$ANDROID_BUN" install --force --ignore-scripts --os=linux --cpu=arm64 "$pkg" 2>&1 | tail -2; then
+      pkg_ok=1
+      break
+    fi
+    echo "    WARN: $pkg attempt $attempt failed (transient TLS/network?), retrying in $((attempt * 5))s..." >&2
+    sleep $((attempt * 5))
+  done
+  [[ $pkg_ok -eq 1 ]] || { echo "Error: mandatory platform package failed after 5 attempts: $pkg" >&2; exit 1; }
+  echo "    ^ $pkg"
+done
+for pkg in "@opentui/core-linux-arm64-musl@0.5.10" "@opentui/solid-linux-arm64@0.5.10"; do
+  if LD_PRELOAD="$OPENAT2_SHIM" "$ANDROID_BUN" install --force --ignore-scripts --os=linux --cpu=arm64 "$pkg" >/dev/null 2>&1; then
+    echo "    OK  $pkg"
+  else
+    echo "    WARN (non-fatal): $pkg unavailable"
+  fi
+done
 cd "$ROOT_DIR"
 NEEDED_SYMS=(cancelKittyImageTransport editBufferSetTabWidth getBufferWidthMethod \
   getKittyImageTransport imageCreateFromPixels imageUpdatePixels pollKittyImageTransport \
@@ -208,6 +237,31 @@ cd "$SRC_DIR/packages/cli"
 CHUNK="$(ls -d "$STORE"/@opentui+core@*/ 2>/dev/null | head -n1 || true)"
 : "${CHUNK:?Error: @opentui+core store chunk not found — run 'bun install --force --ignore-scripts' in $SRC_DIR}"
 "$ULW_PATCH" "${CHUNK%/}"
+
+# ── rc2b (#20): re-deploy + sweep AFTER the last bun install, pre-embed ──
+# 1b's `bun install --force` re-extracts pristine glibc store contents and
+# reverts the bionic graft made in the rc2 block above, so re-apply it here —
+# the last moment before build.ts embeds the .so. Then hard-gate EVERY copy.
+echo "==> rc2b: re-deploying bionic libopentui.so (post-1b, pre-embed)..."
+mapfile -t SO_TARGETS < <(find "$SRC_DIR/node_modules" "$SRC_DIR/packages/cli/node_modules" \
+  -name libopentui.so 2>/dev/null | sort -u)
+if [[ ${#SO_TARGETS[@]} -eq 0 ]]; then
+  echo "Error: no libopentui.so under node_modules — unexpected store layout (issue #20)" >&2
+  exit 1
+fi
+for so in "${SO_TARGETS[@]}"; do
+  cp -p "$BUILTIN" "$so"
+  echo "    re-deployed -> $so"
+done
+rc2b_bad=0
+for so in "${SO_TARGETS[@]}"; do
+  if readelf -d "$so" 2>/dev/null | grep -Eq 'NEEDED.*lib(c|m|dl|pthread|rt)\.so\.[0-9]'; then
+    echo "Error: $so still glibc-linked after re-deploy (issue #20)" >&2
+    rc2b_bad=1
+  fi
+done
+[[ $rc2b_bad -eq 0 ]] || exit 1
+echo "    rc2b sweep OK: ${#SO_TARGETS[@]} libopentui.so all bionic"
 
 # ── 3. bundler compile ─────────────────────────────────────────────────
 cd "$SRC_DIR/packages/cli"

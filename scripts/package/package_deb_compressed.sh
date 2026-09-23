@@ -1,14 +1,12 @@
 #!/data/data/com.termux/files/usr/bin/bash
 set -euo pipefail
 
-# Build the opencode-compressed DEB (UPX-packed variant of the native line).
+# Build the opencode1-compressed DEB (UPX-packed variant of the v1 native line).
 #
-# D1 ruling: three mutually exclusive providers —
-#   opencode (native mainline) / opencode-wrapper (glibc appendix) / opencode-compressed.
-# This package Provides: opencode (= version) and Conflicts with ALL other
-# families. It deliberately does NOT declare Replaces: the compressed variant
-# is an alternative, not an upgrade — Replaces would let it silently displace
-# an installed provider and wipe its user data on removal.
+# V2-era ruling: v1 family uses the opencode1* name and installs
+# bin/opencode1 + lib/opencode1 so v1 AND v2 (mainline) can coexist.
+# Provides: opencode1 (= version); Conflicts only with other v1 families.
+# Deliberately no Replaces vs v2: compressed variant is an alternative.
 #
 # Control is generated from the heredoc below (B1 lesson: the packing/deb*/
 # DEBIAN/control template files are orphans; the script heredoc is the true
@@ -61,7 +59,7 @@ rm -rf "$DEB_ROOT"
 mkdir -p "$DEB_ROOT/DEBIAN" "$DEB_ROOT$PREFIX/bin" "$OUT_DIR"
 chmod 755 "$DEB_ROOT" "$DEB_ROOT/DEBIAN"
 
-install -m755 "$COMPRESSED_BIN" "$DEB_ROOT$PREFIX/bin/opencode"
+install -m755 "$COMPRESSED_BIN" "$DEB_ROOT$PREFIX/bin/opencode1"
 
 # crhandler shim (REQUIRED, unconditional): the compressed input is always the
 # hardened native runtime whose DT_NEEDED libopencode-crhandler.so resolves via
@@ -72,7 +70,7 @@ SHIM_SO="${OPENCODE_CRHANDLER_SO:-}"
 	echo "FATAL: OPENCODE_CRHANDLER_SO unset or missing — the compressed family always ships libopencode-crhandler.so" >&2
 	exit 1
 }
-install -D -m755 "$SHIM_SO" "$DEB_ROOT$PREFIX/lib/opencode/libopencode-crhandler.so"
+install -D -m755 "$SHIM_SO" "$DEB_ROOT$PREFIX/lib/opencode1/libopencode-crhandler.so"
 
 # Field order matters (B1 lesson): Conflicts MUST precede Description or it
 # gets swallowed into the description text (illegal field order).
@@ -84,15 +82,14 @@ Priority: optional
 Architecture: $ARCH_DEB
 Maintainer: $MAINTAINER
 Depends:
-Provides: opencode (= $VERSION)
-Conflicts: opencode, opencode-wrapper, opencode-wrapper-standalone
-Description: OpenCode compressed variant (UPX-packed native bionic runtime)
- Size-optimized variant of the native mainline: the revived bionic ELF
- packed with UPX. Zero glibc dependencies, Android API >= 28, bin-direct
- (no wrapper). Mutually exclusive with opencode (native mainline) and
- opencode-wrapper (glibc appendix) and opencode-wrapper-standalone (frozen
- rollback); no Replaces by design - installing this
- variant never silently displaces another provider or wipes its data.
+Provides: opencode1 (= $VERSION)
+Replaces: opencode-compressed (<< 2.0.0)
+Conflicts: opencode1, opencode1-wrapper, opencode1-wrapper-standalone
+Description: OpenCode1 compressed variant (v1 family, UPX-packed bionic runtime)
+ v1-family UPX-packed variant of the native bionic ELF. Zero glibc
+ dependencies, Android API >= 28, bin-direct (no wrapper). Coexists with
+ v2 opencode (mainline) and other opencode1 variants; no Replaces by
+ design - installing this variant never silently displaces a provider.
 EOF
 
 INSTALLED_SIZE=$(du -sk "$DEB_ROOT" | cut -f1)
@@ -101,10 +98,16 @@ echo "Installed-Size: $INSTALLED_SIZE" >>"$DEB_ROOT/DEBIAN/control"
 cat >"$DEB_ROOT/DEBIAN/postinst" <<'POSTINST'
 #!/data/data/com.termux/files/usr/bin/bash
 set -e
-echo "OpenCode compressed variant installed (UPX-packed native bionic runtime)"
-echo "Run: opencode --version"
-echo "Scope: same runtime as the native mainline, UPX-packed for size."
-echo "Mutually exclusive with opencode, opencode-wrapper and opencode-wrapper-standalone (no Replaces: variant, not upgrade)."
+# v1 compressed (opencode1) install hook — auto-migrate pre-v2-era config once.
+CFG_DIR="$(printf '%s' "${XDG_CONFIG_HOME:-$HOME/.config}/opencode")"
+echo "OpenCode1 compressed variant installed (UPX-packed v1 bionic runtime; coexists with v2 opencode)"
+echo "Run: opencode1 --version"
+if [ -e "$CFG_DIR" ] && [ ! -e "${CFG_DIR}1" ] && command -v migrate-to-opencode1.sh >/dev/null 2>&1; then
+  echo "Detected pre-v2-era opencode config; migrating to ${CFG_DIR}1 ..."
+  migrate-to-opencode1.sh isolate >/dev/null 2>&1 && echo "Migrated: v1 config now under *opencode1 dirs." || echo "Migration skipped (already isolated or no v1 data)."
+else
+  echo "No legacy v1 config found (or already isolated); nothing to migrate."
+fi
 exit 0
 POSTINST
 chmod 755 "$DEB_ROOT/DEBIAN/postinst"
@@ -114,8 +117,8 @@ dpkg-deb --build -Zgzip -z6 "$DEB_ROOT" "$OUT_FILE"
 echo "Compressed DEB package created: $OUT_FILE"
 
 # crhandler guard (unconditional): the deb MUST contain the shim.
-dpkg-deb -c "$OUT_FILE" | grep -q "lib/opencode/libopencode-crhandler.so" || {
-	echo "FATAL: deb does not ship libopencode-crhandler.so" >&2
+dpkg-deb -c "$OUT_FILE" | grep -q "lib/opencode1/libopencode-crhandler.so" || {
+	echo "FATAL: deb does not ship libopencode1/libopencode-crhandler.so" >&2
 	exit 1
 }
 echo "crhandler guard: OK (shim shipped)"

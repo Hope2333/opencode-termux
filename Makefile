@@ -725,7 +725,8 @@ release-upload:
 V2_SRC ?=
 V2_BUILD_ROOT ?= artifacts/build
 V2_WRAP_ROOT ?= artifacts/wrapper
-V2_WRAPPER_STANDALONE ?= $(V2_WRAP_ROOT)/wrapper-standalone/opencode
+V2_WRAPPER_INPUT ?=
+V2_GLIBC_TGZ ?= /data/data/com.termux/files/usr/tmp
 V2_LOADER_ROOT ?= $(shell if [ -d $(HOME)/bun-termux-loader ]; then echo $(HOME)/bun-termux-loader; else echo $(HOME)/.local/share/bun-termux-loader; fi)
 
 # build-native: B-line compile (android bun) -> artifacts/build/<ver>/opencode-native-revived
@@ -804,9 +805,14 @@ harden-native:
 	echo "harden-native: pre-patch copy kept at $$src.pre-crhandler"
 
 
-# wrapper-native: bun-termux-loader wrap of the v2 wrapper standalone
+# wrapper-native: bun-termux-loader wrap of the PER-VERSION glibc standalone
 # Produces artifacts/wrapper/<ver>/opencode-wrapper-<ver> (bionic, TUI-capable)
-# Input: standalone wrapper ELF (from opencode.ai direct link / npm platform pkg).
+# Input resolution (root-cause fix for the same-source bug — never share one input):
+#   V2_WRAPPER_INPUT set  -> use it verbatim
+#   VER=2.0.0            -> $(V2_WRAP_ROOT)/glibc-standalone/opencode
+#   VER=2.0.x            -> extract package/bin/opencode from
+#                           $(V2_GLIBC_TGZ)/opencode-cli-linux-arm64-<ver>.tgz
+# Exact version gate: wrapped --version MUST equal "opencode v$(VER)".
 .PHONY: wrapper-native
 wrapper-native:
 	@if [ -z "$(VER_IS_SET)" ]; then \
@@ -817,18 +823,34 @@ wrapper-native:
 		echo "Error: bun-termux-loader not found at $(V2_LOADER_ROOT) (clone https://github.com/emberglazee/bun-termux-loader)"; \
 		exit 1; \
 	fi
-	@if [ ! -x "$(V2_WRAPPER_STANDALONE)" ]; then \
-		echo "Error: wrapper standalone not found: $(V2_WRAPPER_STANDALONE)"; \
-		echo "  Place the v2 wrapper standalone ELF at $(V2_WRAP_ROOT)/wrapper-standalone/opencode"; \
-		exit 1; \
-	fi
 	@mkdir -p artifacts/wrapper/$(VER)
-	python3 $(V2_LOADER_ROOT)/build.py $(V2_WRAPPER_STANDALONE) artifacts/wrapper/$(VER)/opencode-wrapper-$(VER) --wrapper $(V2_LOADER_ROOT)/wrapper --shim $(V2_LOADER_ROOT)/bunfs_shim.so
+	@set -e; \
+	if [ -n "$(V2_WRAPPER_INPUT)" ]; then \
+		src="$(V2_WRAPPER_INPUT)"; \
+	elif [ "$(VER)" = "2.0.0" ]; then \
+		src="$(V2_WRAP_ROOT)/glibc-standalone/opencode"; \
+	else \
+		tgz="$(V2_GLIBC_TGZ)/opencode-cli-linux-arm64-$(VER).tgz"; \
+		if [ ! -f "$$tgz" ]; then echo "Error: glibc tgz not found: $$tgz"; exit 1; fi; \
+		src="$$(mktemp artifacts/wrapper/$(VER)/.input-XXXXXX)"; \
+		tar -xzf "$$tgz" -O package/bin/opencode > "$$src"; \
+		chmod +x "$$src"; \
+	fi; \
+	if [ ! -x "$$src" ]; then echo "Error: wrap input not executable: $$src"; exit 1; fi; \
+	python3 $(V2_LOADER_ROOT)/build.py "$$src" artifacts/wrapper/$(VER)/opencode-wrapper-$(VER) --wrapper $(V2_LOADER_ROOT)/wrapper --shim $(V2_LOADER_ROOT)/bunfs_shim.so; \
+	rm -f artifacts/wrapper/$(VER)/.input-*
+	@v="$$(artifacts/wrapper/$(VER)/opencode-wrapper-$(VER) --version 2>&1 | grep -oE 'opencode v[0-9][0-9a-z.]*' | head -1)"; \
+	if [ "$$v" != "opencode v$(VER)" ]; then \
+		echo "Error: wrapper version gate failed: want [opencode v$(VER)] got [$$v]"; \
+		exit 1; \
+	fi; \
+	echo "==> wrapper version gate: $$v"
 	@sha256sum artifacts/wrapper/$(VER)/opencode-wrapper-$(VER) | awk '{print $$1}' | tee artifacts/wrapper/$(VER)/wrapper.sha256
 	@echo "==> wrapper: artifacts/wrapper/$(VER)/opencode-wrapper-$(VER) ($$(stat -c%s artifacts/wrapper/$(VER)/opencode-wrapper-$(VER)) B)"
 
-# family-v2-wrapper: wrap + version smoke (no packaging: wrapper line is
-# documented/reserve only for v2; shipping goes via native line)
+# family-v2-wrapper: per-version wrap + exact version gate + deb/pacman packaging
+# (scripts/package/package_wrapper_v2.sh: payload $PREFIX/bin/opencode + usr/bin/opencode,
+#  control/PKGBUILD fields = archived verbatim decision artifacts)
 .PHONY: family-v2-wrapper
 family-v2-wrapper:
 	@if [ -z "$(VER_IS_SET)" ]; then \
@@ -836,26 +858,4 @@ family-v2-wrapper:
 		exit 1; \
 	fi
 	$(MAKE) --no-print-directory wrapper-native VER=$(VER)
-	@echo "==> wrapper smoke:"
-	artifacts/wrapper/$(VER)/opencode-wrapper-$(VER) --version
-
-
-	@if [ -z "$(VER_IS_SET)" ]; then \
-		echo "Error: VER is required. Example: make harden-native VER=2.0.0"; \
-		exit 1; \
-	fi
-	src="$(CURDIR)/artifacts/build/$(VER)/opencode-native-revived"; \
-	if [ ! -f "$$src" ]; then \
-		echo "Error: $$src missing; run 'make build-native VER=$(VER)' first"; \
-		exit 1; \
-	fi; \
-	echo "==> harden-native VER=$(VER)"; \
-	clang -shared -fPIC -O2 -o "$(CURDIR)/artifacts/build/$(VER)/libopencode-crhandler.so" tools/shim/sigsys_handler.c || exit 1; \
-	out="$(CURDIR)/artifacts/build/$(VER)/opencode-native-revived-crh"; \
-	if [ -f "$$out" ] && grep -aqF "libopencode-crhandler.so" "$$out"; then \
-		echo "==> already hardened, skip"; \
-		exit 0; \
-	fi; \
-	cp -p "$$src" "$$out" || exit 1; \
-	python3 tools/transplant/crhandler_patch.py "$$out" || exit 1; \
-	echo "harden-native: hardened COPY at $$out; main product $$src pristine"
+	bash scripts/package/package_wrapper_v2.sh $(VER)

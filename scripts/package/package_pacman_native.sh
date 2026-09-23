@@ -67,7 +67,18 @@ sed -i "s/^pkgver=.*/pkgver=$VERSION/" "$TMP_PKGBUILD"
 sed -i "s/^pkgrel=.*/pkgrel=$PKGREL/" "$TMP_PKGBUILD"
 sed -i "s/^pkgname=.*/pkgname=$PKG_NAME/" "$TMP_PKGBUILD"
 
-OPENCODE_NATIVE_BIN="$NATIVE_BIN" REPO_ROOT="$ROOT_DIR" makepkg --config "$TMP_MAKEPKG_CONF" -f --noconfirm -p "$TMP_PKGBUILD"
+# v1 (opencode1) upgrade chain: old v1 opencode (<2.0.0) upgrades into this family
+if [[ "$PKG_NAME" == "opencode1" ]]; then
+    sed -i "s/^replaces=.*/replaces=('opencode<2.0.0' 'opencode-compressed<2.0.0')/" "$TMP_PKGBUILD"
+    sed -i "s/^conflicts=.*/conflicts=('opencode<2.0.0' 'opencode1-compressed' 'opencode1-wrapper' 'opencode1-wrapper-standalone')/" "$TMP_PKGBUILD"
+    OPENCODE_BIN_NAME="opencode1"
+else
+    sed -i "s/^replaces=.*/replaces=()/" "$TMP_PKGBUILD"
+    sed -i "s/^conflicts=.*/conflicts=()/" "$TMP_PKGBUILD"
+    OPENCODE_BIN_NAME="opencode"
+fi
+
+OPENCODE_NATIVE_BIN="$NATIVE_BIN" OPENCODE_BIN_NAME="$OPENCODE_BIN_NAME" REPO_ROOT="$ROOT_DIR" makepkg --config "$TMP_MAKEPKG_CONF" -f --noconfirm -p "$TMP_PKGBUILD"
 
 echo "Native pacman package created under: $ROOT_DIR/packing/pacman"
 
