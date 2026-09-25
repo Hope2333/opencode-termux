@@ -78,9 +78,39 @@ else
     OPENCODE_BIN_NAME="opencode"
 fi
 
-OPENCODE_NATIVE_BIN="$NATIVE_BIN" OPENCODE_BIN_NAME="$OPENCODE_BIN_NAME" REPO_ROOT="$ROOT_DIR" makepkg --config "$TMP_MAKEPKG_CONF" -f --noconfirm -p "$TMP_PKGBUILD"
+# v12.0: write the install script (.INSTALL) consumed by makepkg's install= var.
+cat > "$ROOT_DIR/packing/pacman/opencode.install" <<'OINST'
+# v12.0: pacman-side install hook, mirroring deb postinst (package_deb_native.sh).
+# $PKG_NAME is injected as an env var into makepkg; post_install reads it to tell
+# v1 (opencode1) from v2 (opencode) installs and run the data migration exactly once.
+post_install() {
+    echo ""
+    if [ "$PKG_NAME" = "opencode1" ]; then
+        echo "OpenCode1 (v1 family) installed - coexists with v2 opencode."
+        CFG_DIR="$(printf '%s' "${XDG_CONFIG_HOME:-$HOME/.config}/opencode")"
+        if [ -e "$CFG_DIR" ] && [ ! -e "${CFG_DIR}1" ] && command -v migrate-to-opencode1.sh >/dev/null 2>&1; then
+            echo "Detected pre-v2-era opencode config; migrating to ${CFG_DIR}1 ..."
+            migrate-to-opencode1.sh isolate >/dev/null 2>&1 \
+                && echo "Migrated: v1 config now under *opencode1 dirs." \
+                || echo "Migration skipped (already isolated or no v1 data)."
+        else
+            echo "No legacy v1 config found (or already isolated); nothing to migrate."
+        fi
+    else
+        echo "OpenCode v2 (mainline) installed - coexists with v1 opencode1."
+        echo "Usage: opencode --version"
+    fi
+}
+
+post_upgrade() {
+    post_install
+}
+OINST
+
+PKG_NAME="$PKG_NAME" OPENCODE_NATIVE_BIN="$NATIVE_BIN" OPENCODE_BIN_NAME="$OPENCODE_BIN_NAME" REPO_ROOT="$ROOT_DIR" makepkg --config "$TMP_MAKEPKG_CONF" -f --noconfirm -p "$TMP_PKGBUILD"
 
 echo "Native pacman package created under: $ROOT_DIR/packing/pacman"
+rm -f "$ROOT_DIR/packing/pacman/opencode.install"
 
 # --- Regression guard: reject packages with data/ payload paths (double-prefix bug) ---
 BUILT_PKG=$(ls "$ROOT_DIR/packing/pacman/${PKG_NAME}-${VERSION}-${PKGREL}-aarch64.pkg.tar.xz" 2>/dev/null || true)

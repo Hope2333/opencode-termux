@@ -21,6 +21,7 @@ replaces=()
 
 source=()
 sha256sums=()
+install="opencode.install"
 
 # Location of the revived native binary, injected by the packaging script.
 : "${OPENCODE_NATIVE_BIN:?OPENCODE_NATIVE_BIN must point to opencode-native-revived}"
@@ -56,13 +57,4 @@ package() {
     fi
 }
 
-post_install() {
-    echo ""
-    echo "OpenCode Native installed"
-    echo "Usage: $OPENCODE_BIN_NAME --version"
-    echo "Coexistence: v1 (${OPENCODE_BIN_NAME}=opencode1) and v2 (opencode) install side-by-side; data isolated via *opencode1 dirs."
-}
-
-post_upgrade() {
-    post_install
-}
+# v12.0: install script (post_install/post_upgrade migration hook)
