@@ -37,7 +37,13 @@ package() {
     # usr/bin/opencode — avoids double-prefix on `pacman -U` install (RootDir
     # /data/data/com.termux/files + usr/bin/opencode = correct single-prefix).
     mkdir -p "$pkgdir/usr/bin"
-    install -m755 "$OPENCODE_NATIVE_BIN" "$pkgdir/usr/bin/$OPENCODE_BIN_NAME"
+    if [[ "$OPENCODE_BIN_NAME" == "opencode1" ]]; then
+        # v12.1 layered: bare runtime + XDG-isolating launcher (v2 stays bin-direct)
+        install -D -m755 "$OPENCODE_NATIVE_BIN" "$pkgdir/usr/lib/opencode1/runtime/opencode"
+        install -D -m755 "${REPO_ROOT:?REPO_ROOT must point at the repo root}/scripts/opencode1-launcher.sh" "$pkgdir/usr/bin/opencode1"
+    else
+        install -m755 "$OPENCODE_NATIVE_BIN" "$pkgdir/usr/bin/$OPENCODE_BIN_NAME"
+    fi
 
     # v12.0: v1 packages ship the migration helper the .INSTALL hook calls
     # (opencode1 only — v2 installs never run the migration branch).

@@ -59,7 +59,12 @@ rm -rf "$DEB_ROOT"
 mkdir -p "$DEB_ROOT/DEBIAN" "$DEB_ROOT$PREFIX/bin" "$OUT_DIR"
 chmod 755 "$DEB_ROOT" "$DEB_ROOT/DEBIAN"
 
-install -m755 "$COMPRESSED_BIN" "$DEB_ROOT$PREFIX/bin/opencode1"
+[[ -f "$ROOT_DIR/scripts/opencode1-launcher.sh" ]] || {
+	echo "Error: scripts/opencode1-launcher.sh missing (v1 launcher source)" >&2; exit 1; }
+# v12.1 layered: UPX runtime under lib/opencode1/runtime/ + XDG-isolating
+# launcher (shim stays lib/opencode1/ — launcher LD covers both roots)
+install -D -m755 "$COMPRESSED_BIN" "$DEB_ROOT$PREFIX/lib/opencode1/runtime/opencode"
+install -D -m755 "$ROOT_DIR/scripts/opencode1-launcher.sh" "$DEB_ROOT$PREFIX/bin/opencode1"
 
 # crhandler shim (REQUIRED, unconditional): the compressed input is always the
 # hardened native runtime whose DT_NEEDED libopencode-crhandler.so resolves via
@@ -76,7 +81,7 @@ install -D -m755 "$SHIM_SO" "$DEB_ROOT$PREFIX/lib/opencode1/libopencode-crhandle
 # gets swallowed into the description text (illegal field order).
 cat >"$DEB_ROOT/DEBIAN/control" <<EOF
 Package: opencode1-compressed
-Version: $VERSION
+Version: $VERSION${DEB_REV:-}
 Section: utils
 Priority: optional
 Architecture: $ARCH_DEB

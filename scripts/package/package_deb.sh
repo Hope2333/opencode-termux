@@ -44,11 +44,17 @@ OUT_FILE="$OUT_DIR/opencode1-wrapper_${VERSION}_${ARCH_DEB}.deb"
 rm -rf "$DEB_ROOT"
 mkdir -p "$DEB_ROOT/DEBIAN" "$DEB_ROOT$PREFIX" "$OUT_DIR"
 chmod 755 "$DEB_ROOT" "$DEB_ROOT/DEBIAN"
-install -D -m755 "$STAGED_PREFIX/bin/opencode" "$DEB_ROOT$PREFIX/bin/opencode1"
+[[ -f "$ROOT_DIR/scripts/opencode1-launcher.sh" ]] || {
+	echo "Error: scripts/opencode1-launcher.sh missing (launcher source)" >&2; exit 1; }
+# v12.1 layered: staged runtime (identical sha to staged bin) ships at its
+# native path + XDG-isolating launcher at bin/opencode1 (previously the staged
+# runtime was asserted but never shipped).
+install -D -m755 "$STAGED_PREFIX/lib/opencode/runtime/opencode" "$DEB_ROOT$PREFIX/lib/opencode/runtime/opencode"
+install -D -m755 "$ROOT_DIR/scripts/opencode1-launcher.sh" "$DEB_ROOT$PREFIX/bin/opencode1"
 
 cat >"$DEB_ROOT/DEBIAN/control" <<EOF
 Package: opencode1-wrapper
-Version: $VERSION
+Version: $VERSION${DEB_REV:-}
 Architecture: $ARCH_DEB
 Maintainer: $MAINTAINER
 Section: utils

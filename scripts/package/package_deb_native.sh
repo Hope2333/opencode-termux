@@ -67,7 +67,17 @@ mkdir -p "$DEB_ROOT/DEBIAN" "$DEB_ROOT$PREFIX/bin" "$OUT_DIR"
 chmod 755 "$DEB_ROOT" "$DEB_ROOT/DEBIAN"
 
 if [[ "$VERSION" == 1.* ]]; then BIN_NAME="opencode1"; LIB_DIR="opencode1"; else BIN_NAME="opencode"; LIB_DIR="opencode"; fi
-install -m755 "$NATIVE_BIN" "$DEB_ROOT$PREFIX/bin/$BIN_NAME"
+[[ -f "$ROOT_DIR/scripts/opencode1-launcher.sh" ]] || {
+	echo "Error: scripts/opencode1-launcher.sh missing (v1 launcher source)" >&2; exit 1; }
+if [[ "$VERSION" == 1.* ]]; then
+	# v12.1: v1 layered — bare runtime under lib/opencode1/runtime/ (DT_RUNPATH
+	# $ORIGIN/../lib/opencode resolved via the launcher's LD_LIBRARY_PATH) +
+	# the XDG-isolating launcher at bin/opencode1. v2 stays bin-direct.
+	install -D -m755 "$NATIVE_BIN" "$DEB_ROOT$PREFIX/lib/opencode1/runtime/opencode"
+	install -D -m755 "$ROOT_DIR/scripts/opencode1-launcher.sh" "$DEB_ROOT$PREFIX/bin/opencode1"
+else
+	install -m755 "$NATIVE_BIN" "$DEB_ROOT$PREFIX/bin/$BIN_NAME"
+fi
 # v12.0: the postinst migration branch needs migrate-to-opencode1.sh on the
 # user's PATH — ship it alongside (v1 packages only; v2 branch never calls it).
 if [[ "$VERSION" == 1.* ]]; then
@@ -97,7 +107,7 @@ fi
 
 cat >"$DEB_ROOT/DEBIAN/control" <<EOF
 Package: $PKG_NAME
-Version: $VERSION
+Version: $VERSION${DEB_REV:-}
 Architecture: $ARCH_DEB
 Maintainer: $MAINTAINER
 Section: utils
@@ -122,9 +132,9 @@ CFG_DIR="$(printf '%s' "${XDG_CONFIG_HOME:-$HOME/.config}/opencode")"
 case "${PKG_NAME:-$DPKG_MAINTSCRIPT_PACKAGE}" in
   opencode1)
     echo "OpenCode1 (v1 family) installed — coexists with v2 opencode."
-    if [ -e "$CFG_DIR" ] && [ ! -e "${CFG_DIR}1" ] && command -v migrate-to-opencode1.sh >/dev/null 2>&1; then
-      echo "Detected pre-v2-era opencode config; migrating to ${CFG_DIR}1 ..."
-      migrate-to-opencode1.sh isolate >/dev/null 2>&1 && echo "Migrated: v1 config now under *opencode1 dirs." || echo "Migration skipped (already isolated or no v1 data)."
+    if { [ -e "$CFG_DIR" ] || [ -d "${CFG_DIR}1" ]; } && command -v migrate-to-opencode1.sh >/dev/null 2>&1; then
+      echo "Running opencode1 data isolation (nested layout, idempotent) ..."
+      migrate-to-opencode1.sh isolate >/dev/null 2>&1 && echo "Migrated: v1 config now under opencode1/opencode (nested), plugins auto-patched." || echo "Migration skipped (already isolated or no v1 data)."
     else
       echo "No legacy v1 config found (or already isolated); nothing to migrate."
     fi

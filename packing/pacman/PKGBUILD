@@ -34,6 +34,8 @@ build() {
 }
 
 package() {
-  mkdir -p "$pkgdir/usr/bin"
-  install -D -m755 "${_staged_prefix}/bin/opencode" "$pkgdir/usr/bin/opencode1"
+  # v12.1 layered: wrapper runtime keeps lib/opencode/runtime/ + XDG-isolating launcher
+  mkdir -p "$pkgdir/usr/bin" "$pkgdir/usr/lib/opencode/runtime"
+  install -D -m755 "${_staged_prefix}/lib/opencode/runtime/opencode" "$pkgdir/usr/lib/opencode/runtime/opencode"
+  install -D -m755 "${REPO_ROOT:?REPO_ROOT must point at the repo root}/scripts/opencode1-launcher.sh" "$pkgdir/usr/bin/opencode1"
 }
