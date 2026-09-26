@@ -111,6 +111,9 @@ fi
 exit 0
 POSTINST
 chmod 755 "$DEB_ROOT/DEBIAN/postinst"
+# v12.0: ship the migration helper the postinst branch calls (compressed is v1-only)
+install -m755 "$ROOT_DIR/scripts/migrate-to-opencode1.sh" "$DEB_ROOT$PREFIX/bin/migrate-to-opencode1.sh"
+echo "Packaged migrate-to-opencode1.sh (v1 migration helper)"
 
 # Compressed family uses fast gzip wrap because the payload ELF is already UPX-packed.
 dpkg-deb --build -Zgzip -z6 "$DEB_ROOT" "$OUT_FILE"
