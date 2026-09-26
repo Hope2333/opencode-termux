@@ -28,7 +28,9 @@ set -euo pipefail
 #   V2_SRC             v2 monorepo root (contains packages/cli/script/build.ts)
 #                      default: $HOME/develop/opencode-src/opencode-<VER> or
 #                      $(TMPDIR)/v2probe/opencode-src/opencode-<VER>
-#   ANDROID_BUN        android bun binary (default: artifacts/transplant/android-bun/bun-1.4.2/bun)
+#   ANDROID_BUN        android bun binary (default: artifacts/transplant/android-bun/bun-1.4.0/bun)
+#                      Fixes #23 for the B line: bun-1.4.2 segfaults at 0x40 on
+#                      Android/bionic; pin 1.4.0 like the A line bind-target.
 #   OPENAT2_SHIM       openat2/fchmodat2 LD_PRELOAD shim (default: tools/transplant/toolchain/openat2_shim.so)
 #   OPENTUI_REBUILD    1 = force rebuild of the bionic libopentui.so (default 0 = only when broken)
 #   OPENCODE_VERSION   version string embedded in the binary (default: VER)
@@ -75,7 +77,10 @@ fi
   SRC_DIR="$EXTRACT_DIR"
 }
 
-ANDROID_BUN="${ANDROID_BUN:-$ROOT_DIR/artifacts/transplant/android-bun/bun-1.4.2/bun}"
+# Fixes #23 (B line): default to bun-1.4.0 — 1.4.2 panics "Segmentation fault
+# at address 0x40" on Android/bionic during TUI startup (EXIT 139, reproduced).
+# Same pin as tools/transplant/config/bun-bind.json target; override via env ANDROID_BUN.
+ANDROID_BUN="${ANDROID_BUN:-$ROOT_DIR/artifacts/transplant/android-bun/bun-1.4.0/bun}"
 OPENAT2_SHIM="${OPENAT2_SHIM:-$ROOT_DIR/tools/transplant/toolchain/openat2_shim.so}"
 BUILD_ROOT="${BUILD_ROOT:-$ROOT_DIR/artifacts/build}"
 OUT_DIR="$BUILD_ROOT/$VER"
@@ -237,6 +242,20 @@ cd "$SRC_DIR/packages/cli"
 CHUNK="$(ls -d "$STORE"/@opentui+core@*/ 2>/dev/null | head -n1 || true)"
 : "${CHUNK:?Error: @opentui+core store chunk not found — run 'bun install --force --ignore-scripts' in $SRC_DIR}"
 "$ULW_PATCH" "${CHUNK%/}"
+
+# ── bun pin (#23): upstream packageManager gate wants ^1.4.2, but bun 1.4.2
+# segfaults on Android/bionic TUI (0x40). Rewrite package.json so the build
+# script's semver gate (packages/script/src/index.ts ^range) accepts our
+# pinned bun-1.4.0 — the bundled runtime is what crashes, so building with
+# 1.4.0 ships a non-crashing binary. Idempotent; re-applied after every
+# source re-extract.
+PM_PKG="$SRC_DIR/package.json"
+if grep -q '"packageManager": "bun@' "$PM_PKG"; then
+  sed -i -E 's/"packageManager": "bun@[0-9]+\.[0-9]+\.[0-9]+"/"packageManager": "bun@1.4.0"/' "$PM_PKG"
+fi
+grep -q '"packageManager": "bun@1.4.0"' "$PM_PKG" || {
+  echo "Error: packageManager pin to bun@1.4.0 failed ($PM_PKG)" >&2; exit 1; }
+echo "==> bun pin: package.json packageManager -> bun@1.4.0 (upstream gate accept)"
 
 # ── rc2b (#20): re-deploy + sweep AFTER the last bun install, pre-embed ──
 # 1b's `bun install --force` re-extracts pristine glibc store contents and
