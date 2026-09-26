@@ -134,7 +134,19 @@ case "${PKG_NAME:-$DPKG_MAINTSCRIPT_PACKAGE}" in
     echo "OpenCode1 (v1 family) installed — coexists with v2 opencode."
     if { [ -e "$CFG_DIR" ] || [ -d "${CFG_DIR}1" ]; } && command -v migrate-to-opencode1.sh >/dev/null 2>&1; then
       echo "Running opencode1 data isolation (nested layout, idempotent) ..."
-      migrate-to-opencode1.sh isolate >/dev/null 2>&1 && echo "Migrated: v1 config now under opencode1/opencode (nested), plugins auto-patched." || echo "Migration skipped (already isolated or no v1 data)."
+      migrate-to-opencode1.sh isolate >/dev/null 2>&1 && echo "Migrated: v1 config now under opencode1/opencode (nested), plugins auto-patched." || {
+        echo "Migration skipped (already isolated or no v1 data)."
+        # v2 guard may have blocked the plain->nested move. If v1-era leftovers
+        # still live at the plain roots, surface the explicit recovery path.
+        if { [ -f "${HOME}/.local/share/opencode/opencode.db" ] || [ -d "${XDG_CONFIG_HOME:-$HOME/.config}/opencode" ]; } \
+           && [ ! -e "${HOME}/.local/share/opencode1/opencode/opencode.db" ] \
+           && command -v migrate-to-opencode1.sh >/dev/null 2>&1; then
+          echo "NOTE: v1-era data still at the plain opencode/ roots and the opencode1"
+          echo "      nested roots are empty. If those plain dirs hold v1 leftovers you"
+          echo "      want opencode1 to see, run:  migrate-to-opencode1.sh isolate --take-plain"
+          echo "      (skipped automatically because a v2 opencode package is installed)."
+        fi
+      }
     else
       echo "No legacy v1 config found (or already isolated); nothing to migrate."
     fi

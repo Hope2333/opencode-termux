@@ -5,6 +5,9 @@
 # (Breaks/Conflicts/Replaces). This script handles the DATA side of the rename:
 #   backup   timestamped tarball of v1 data/config/cache/state
 #   isolate  move/reshape data into the NESTED opencode1 layout + auto-patch plugins
+#            (--take-plain: force-move plain dirs into nested even when a v2 opencode
+#             package is installed — use ONLY when the plain dirs hold v1-era leftovers
+#             and the nested opencode1 roots are still empty)
 #   patch    re-run only the plugin path patch (after plugin updates)
 #   restore  restore the newest (or given) backup
 #   status   show which dirs exist and which mode fits your install
@@ -292,7 +295,15 @@ usage() {
 main() {
   case "${1:-}" in
     backup)  cmd_backup ;;
-    isolate) cmd_isolate ;;
+    isolate)
+        case "${2:-}" in
+            --take-plain|--merge-plain)
+                OPENCODE_MIGRATE_TAKE_PLAIN=1
+                note "isolate --${2#--}: forcing plain -> nested move (v2 guard overridden)"
+                cmd_isolate ;;
+            *) cmd_isolate ;;
+        esac ;;
+
     patch)   patch_plugins ;;
     restore) cmd_restore "${2:-}" ;;
     status)  cmd_status ;;
