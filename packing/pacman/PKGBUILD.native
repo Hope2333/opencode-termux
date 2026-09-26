@@ -39,6 +39,13 @@ package() {
     mkdir -p "$pkgdir/usr/bin"
     install -m755 "$OPENCODE_NATIVE_BIN" "$pkgdir/usr/bin/$OPENCODE_BIN_NAME"
 
+    # v12.0: v1 packages ship the migration helper the .INSTALL hook calls
+    # (opencode1 only — v2 installs never run the migration branch).
+    if [[ "$OPENCODE_BIN_NAME" == "opencode1" ]]; then
+        install -m755 "$REPO_ROOT/scripts/migrate-to-opencode1.sh" "$pkgdir/usr/bin/migrate-to-opencode1.sh"
+        msg "Packaged migrate-to-opencode1.sh (v1 migration helper)"
+    fi
+
     # W11: ship the self-activating seccomp shim when the binary references it
     # (DT_NEEDED libopencode-crhandler.so). It must land in usr/lib/opencode/
     # to satisfy the binary's DT_RUNPATH $ORIGIN/../lib/opencode.
@@ -49,9 +56,11 @@ package() {
             error "hardened binary references libopencode-crhandler.so but $shim_so is missing (run: make seccomp-harden)"
             return 1
         fi
-        mkdir -p "$pkgdir/usr/lib/$OPENCODE_BIN_NAME"
-        install -m644 "$shim_so" "$pkgdir/usr/lib/$OPENCODE_BIN_NAME/libopencode-crhandler.so"
-        msg "Packaging seccomp shim: $shim_so -> usr/lib/$OPENCODE_BIN_NAME/"
+        # pinned to usr/lib/opencode = binary DT_RUNPATH $ORIGIN/../lib/opencode;
+        # must NOT follow OPENCODE_BIN_NAME (opencode1 rename broke the link)
+        mkdir -p "$pkgdir/usr/lib/opencode"
+        install -m644 "$shim_so" "$pkgdir/usr/lib/opencode/libopencode-crhandler.so"
+        msg "Packaging seccomp shim: $shim_so -> usr/lib/opencode/"
     else
         msg "binary is not seccomp-hardened; shipping without libopencode-crhandler.so"
     fi

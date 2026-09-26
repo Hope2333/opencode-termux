@@ -107,6 +107,14 @@ post_upgrade() {
 }
 OINST
 
+# v12.0 bake: .INSTALL runs at pacman-install time where $PKG_NAME does NOT
+# exist (makepkg env injection is build-time only) — replace the runtime
+# test with the build-time literal so each family package prints its own
+# branch unconditionally.
+sed -i "s/if \[ \"\$PKG_NAME\" = \"opencode1\"/if [ \"$PKG_NAME\" = \"opencode1\"/" "$ROOT_DIR/packing/pacman/opencode.install"
+grep -qF "if [ \"$PKG_NAME\" = \"opencode1\"" "$ROOT_DIR/packing/pacman/opencode.install" || {
+    echo "Error: .INSTALL PKG_NAME bake failed" >&2; exit 1; }
+
 PKG_NAME="$PKG_NAME" OPENCODE_NATIVE_BIN="$NATIVE_BIN" OPENCODE_BIN_NAME="$OPENCODE_BIN_NAME" REPO_ROOT="$ROOT_DIR" makepkg --config "$TMP_MAKEPKG_CONF" -f --noconfirm -p "$TMP_PKGBUILD"
 
 echo "Native pacman package created under: $ROOT_DIR/packing/pacman"

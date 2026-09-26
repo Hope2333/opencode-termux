@@ -185,8 +185,14 @@ def resolve_bun_base(
     trial: list = []
     chosen = None
 
-    # --- level 1: local cache ---
-    for c in _scan_local_buns(cache_dir):
+    # --- level 1: local cache (target-priority: bun-bind.json['target'] wins
+    #     among cached candidates; other satisfying versions stay as fallback.
+    #     Fixes #23: a stray bun-1.4.2 in cache silently shipped over the
+    #     declared 1.4.0 target and segfaulted at 0x40 on Android16/SVE.) ---
+    cands = [c for c in _scan_local_buns(cache_dir)
+             if _satisfies(c["version"], graph_format, min_base)]
+    cands.sort(key=lambda c: (c["version"] != target, c["version"]))
+    for c in cands:
         ok = _satisfies(c["version"], graph_format, min_base)
         entry = {
             "level": "local-cache",

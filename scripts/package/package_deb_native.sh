@@ -68,6 +68,12 @@ chmod 755 "$DEB_ROOT" "$DEB_ROOT/DEBIAN"
 
 if [[ "$VERSION" == 1.* ]]; then BIN_NAME="opencode1"; LIB_DIR="opencode1"; else BIN_NAME="opencode"; LIB_DIR="opencode"; fi
 install -m755 "$NATIVE_BIN" "$DEB_ROOT$PREFIX/bin/$BIN_NAME"
+# v12.0: the postinst migration branch needs migrate-to-opencode1.sh on the
+# user's PATH — ship it alongside (v1 packages only; v2 branch never calls it).
+if [[ "$VERSION" == 1.* ]]; then
+	install -m755 "$ROOT_DIR/scripts/migrate-to-opencode1.sh" "$DEB_ROOT$PREFIX/bin/migrate-to-opencode1.sh"
+	echo "Packaged migrate-to-opencode1.sh (v1 migration helper)"
+fi
 
 # W11: ship the self-activating seccomp shim when the binary references it
 # (DT_NEEDED libopencode-crhandler.so). It must land in $PREFIX/lib/opencode/
@@ -79,9 +85,12 @@ if grep -aqF libopencode-crhandler.so "$NATIVE_BIN"; then
 		echo "       (run: make seccomp-harden VER=$VERSION)" >&2
 		exit 1
 	fi
-	mkdir -p "$DEB_ROOT$PREFIX/lib/$LIB_DIR"
-	install -m644 "$SHIM_SO" "$DEB_ROOT$PREFIX/lib/$LIB_DIR/libopencode-crhandler.so"
-	echo "Packaging seccomp shim: $SHIM_SO -> $PREFIX/lib/$LIB_DIR/"
+	# shim dir is pinned to lib/opencode (the binary's DT_RUNPATH
+	# $ORIGIN/../lib/opencode) — renaming the dir with the opencode1
+	# package rename broke CANNOT LINK for any hardened v1 build (#23-adjacent).
+	mkdir -p "$DEB_ROOT$PREFIX/lib/opencode"
+	install -m644 "$SHIM_SO" "$DEB_ROOT$PREFIX/lib/opencode/libopencode-crhandler.so"
+	echo "Packaging seccomp shim: $SHIM_SO -> $PREFIX/lib/opencode/"
 else
 	echo "Note: binary is not seccomp-hardened; shipping without libopencode-crhandler.so"
 fi
@@ -110,7 +119,7 @@ set -e
 #     the opencode1-isolated dirs, exactly once, never clobbering existing
 #     opencode1 data. Requires scripts/migrate-to-opencode1.sh to be on PATH.
 CFG_DIR="$(printf '%s' "${XDG_CONFIG_HOME:-$HOME/.config}/opencode")"
-case "$PKG_NAME" in
+case "${PKG_NAME:-$DPKG_MAINTSCRIPT_PACKAGE}" in
   opencode1)
     echo "OpenCode1 (v1 family) installed — coexists with v2 opencode."
     if [ -e "$CFG_DIR" ] && [ ! -e "${CFG_DIR}1" ] && command -v migrate-to-opencode1.sh >/dev/null 2>&1; then
