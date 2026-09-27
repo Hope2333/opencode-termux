@@ -308,6 +308,14 @@ open(f, 'w').write(src)
 print("    app-assets.ts patched (skipBuild -> collect-only)")
 PY_PATCH
 fi
+DIST_CACHE="${TMPDIR:-/data/data/com.termux/files/usr/tmp}/v2src/.app-dist-cache/$VER"
+# Three-state dist resolution (per-version cache survives clean-version, which
+# only removes v2src/opencode-$VER — the sibling .app-dist-cache is kept):
+if [[ ! -f "$APP_DIR/dist/index.html" && -f "$DIST_CACHE/index.html" ]]; then
+  echo "==> web-ui: restoring dist from per-version cache ($DIST_CACHE)"
+  mkdir -p "$APP_DIR/dist"
+  cp -a "$DIST_CACHE/." "$APP_DIR/dist/"
+fi
 if [[ ! -f "$APP_DIR/dist/index.html" ]]; then
   echo "==> web-ui: pre-building packages/app dist (vite)"
   # bionic-node quirk: vite prints "built in Xs" then HANGS (zero io, no socket)
@@ -316,9 +324,11 @@ if [[ ! -f "$APP_DIR/dist/index.html" ]]; then
     echo "    WARN: vite non-zero or timeout-killed (known bionic hang); judging by artifacts..."
   fi
   [[ -f "$APP_DIR/dist/index.html" ]] || { echo "Error: web-ui dist pre-build produced no dist/index.html" >&2; exit 1; }
-  echo "    dist ready: $(du -sh "$APP_DIR/dist" | cut -f1)"
+  mkdir -p "$DIST_CACHE"
+  cp -a "$APP_DIR/dist/." "$DIST_CACHE/"
+  echo "    dist ready: $(du -sh "$APP_DIR/dist" | cut -f1); cached -> $DIST_CACHE"
 else
-  echo "==> web-ui: dist already present ($(du -sh "$APP_DIR/dist" | cut -f1)), skip vite"
+  echo "==> web-ui: dist ready ($(du -sh "$APP_DIR/dist" | cut -f1)), skip vite"
 fi
 
 echo "==> compiling (android bun, target=opencode-linux-arm64)"
