@@ -284,6 +284,43 @@ echo "    rc2b sweep OK: ${#SO_TARGETS[@]} libopentui.so all bionic"
 
 # ── 3. bundler compile ─────────────────────────────────────────────────
 cd "$SRC_DIR/packages/cli"
+# ── 2z. web-ui prepare (#22 serve 404 fix — idempotent; was manual-only) ──
+#  buildAppArchive(skipBuild=true) returned "{}" => binary shipped WITHOUT web
+#  assets => serve 404 after login. Fix: (a) patch app-assets.ts so skipBuild
+#  skips the vite RUN but still collects prebuilt dist; (b) pre-build app dist.
+APP_TS="$SRC_DIR/packages/cli/script/app-assets.ts"
+APP_DIR="$SRC_DIR/packages/app"
+if [[ -f "$APP_TS" ]] && grep -qF 'if (options?.skipBuild) return "{}"' "$APP_TS"; then
+  echo "==> web-ui: patching app-assets.ts (#22 skipBuild collects prebuilt dist)"
+  python3 - "$APP_TS" <<'PY_PATCH'
+import sys
+f = sys.argv[1]
+src = open(f).read()
+old_ret = 'if (options?.skipBuild) return "{}"'
+if old_ret not in src:
+    sys.exit(0)
+src = src.replace(old_ret + '\n', '', 1)
+old_run = 'await $`bun run build`'
+if src.count(old_run) != 1:
+    sys.exit(f"app-assets anchor drift: {src.count(old_run)} hits")
+src = src.replace(old_run, 'if (!options?.skipBuild) await $`bun run build`', 1)
+open(f, 'w').write(src)
+print("    app-assets.ts patched (skipBuild -> collect-only)")
+PY_PATCH
+fi
+if [[ ! -f "$APP_DIR/dist/index.html" ]]; then
+  echo "==> web-ui: pre-building packages/app dist (vite)"
+  # bionic-node quirk: vite prints "built in Xs" then HANGS (zero io, no socket)
+  # — kill at 240s and let the artifact gate (below) be the pass/fail judge.
+  if ! timeout 240 bash -c 'cd "$1" && OPENCODE_CHANNEL=latest VITE_OPENCODE_SERVER_MODE=origin "$2" run build' _ "$APP_DIR" "$ANDROID_BUN"; then
+    echo "    WARN: vite non-zero or timeout-killed (known bionic hang); judging by artifacts..."
+  fi
+  [[ -f "$APP_DIR/dist/index.html" ]] || { echo "Error: web-ui dist pre-build produced no dist/index.html" >&2; exit 1; }
+  echo "    dist ready: $(du -sh "$APP_DIR/dist" | cut -f1)"
+else
+  echo "==> web-ui: dist already present ($(du -sh "$APP_DIR/dist" | cut -f1)), skip vite"
+fi
+
 echo "==> compiling (android bun, target=opencode-linux-arm64)"
 LD_PRELOAD="$OPENAT2_SHIM" OPENCODE_VERSION="$OPENCODE_VERSION" \
   "$ANDROID_BUN" script/build.ts --target=opencode-linux-arm64 --skip-install --skip-web-ui
