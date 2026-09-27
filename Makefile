@@ -26,7 +26,7 @@ FAMILY_LIST = $(strip $(subst $(comma), ,$(family)))
 
 OUTPUT_ROOT := $(if $(ODIR),$(ODIR),$(CURDIR)/packing)
 
-.PHONY: help all runtime stage deb pacman deb-native pacman-native native-pkg batch clean status steps matrix selfcheck release-upload test transplant transplant-predict transplant-check transplant-upx seccomp-harden family-wrapper family-native family-compressed deb-compressed pacman-compressed range-build fleet-upx fleet-status sha-stage push-stage clean-artifacts
+.PHONY: help all runtime stage deb pacman deb-native pacman-native native-pkg batch clean status steps matrix selfcheck release-upload test transplant transplant-predict transplant-check transplant-upx seccomp-harden family-wrapper family-native family-compressed deb-compressed pacman-compressed range-build fleet-upx fleet-status sha-stage push-stage clean-artifacts clean-version
 
 help:
 	@echo "OpenCode Termux build helper"
@@ -63,6 +63,8 @@ help:
 	@echo "  make steps | make status | make selfcheck | make test"
 	@echo
 	@echo "━━━ [Housekeeping] ━━━"
+	@echo "  make clean-version VER=<v>         # 三清本版中间产物（NOT_CLEAN=1 阻止；--not-clean 等价物）"
+	@echo "    ⚠ release-upload NATIVE=1 须带 NOT_CLEAN=1（自洁会移除 transplant 上传源）"
 	@echo "  make clean-artifacts VER=1.18.21   # remove transplant artifacts"
 	@echo "  make clean                          # remove wrapper staging"
 	@echo
@@ -115,15 +117,20 @@ batch-v2:
 	for v in "$${expanded[@]}"; do \
 		echo "=== Batch v2 build for version $$v ==="; \
 		if [ "$(PKG)" = "both" ] || [ "$(PKG)" = "native" ]; then \
-			$(MAKE) family-v2-native VER=$$v || exit 1; \
+			$(MAKE) family-v2-native VER=$$v NOT_CLEAN='$(NOT_CLEAN)' || exit 1; \
 		fi; \
 		if [ "$(PKG)" = "both" ] || [ "$(PKG)" = "compressed" ]; then \
-			$(MAKE) family-v2-compressed VER=$$v || exit 1; \
+			$(MAKE) family-v2-compressed VER=$$v NOT_CLEAN='$(NOT_CLEAN)' || exit 1; \
 		fi; \
 		if [ "$(PKG)" = "both" ] || [ "$(PKG)" = "wrapper" ]; then \
-			$(MAKE) family-v2-wrapper VER=$$v || exit 1; \
+			$(MAKE) family-v2-wrapper VER=$$v NOT_CLEAN='$(NOT_CLEAN)' || exit 1; \
+		fi; \
+		if [ "$(NOT_CLEAN)" != "1" ]; then \
+			$(MAKE) --no-print-directory clean-version VER=$$v || exit 1; \
 		fi; \
 	done
+# batch: NOT_CLEAN passthrough to sub-make is defensive — 'all' has no autoclean
+# hook today; kept so a future hook inside 'all' honors the opt-out (momus NIT).
 batch:
 	@if [ -z "$(VERS)" ]; then \
 		echo "Error: VERS is empty. Example: make batch VERS='1.2.10 1.2.11' PKG=both"; \
@@ -140,7 +147,10 @@ batch:
 	done; \
 	for v in "$${expanded[@]}"; do \
 		echo "=== Batch build for version $$v ==="; \
-		$(MAKE) all VER=$$v PKG=$(PKG) MORE="$(MORE)" PACKAGER_NAME='$(PACKAGER_NAME)' ODIR='$(ODIR)' MIX='$(MIX)' || exit 1; \
+		$(MAKE) all VER=$$v PKG=$(PKG) MORE="$(MORE)" PACKAGER_NAME='$(PACKAGER_NAME)' ODIR='$(ODIR)' MIX='$(MIX)' NOT_CLEAN='$(NOT_CLEAN)' || exit 1; \
+		if [ "$(NOT_CLEAN)" != "1" ]; then \
+			$(MAKE) --no-print-directory clean-version VER=$$v || exit 1; \
+		fi; \
 	done
 
 runtime:
@@ -411,6 +421,7 @@ family-wrapper: runtime stage
 	else \
 		$(MAKE) deb VER=$(VER) && $(MAKE) pacman VER=$(VER); \
 	fi
+	@if [ -n "$(VER_IS_SET)" ] && [ "$(NOT_CLEAN)" != "1" ]; then $(MAKE) --no-print-directory clean-version VER=$(VER) || exit 1; fi
 
 # family-native: transplant + seccomp-harden + native packages for a single version
 # Usage: make family-native VER=1.18.21
@@ -421,6 +432,7 @@ family-native:
 	fi
 	$(MAKE) transplant VER=$(VER)
 	$(MAKE) deb-native VER=$(VER) && $(MAKE) pacman-native VER=$(VER)
+	@if [ -n "$(VER_IS_SET)" ] && [ "$(NOT_CLEAN)" != "1" ]; then $(MAKE) --no-print-directory clean-version VER=$(VER) || exit 1; fi
 
 # family-compressed: UPX-compressed variant (local build)
 # Usage: make family-compressed VER=1.18.21
@@ -432,6 +444,7 @@ family-compressed:
 	$(MAKE) transplant VER=$(VER)
 	$(MAKE) transplant-upx VER=$(VER)
 	$(MAKE) deb-compressed VER=$(VER) && $(MAKE) pacman-compressed VER=$(VER)
+	@if [ -n "$(VER_IS_SET)" ] && [ "$(NOT_CLEAN)" != "1" ]; then $(MAKE) --no-print-directory clean-version VER=$(VER) || exit 1; fi
 
 # family: array dispatcher over the three family chains (FEATURE: family as ARRAY)
 # Usage: make family=wrapper,native,compressed VER=1.18.21   (comma or space separated)
@@ -602,6 +615,53 @@ clean-artifacts:
 	rm -rf artifacts/transplant/$(VER)
 	@echo "Cleaned artifacts for $(VER)"
 
+# clean-version: autoclean per-version intermediates after a build (four-way clean).
+#   1. $(TMPDIR)/v2src/opencode-<ver>  unpack tree (tarball *.tgz point-kept)
+#   2. artifacts/staged + packing/{dpkg,dpkg-native,dpkg-compressed}/work + packing/pacman/{pkg,src}
+#   3. artifacts/transplant/<ver>
+#   4. artifacts/wrapper/<ver>
+# Kept: artifacts/build/<ver> (bin + sha + json), packing delivery packages (*<ver>*),
+#       $(TMPDIR)/v2src/*.tgz, artifacts/transplant/android-bun, artifacts/wrapper/glibc-standalone.
+# Opt out: NOT_CLEAN=1 (make has no --not-clean long option).
+# ⚠ release-upload NATIVE=1 uploads from artifacts/transplant/<ver> — run it with NOT_CLEAN=1.
+# Usage: make clean-version VER=2.0.12
+clean-version:
+	@if [ -z "$(VER_IS_SET)" ]; then \
+		echo "Error: VER is required. Example: make clean-version VER=2.0.12"; \
+		exit 1; \
+	fi
+	@ver="$(VER)"; \
+	if [ -z "$$ver" ] || [ "$$ver" = "." ] || [ "$$ver" = ".." ] || [ "$${ver%/}" != "$$ver" ]; then \
+		echo "Error: invalid VER: [$$ver]"; \
+		exit 1; \
+	fi
+	@tmpdir="$${TMPDIR:-/data/data/com.termux/files/usr/tmp}"; \
+	ver="$(VER)"; \
+	fail=""; \
+	if [ "$(NOT_CLEAN)" = "1" ]; then \
+		echo "==> clean-version: NOT_CLEAN=1, skipping autoclean for $$ver"; \
+	elif [ -d "artifacts/build/$$ver" ] && [ ! -f "artifacts/build/$$ver/opencode-native-revived" ]; then \
+		echo "Error: bin missing, refuse to clean: artifacts/build/$$ver/opencode-native-revived"; \
+		exit 1; \
+	else \
+		echo "==> clean-version $$ver: removing v2src tree, staging/work dirs, transplant/$$ver, wrapper/$$ver"; \
+		rm -rf "$$tmpdir/v2src/opencode-$$ver" \
+			artifacts/staged \
+			packing/dpkg/work packing/dpkg-native/work packing/dpkg-compressed/work \
+			packing/pacman/pkg packing/pacman/src \
+			"artifacts/transplant/$$ver" \
+			"artifacts/wrapper/$$ver"; \
+		if [ -d "artifacts/build/$$ver" ]; then \
+			[ -f "artifacts/build/$$ver/opencode-native-revived" ] || fail="$$fail opencode-native-revived"; \
+			[ -f "artifacts/build/$$ver/build.sha256" ] || fail="$$fail build.sha256"; \
+		fi; \
+		[ ! -d "artifacts/transplant" ] || [ -d "artifacts/transplant/android-bun" ] || fail="$$fail android-bun"; \
+		[ ! -d "artifacts/wrapper" ] || [ -d "artifacts/wrapper/glibc-standalone" ] || fail="$$fail glibc-standalone"; \
+		if [ -n "$$fail" ]; then echo "Error: kept files missing after clean:$$fail"; exit 1; fi; \
+		echo "==> kept: build/$$ver bin+sha+json, v2src tarballs, transplant/android-bun, wrapper/glibc-standalone, packing delivery packages"; \
+		echo "CLEAN_OK"; \
+	fi
+
 # ══════════════════════════════════════════════════════════════════════
 # Standalone (frozen, warning banner)
 # ══════════════════════════════════════════════════════════════════════
@@ -628,6 +688,11 @@ clean:
 #	 make release-upload TAG=Stable260901 NATIVE=STABLE VER=1.18.21
 #	                                                           #   native assets as FORMAL release (no --prerelease flag;
 #	                                                           #   stable-mainline notes per 27/28 switch)
+#
+# ⚠ NOT_CLEAN=1 wiring note: batch / batch-v2 / family-* targets autoclean
+# per-version intermediates (make clean-version) after each version. release-upload
+# NATIVE=1 uploads from artifacts/transplant/<ver> — run it with NOT_CLEAN=1
+# (e.g. right after a NOT_CLEAN=1 batch) so the upload source is not removed first.
 #
 # Defaults:
 #   TAG     = Push<YYMMDD> (auto-generated)
@@ -765,6 +830,7 @@ family-v2-native:
 	$(MAKE) --no-print-directory build-native VER=$(VER) V2_SRC='$(V2_SRC)'
 	TRANSPLANT_ROOT=$(CURDIR)/artifacts/build $(MAKE) --no-print-directory deb-native VER=$(VER)
 	TRANSPLANT_ROOT=$(CURDIR)/artifacts/build $(MAKE) --no-print-directory pacman-native VER=$(VER)
+	@if [ -n "$(VER_IS_SET)" ] && [ "$(NOT_CLEAN)" != "1" ]; then $(MAKE) --no-print-directory clean-version VER=$(VER) || exit 1; fi
 
 # family-v2-compressed: B-line + UPX + compressed deb/pacman (v1 standalone scheme)
 # Usage: make family-v2-compressed VER=2.0.0
@@ -779,6 +845,7 @@ family-v2-compressed:
 	$(MAKE) --no-print-directory build-native-upx VER=$(VER)
 	TRANSPLANT_ROOT=$(CURDIR)/artifacts/build OPENCODE_COMPRESSED_BIN=$(CURDIR)/artifacts/build/$(VER)/opencode-native-revived-upx OPENCODE_CRHANDLER_SO=$(CURDIR)/artifacts/build/$(VER)/libopencode-crhandler.so $(MAKE) --no-print-directory deb-compressed VER=$(VER)
 	TRANSPLANT_ROOT=$(CURDIR)/artifacts/build OPENCODE_COMPRESSED_BIN=$(CURDIR)/artifacts/build/$(VER)/opencode-native-revived-upx OPENCODE_CRHANDLER_SO=$(CURDIR)/artifacts/build/$(VER)/libopencode-crhandler.so $(MAKE) --no-print-directory pacman-compressed VER=$(VER)
+	@if [ -n "$(VER_IS_SET)" ] && [ "$(NOT_CLEAN)" != "1" ]; then $(MAKE) --no-print-directory clean-version VER=$(VER) || exit 1; fi
 
 # harden-native: seccomp-harden the B-line product (v1 crhandler zero-displacement
 # patch chain): compile tools/shim/sigsys_handler.c into artifacts/build/<ver>/,
@@ -859,3 +926,4 @@ family-v2-wrapper:
 	fi
 	$(MAKE) --no-print-directory wrapper-native VER=$(VER)
 	bash scripts/package/package_wrapper_v2.sh $(VER)
+	@if [ -n "$(VER_IS_SET)" ] && [ "$(NOT_CLEAN)" != "1" ]; then $(MAKE) --no-print-directory clean-version VER=$(VER) || exit 1; fi
