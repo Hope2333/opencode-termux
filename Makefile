@@ -828,6 +828,8 @@ family-v2-native:
 		exit 1; \
 	fi
 	$(MAKE) --no-print-directory build-native VER=$(VER) V2_SRC='$(V2_SRC)'
+	command -v clang >/dev/null 2>&1 || { echo "FATAL: clang required — v2 native must ship the seccomp shim (issue #17)"; exit 1; }
+	$(MAKE) --no-print-directory harden-native VER=$(VER)
 	TRANSPLANT_ROOT=$(CURDIR)/artifacts/build $(MAKE) --no-print-directory deb-native VER=$(VER)
 	TRANSPLANT_ROOT=$(CURDIR)/artifacts/build $(MAKE) --no-print-directory pacman-native VER=$(VER)
 	@if [ -n "$(VER_IS_SET)" ] && [ "$(NOT_CLEAN)" != "1" ]; then $(MAKE) --no-print-directory clean-version VER=$(VER) || exit 1; fi
