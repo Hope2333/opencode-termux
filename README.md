@@ -129,8 +129,6 @@ Within one generation, native / wrapper / compressed are mutually exclusive (pic
 
 **English** — Chat, Q&A and ideas. RC3 refreshed the whole two-generation family: 13 v2 versions (native & wrapper) + v1 three families (1.18.30–32), all PKGREL=3, 70 assets digest-verified.
 
-Other languages: [简体中文](./README.zh.md#-community--discussions) · [繁體中文](./README.zht.md#-community--discussions) · [日本語](./README.ja.md#-community--discussions) · [Español](./README.es.md#-community--discussions)
-
 [![General](https://img.shields.io/badge/General-chat-3fb950?style=for-the-badge)](https://github.com/Hope2333/opencode-termux/discussions/categories/general)
 [![Q&A](https://img.shields.io/badge/Q%26A-help-1f6feb?style=for-the-badge)](https://github.com/Hope2333/opencode-termux/discussions/categories/q-a)
 [![Ideas](https://img.shields.io/badge/Ideas-share_ideas-9e6a03?style=for-the-badge)](https://github.com/Hope2333/opencode-termux/discussions/categories/ideas)
