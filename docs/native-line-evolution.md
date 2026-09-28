@@ -43,12 +43,12 @@ bun-termux-loader 包装，v1→v2 迁移全程未动、最稳定的线）完全
    二进制（DT_NEEDED[0] + DT_RUNPATH `$ORIGIN/../lib/opencode`）
 6. 双格式打包（deb-native / pacman-native，PKGREL 透传）+ clean-version 尾自洁
 
-### 方案命名对照（#27 PTY）
+### 方案命名对照（#27 PTY；RFC discussions/29 征求社区意见中）
 
 | 方案 | 内容 | 结论 |
 |------|------|------|
-| **B**（RC4 起采用） | 接受 #27 PTY 变体：换上游官方 musl 全静态变体 | 实证可跑（`--version` 正常、嵌入断言过） |
-| **B1**（v2.0 时期现状） | 不接受变体，GNU glibc 资产原样嵌入 | **构建侧**在 v2.0 时期十分稳定（可复现）；**运行侧**稳定——含零 glibc 环境（MT 管理器实测稳定运行；PTY 与 agent-pty 程序调试通过），仅 #27 报告的脆弱环境暴露加载失败；glibc 残留违反零-glibc 产线纯度（非普遍硬错误）；patchelf 抢救手术无法兜底脆弱环境（死于 `__libc_start_main` 入口 ABI） |
+| **B2 — native-musl**（RC4 起采用） | 接受 #27 PTY 变体：换上游官方 musl 全静态变体 | 实证可跑（`--version` 正常、嵌入断言过） |
+| **B1 — native-gnu**（v2.0 时期现状） | 不接受变体，GNU glibc 资产原样嵌入 | **构建侧**在 v2.0 时期十分稳定（可复现）；**运行侧**稳定——含零 glibc 环境（MT 管理器实测稳定运行；PTY 与 agent-pty 程序调试通过），仅 #27 报告的脆弱环境暴露加载失败；glibc 残留违反零-glibc 产线纯度（非普遍硬错误）；patchelf 抢救手术无法兜底脆弱环境（死于 `__libc_start_main` 入口 ABI） |
 
 > 附注：全家族中**最稳定的是 wrapper 线**——v1→v2 迁移全程未动它。
 > GNU 嵌入的本质是 **B 线手术残留**：bun --compile 从 node_modules 嵌入上游资产，
