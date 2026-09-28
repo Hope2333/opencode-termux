@@ -236,6 +236,31 @@ for pkg in "@opencode-ai/pty@0.1.13" "@parcel/watcher-linux-arm64-glibc@2.5.1"; 
     fi
   fi
 done
+cd "$ROOT_DIR"
+
+# ── 1c. (issue #27) bionic-ize the PTY helper ──
+# The embedded @opencode-ai/pty-linux-arm64-gnu/bin/opencode-pty asset is
+# glibc-linked (NEEDED libpthread.so.0 / libdl.so.2 / libutil.so.1) — bun FFI
+# extraction + exec of it fails on Android/bionic ("Failed to open library").
+# The musl build of the same version is FULLY STATIC and runs on bionic.
+# Overwrite every -gnu copy (node_modules + store) with the musl binary.
+echo "==> installing musl PTY helper (issue #27: gnu variant cannot run on bionic)..."
+if LD_PRELOAD="$OPENAT2_SHIM" "$ANDROID_BUN" install --force --ignore-scripts --os=linux --cpu=arm64 "@opencode-ai/pty-linux-arm64-musl@0.1.13" 2>&1 | tail -1; then :; fi
+PTY_MUSL_BIN="$(find "$STORE" "$SRC_DIR/node_modules" -path '*pty-linux-arm64-musl/bin/opencode-pty' -type f 2>/dev/null | head -n1)"
+if [[ -z "$PTY_MUSL_BIN" ]] || ! file "$PTY_MUSL_BIN" | grep -q 'statically linked'; then
+  echo "Error: static musl opencode-pty not found/valid — bionic PTY would be broken (issue #27)" >&2
+  exit 1
+fi
+PTY_REPLACED=0
+while IFS= read -r g; do
+  cp -f "$PTY_MUSL_BIN" "$g"
+  PTY_REPLACED=$((PTY_REPLACED + 1))
+  echo "    static musl pty -> $g"
+done < <(find "$STORE" "$SRC_DIR/node_modules" -path '*pty-linux-arm64-gnu/bin/opencode-pty' -type f 2>/dev/null)
+if [[ $PTY_REPLACED -lt 1 ]]; then
+  echo "Error: no -gnu pty copy found to replace (issue #27)" >&2
+  exit 1
+fi
 cd "$SRC_DIR/packages/cli"
 
 # ── 2. platform patch (idempotent) ─────────────────────────────────────
