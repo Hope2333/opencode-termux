@@ -8,8 +8,12 @@ set -euo pipefail
 STORE_CHUNK="$1"
 [ -n "$STORE_CHUNK" ] || { echo "usage: $0 <@opentui+core store chunk path>"; exit 1; }
 CHUNK_BASE="$STORE_CHUNK/node_modules/@opentui/core"
-CHUNK_JS="$CHUNK_BASE/chunk-bun-9gqvxy8c.js"
-[ -f "$CHUNK_JS" ] || { echo "error: $CHUNK_JS not found"; exit 1; }
+# Dynamic discovery: OpenTUI chunk filenames drift between releases (issue #25 —
+# 0.5.12 ships chunk-bun-8f4q4e2m.js, older releases 9gqvxy8c). Locate the
+# platform loader by content instead of by generated filename.
+CHUNK_JS="$(grep -RIl --include='chunk-bun-*.js' 'platform: process.platform' "$CHUNK_BASE" 2>/dev/null | head -1)"
+[ -n "$CHUNK_JS" ] && [ -f "$CHUNK_JS" ] || { echo "error: platform loader chunk not found under $CHUNK_BASE"; exit 1; }
+echo "platform chunk: $(basename "$CHUNK_JS")"
 # 1) platform literal present?
 if grep -q 'platform: "linux",' "$CHUNK_JS"; then
   echo "platform patch already applied (platform literal)"; 
