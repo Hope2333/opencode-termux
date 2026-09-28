@@ -16,6 +16,7 @@ set -euo pipefail
 
 VER="${1:-${VERSION:-}}"
 [ -n "$VER" ] || { echo "Usage: $0 <VER>   e.g. $0 2.0.5" >&2; exit 2; }
+PKGREL="${PKGREL:-1}"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
@@ -25,7 +26,7 @@ CTRL_TMPL="$EV/old-wrapper-deb-control.txt"
 
 WRAP="$ROOT/artifacts/wrapper/$VER/opencode-wrapper-$VER"
 OUT_DEB="$ROOT/packing/dpkg/opencode-wrapper_${VER}_aarch64.deb"
-OUT_PAC="$ROOT/packing/pacman/opencode-wrapper-${VER}-1-aarch64.pkg.tar.xz"
+OUT_PAC="$ROOT/packing/pacman/opencode-wrapper-${VER}-${PKGREL}-aarch64.pkg.tar.xz"
 DEB_ROOT="$ROOT/packing/dpkg/work"         # shared v1 work dir (cleaned each run)
 WORK="$ROOT/packing/pacman/.v2wrap-$VER"    # isolated pacman build dir per run
 
@@ -61,7 +62,7 @@ dpkg-deb -c "$OUT_DEB" | grep -qE "\./?${PREFIX#/}/bin/opencode$" || {
 cat > "$WORK/PKGBUILD" <<PKGB
 pkgname=opencode-wrapper
 pkgver=$VER
-pkgrel=1
+pkgrel=$PKGREL
 pkgdesc='OpenCode AI coding assistant for Termux (wrapper appendix, renamed opencode-wrapper)'
 arch=('aarch64')
 url='https://github.com/anomalyco/opencode'
@@ -80,9 +81,9 @@ MCONF="$WORK/makepkg.conf"
 cp "$PREFIX/etc/makepkg.conf" "$MCONF"
 printf '\nPACKAGER=%q\n' "${PACKAGER_NAME:-Hope2333(幽零小喵) <u0catmiao@proton.me>}" >> "$MCONF"
 ( cd "$WORK" && makepkg --config "$MCONF" -f --noconfirm -p PKGBUILD )
-[ -f "$WORK/opencode-wrapper-$VER-1-aarch64.pkg.tar.xz" ] || {
+[ -f "$WORK/opencode-wrapper-$VER-$PKGREL-aarch64.pkg.tar.xz" ] || {
   ls -la "$WORK" >&2; echo "FATAL: makepkg output missing" >&2; exit 1; }
-mv -f "$WORK/opencode-wrapper-$VER-1-aarch64.pkg.tar.xz" "$OUT_PAC"
+mv -f "$WORK/opencode-wrapper-$VER-$PKGREL-aarch64.pkg.tar.xz" "$OUT_PAC"
 tar -tf "$OUT_PAC" | grep -qx "usr/bin/opencode" || {
   tar -tf "$OUT_PAC" >&2; echo "FATAL: pac missing usr/bin/opencode" >&2; exit 1; }
 tar -tf "$OUT_PAC" | grep -qE '^data/' && {
