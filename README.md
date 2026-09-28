@@ -121,6 +121,18 @@ Package name changed from `opencode-glibc` (v1) to `opencode-wrapper` (v2 wrappe
 - [docs/dual-track-install.md](./docs/dual-track-install.md) -- Dual-track install guide
 - [docs/make-maintainer.md](./docs/make-maintainer.md) -- Makefile reference
 
+## 💬 Community & Discussions
+
+![Discussions](https://raw.githubusercontent.com/Hope2333/opencode-termux/native-android/assets/discussions-banner.svg)
+
+聊天吹水、问答求助、点子脑洞，都在 Discussions（跨代双装玩法、配置魔改、晒终端都欢迎）：
+
+[![General](https://img.shields.io/badge/General-%E9%97%B2%E8%81%8A%E5%90%B9%E6%B0%B4-3fb950?style=for-the-badge)](https://github.com/Hope2333/opencode-termux/discussions/categories/general)
+[![Q&A](https://img.shields.io/badge/Q%26A-%E5%AE%89%E8%A3%85%E6%B1%82%E5%8A%A9-1f6feb?style=for-the-badge)](https://github.com/Hope2333/opencode-termux/discussions/categories/q-a)
+[![Ideas](https://img.shields.io/badge/Ideas-%E7%82%B9%E5%AD%90%E8%84%91%E6%B4%9E-9e6a03?style=for-the-badge)](https://github.com/Hope2333/opencode-termux/discussions/categories/ideas)
+[![Announcements](https://img.shields.io/badge/Announcements-%E5%8F%91%E7%89%88%E5%85%AC%E5%91%8A-db6d28?style=for-the-badge)](https://github.com/Hope2333/opencode-termux/discussions/categories/announcements)
+[![Show and tell](https://img.shields.io/badge/Show_and_tell-%E6%99%92%E6%88%90%E6%9E%9C-8957e5?style=for-the-badge)](https://github.com/Hope2333/opencode-termux/discussions/categories/show-and-tell)
+
 ## License
 
 OpenCode is open source. This packaging project follows the same license.

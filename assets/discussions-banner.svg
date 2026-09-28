@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="280" viewBox="0 0 1200 280" role="img" aria-label="Hope2333 Community Discussions">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0d1117">
+        <animate attributeName="stop-color" values="#0d1117;#101a2e;#0d1117" dur="8s" repeatCount="indefinite"/>
+      </stop>
+      <stop offset="55%" stop-color="#12325e">
+        <animate attributeName="stop-color" values="#12325e;#0e2a4a;#1a3a6a;#12325e" dur="10s" repeatCount="indefinite"/>
+      </stop>
+      <stop offset="100%" stop-color="#3a1e6e">
+        <animate attributeName="stop-color" values="#3a1e6e;#5b2a8a;#7a2f7d;#3a1e6e" dur="12s" repeatCount="indefinite"/>
+      </stop>
+    </linearGradient>
+    <radialGradient id="glow1" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0%" stop-color="#58a6ff" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#58a6ff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glow2" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0%" stop-color="#bc8cff" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="#bc8cff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glow3" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0%" stop-color="#3fb950" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#3fb950" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1200" height="280" rx="16" fill="url(#bg)"/>
+  <rect x="1" y="1" width="1198" height="278" rx="15" fill="none" stroke="#8b949e" stroke-opacity="0.35" stroke-width="2"/>
+
+  <!-- floating orbs -->
+  <circle cx="180" cy="220" r="150" fill="url(#glow1)">
+    <animate attributeName="cx" values="180;300;180" dur="14s" repeatCount="indefinite"/>
+    <animate attributeName="cy" values="220;120;220" dur="18s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="1020" cy="70" r="170" fill="url(#glow2)">
+    <animate attributeName="cx" values="1020;880;1020" dur="16s" repeatCount="indefinite"/>
+    <animate attributeName="cy" values="70;190;70" dur="20s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="600" cy="260" r="130" fill="url(#glow3)">
+    <animate attributeName="cy" values="260;160;260" dur="12s" repeatCount="indefinite"/>
+  </circle>
+
+  <!-- drifting dots -->
+  <g fill="#8b949e" fill-opacity="0.5">
+    <circle cx="90" cy="60" r="2.5"><animate attributeName="cy" values="60;40;60" dur="6s" repeatCount="indefinite"/></circle>
+    <circle cx="150" cy="95" r="2"><animate attributeName="cy" values="95;115;95" dur="7s" repeatCount="indefinite"/></circle>
+    <circle cx="320" cy="48" r="2"><animate attributeName="cy" values="48;66;48" dur="8s" repeatCount="indefinite"/></circle>
+    <circle cx="760" cy="52" r="2.5"><animate attributeName="cy" values="52;34;52" dur="7s" repeatCount="indefinite"/></circle>
+    <circle cx="900" cy="220" r="2"><animate attributeName="cy" values="220;240;220" dur="6s" repeatCount="indefinite"/></circle>
+    <circle cx="1105" cy="180" r="2.5"><animate attributeName="cy" values="180;160;180" dur="9s" repeatCount="indefinite"/></circle>
+  </g>
+
+  <!-- speech bubble mark -->
+  <g transform="translate(88,86)">
+    <path d="M0 24 a24 24 0 0 1 24-24 h40 a24 24 0 0 1 24 24 v20 a24 24 0 0 1 -24 24 h-28 l-16 16 v-16 h-0 a24 24 0 0 1 -20 -24 z"
+          fill="#58a6ff" fill-opacity="0.92">
+      <animate attributeName="fill-opacity" values="0.92;0.6;0.92" dur="4s" repeatCount="indefinite"/>
+    </path>
+    <circle cx="26" cy="34" r="4.5" fill="#0d1117"/>
+    <circle cx="44" cy="34" r="4.5" fill="#0d1117"/>
+    <circle cx="62" cy="34" r="4.5" fill="#0d1117">
+      <animate attributeName="r" values="4.5;2;4.5" dur="2.4s" repeatCount="indefinite"/>
+    </circle>
+  </g>
+
+  <!-- title -->
+  <text x="200" y="118" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="44" font-weight="700" fill="#f0f6fc">Hope2333 · Community</text>
+  <text x="202" y="162" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="24" fill="#8b949e">Discussions — 聊天吹水 · 问答求助 · 点子脑洞 · 晒成果</text>
+
+  <!-- chips -->
+  <g font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="17">
+    <rect x="202" y="192" width="128" height="34" rx="17" fill="#238636" fill-opacity="0.85"/>
+    <text x="216" y="214" fill="#ffffff">🗣 General</text>
+    <rect x="342" y="192" width="98" height="34" rx="17" fill="#1f6feb" fill-opacity="0.85"/>
+    <text x="356" y="214" fill="#ffffff">🙏 Q&amp;A</text>
+    <rect x="452" y="192" width="92" height="34" rx="17" fill="#9e6a03" fill-opacity="0.85"/>
+    <text x="466" y="214" fill="#ffffff">💡 Ideas</text>
+    <rect x="556" y="192" width="146" height="34" rx="17" fill="#8957e5" fill-opacity="0.85"/>
+    <text x="570" y="214" fill="#ffffff">🎉 Show and tell</text>
+  </g>
+</svg>
