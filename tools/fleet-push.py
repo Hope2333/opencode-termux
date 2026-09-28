@@ -6,7 +6,7 @@
         [--versions v1 v2 ...] [--attempts N] [--include-artifacts]
         [--no-remote-upload] [--verify-download] [--no-clean]
 
-流程（每版本, 包源=packing/pacman/opencode-<v>-1-aarch64.pkg.tar.xz）:
+流程（每版本, 包源=packing/pacman/opencode-<v>-<rel>-aarch64.pkg.tar.xz（PKGREL 自适应））:
   push   本机 →节点: python 分块写 ssh stdin, 自建进度条        (10%)
   untar  节点解包取 ELF                                         (5%)
   upx    upx --best, 原生进度条实时聚合(如 `2/5 [***....] 37.7%`) (45%)
@@ -67,9 +67,19 @@ LOG_PATH = (os.path.join(REPO_ROOT, ".omo", "evidence",
 RELEASE_TAG = "Push260903"
 ASSET_TMPL = "opencode-native-{ver}-upx.xz"
 def pkg_tmpl(ver):
-    # v1 (1.x) renamed opencode1; v2 keeps opencode.
-    return ("opencode1-{ver}-1-aarch64.pkg.tar.xz" if ver.startswith("1.")
-            else "opencode-{ver}-1-aarch64.pkg.tar.xz")
+    # v1 (1.x) renamed opencode1; v2 keeps opencode. PKGREL-adaptive (issue: RC3
+    # ships pkgrel=3): return the actual local filename if any pkgrel exists,
+    # else the RC3-era -3 name as the canonical expectation.
+    for base in (PKG_DIR, INBOX):
+        if os.path.isdir(base):
+            hits = sorted(glob.glob(os.path.join(base, f"opencode-{ver}-*-aarch64.pkg.tar.xz"))
+                          + glob.glob(os.path.join(base, f"opencode1-{ver}-*-aarch64.pkg.tar.xz")))
+            if hits:
+                # stale-低 pkgrel 防线: 同版本多 pkgrel 并存时取最高（RC3 起低 rel 为 1.4.2 时代残留）
+                best = max(hits, key=lambda p: int(re.search(r"-(\d+)-aarch64\.pkg\.tar\.xz$", p).group(1)))
+                return os.path.basename(best)
+    return ("opencode1-{ver}-3-aarch64.pkg.tar.xz" if ver.startswith("1.")
+            else "opencode-{ver}-3-aarch64.pkg.tar.xz")
 PKG_TMPL = pkg_tmpl  # callable: PKG_TMPL(ver)
 
 _DEFAULT_NODES = {              # None = 本机
@@ -1019,7 +1029,7 @@ def discover_release(tag, repo):
         print(f"release {tag} 无资产或不可达: {r.stderr.strip()[:200]}")
         sys.exit(1)
     vers, pre = {}, []
-    pkg_re = re.compile(r"^(?:opencode|opencode1)-([\d.]+)-1-aarch64\.pkg\.tar\.xz$")
+    pkg_re = re.compile(r"^(?:opencode|opencode1)-([\d.]+)-(\d+)-aarch64\.pkg\.tar\.xz$")
     for name, size in assets.items():
         m = pkg_re.match(name)
         if m:
@@ -1053,7 +1063,7 @@ def discover_release(tag, repo):
 def discover(include_artifacts):
     vers = {}
     for fn in sorted(os.listdir(PKG_DIR)) if os.path.isdir(PKG_DIR) else []:
-        m = re.match(r"^(?:opencode|opencode1)-([\d.]+)-1-aarch64\.pkg\.tar\.xz$", fn)
+        m = re.match(r"^(?:opencode|opencode1)-([\d.]+)-(\d+)-aarch64\.pkg\.tar\.xz$", fn)
         if m:
             v = m.group(1)
             vers[v] = Ver(v, os.path.join(PKG_DIR, fn), ASSET_TMPL.format(ver=v))
@@ -1069,7 +1079,7 @@ def discover(include_artifacts):
 def _seed(hostspec):
     """手机侧: 把全部包 + 本脚本投送到目标机 ~/opc-fleet/, 逐文件自建进度条"""
     pkgs = [f for f in sorted(os.listdir(PKG_DIR))
-            if re.match(r"^(?:opencode|opencode1)-[\d.]+-1-aarch64\.pkg\.tar\.xz$", f)] \
+            if re.match(r"^(?:opencode|opencode1)-[\d.]+-\d+-aarch64\.pkg\.tar\.xz$", f)] \
         if os.path.isdir(PKG_DIR) else []
     if not pkgs:
         print(f"包源目录无匹配: {PKG_DIR}"); return 1
@@ -1221,7 +1231,7 @@ def main():
     ap = argparse.ArgumentParser(
         description="三节点 fleet 压缩推送调度器（PTY 屏幕流归整 + 实时进度聚合）",
         epilog=(
-            "流程（每版本, 包源=packing/pacman/opencode-<v>-1-aarch64.pkg.tar.xz）:\n"
+            "流程（每版本, 包源=packing/pacman/opencode-<v>-<rel>-aarch64.pkg.tar.xz（PKGREL 自适应））:\n"
             "  push   本机→节点: python 分块写 ssh stdin, 自建进度条        (10%)\n"
             "  untar  节点解包取 ELF                                         (5%)\n"
             "  upx    upx --best, 原生进度条实时聚合                          (45%)\n"
