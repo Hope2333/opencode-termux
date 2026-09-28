@@ -431,6 +431,7 @@ print("#U 100")
 FETCH_PY = r'''
 import subprocess, sys, os, urllib.request
 tag, repo, name, out = sys.argv[1:5]
+expected = int(sys.argv[5]) if len(sys.argv) > 5 else 0   # 控制器侧已知 size 兜底
 def gh(*a):
     return subprocess.run(["gh"]+list(a), capture_output=True, text=True).stdout.strip()
 url = gh("api", "repos/%s/releases/tags/%s" % (repo, tag), "--jq",
@@ -439,7 +440,8 @@ tok = gh("auth", "token")
 req = urllib.request.Request(url, headers={"Authorization": "Bearer " + tok,
                                            "Accept": "application/octet-stream"})
 r = urllib.request.urlopen(req)
-size = int(r.headers.get("Content-Length") or 0)
+# Content-Length 可能被代理/chunked 吃掉(进度条卡 0% 回归) — 优先用控制器传入的期望值
+size = expected or int(r.headers.get("Content-Length") or 0)
 done, last = 0, -1
 with open(out, "wb") as f:
     while True:
@@ -448,7 +450,7 @@ with open(out, "wb") as f:
             break
         f.write(b); done += len(b)
         if size:
-            pct = int(100*done/size)
+            pct = min(100, int(100*done/size))
             if pct != last:
                 sys.stdout.write("#F %d\n" % pct); sys.stdout.flush(); last = pct
                 sys.stdout.write("#FB %d %d\n" % (done, size)); sys.stdout.flush()
@@ -457,7 +459,7 @@ print("#F 100")
 
 JOB_SH = r'''
 set -uo pipefail
-R="$1"; D="$2"; A="$3"; TAG="$4"; REPO="$5"; RM="$6"
+R="$1"; D="$2"; A="$3"; TAG="$4"; REPO="$5"; RM="$6"; SZ="${7:-0}"
 cd "$R" || exit 9
 say(){ printf '#%s\n' "$*"; }
 if [ ! -s "$D" ]; then
@@ -465,7 +467,7 @@ if [ ! -s "$D" ]; then
   P="$(dirname "$D")"; N="$(basename "$D")"
   fok=0
   if command -v python3 >/dev/null 2>&1; then
-    python3 "$R/fetch.py" "$TAG" "$REPO" "$N" "$D" 2>"$R/fetch.err" && fok=1
+    python3 "$R/fetch.py" "$TAG" "$REPO" "$N" "$D" "$SZ" 2>"$R/fetch.err" && fok=1
   fi
   if [ $fok -eq 0 ]; then
     gh release download "$TAG" -p "$N" --repo "$REPO" --dir "$P" --clobber 2>"$R/fetch.err" && fok=1
@@ -525,7 +527,7 @@ def job_argv(node_cmd, v, tag, repo, do_clean):
              f"echo {b64(FETCH_PY)} | base64 -d > {r}/fetch.py && "
              f"echo {b64(JOB_SH)} | base64 -d > {r}/job.sh && "
              f"bash {r}/job.sh {r} {d} {shlex.quote(v.asset)} "
-             f"{shlex.quote(tag)} {shlex.quote(repo)} {1 if do_clean else 0}")
+             f"{shlex.quote(tag)} {shlex.quote(repo)} {1 if do_clean else 0} {int(v.src_size or 0)}")
     if node_cmd is None:
         return ["bash", "-c", inner], None
     return ["bash", "-c", f"{node_cmd} {shlex.quote(inner)}"], v.pkg
