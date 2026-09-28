@@ -125,7 +125,11 @@ Package name changed from `opencode-glibc` (v1) to `opencode-wrapper` (v2 wrappe
 
 ![Discussions](https://raw.githubusercontent.com/Hope2333/opencode-termux/native-android/assets/discussions-banner.svg)
 
-聊天吹水、问答求助、点子脑洞，都在 Discussions（跨代双装玩法、配置魔改、晒终端都欢迎）：
+**简体中文** — 聊天吹水、问答求助、点子脑洞。RC3 双代全家族已上架：v2 native/wrapper 各 13 版 + v1 三族 1.18.30–32，全量 PKGREL=3，70 件 digest 逐件对账。
+**English** — Chat, Q&A and ideas. RC3 refreshed the whole two-generation family: 13 v2 versions (native & wrapper) + v1 three families (1.18.30–32), all PKGREL=3, 70 assets digest-verified.
+**繁體中文** — 聊天吹水、問答求助、點子腦洞。RC3 雙代全家族已上架：v2 native/wrapper 各 13 版 + v1 三族 1.18.30–32，全量 PKGREL=3，70 件逐筆對帳。
+**日本語** — 雑談・Q&A・アイデア募集中。RC3 で二世代ファミリーを全面リフレッシュ：v2 native/wrapper 各 13 バージョン + v1 3 ファミリー（1.18.30–32）、全て PKGREL=3、70 アセット。
+**Español** — Charla, preguntas e ideas. RC3 renovó toda la familia en dos generaciones: 13 versiones v2 (native y wrapper) + 3 familias v1 (1.18.30–32), todo con PKGREL=3 y 70 assets verificados.
 
 [![General](https://img.shields.io/badge/General-%E9%97%B2%E8%81%8A%E5%90%B9%E6%B0%B4-3fb950?style=for-the-badge)](https://github.com/Hope2333/opencode-termux/discussions/categories/general)
 [![Q&A](https://img.shields.io/badge/Q%26A-%E5%AE%89%E8%A3%85%E6%B1%82%E5%8A%A9-1f6feb?style=for-the-badge)](https://github.com/Hope2333/opencode-termux/discussions/categories/q-a)
