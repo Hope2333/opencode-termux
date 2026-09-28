@@ -1,4 +1,4 @@
-[English](./README.md) | [简体中文](./README.zh.md)
+[简体中文](./README.zh.md) | [English](./README.md) | [繁體中文](./README.zht.md) | [日本語](./README.ja.md) | [Español](./README.es.md)
 
 # opencode-termux
 
@@ -124,3 +124,24 @@ pkg upgrade opencode
 ## 许可
 
 OpenCode 是开源项目。本打包项目遵循相同许可。
+
+## 💬 社区与讨论
+
+![Discussions](https://raw.githubusercontent.com/Hope2333/opencode-termux/native-android/assets/discussions-banner.svg)
+
+聊天吹水、问答求助、点子脑洞。RC3 双代全家族已上架：v2 native/wrapper 各 13 版 + v1 三族 1.18.30–32，全量 PKGREL=3，70 件 digest 逐件对账。v1（`opencode1*`）与 v2（`opencode*`）跨代共存，双装不冲突。
+
+**安装最新版：**
+
+```bash
+pacman -S opencode            # v2 主线
+pacman -S opencode1           # v1 主线
+```
+
+其他语言：[English](./README.md#-community--discussions) · [繁體中文](./README.zht.md#-community--discussions) · [日本語](./README.ja.md#-community--discussions) · [Español](./README.es.md#-community--discussions)
+
+[![General](https://img.shields.io/badge/General-%E9%97%B2%E8%81%8A%E5%90%B9%E6%B0%B4-3fb950?style=for-the-badge)](https://github.com/Hope2333/opencode-termux/discussions/categories/general)
+[![Q&A](https://img.shields.io/badge/Q%26A-%E5%AE%89%E8%A3%85%E6%B1%82%E5%8A%A9-1f6feb?style=for-the-badge)](https://github.com/Hope2333/opencode-termux/discussions/categories/q-a)
+[![Ideas](https://img.shields.io/badge/Ideas-%E7%82%B9%E5%AD%90%E8%84%91%E6%B4%9E-9e6a03?style=for-the-badge)](https://github.com/Hope2333/opencode-termux/discussions/categories/ideas)
+[![Announcements](https://img.shields.io/badge/Announcements-%E5%8F%91%E7%89%88%E5%85%AC%E5%91%8A-db6d28?style=for-the-badge)](https://github.com/Hope2333/opencode-termux/discussions/categories/announcements)
+[![Show and tell](https://img.shields.io/badge/Show_and_tell-%E6%99%92%E6%88%90%E6%9E%9C-8957e5?style=for-the-badge)](https://github.com/Hope2333/opencode-termux/discussions/categories/show-and-tell)

@@ -1,4 +1,4 @@
-[English](./README.md) | [简体中文](./README.zh.md)
+[English](./README.md) | [简体中文](./README.zh.md) | [繁體中文](./README.zht.md) | [日本語](./README.ja.md) | [Español](./README.es.md)
 
 # opencode-termux
 
@@ -26,13 +26,17 @@ pacman -Syu opencode
 
 [OpenCode](https://opencode.ai) is an AI-powered terminal coding assistant. This project packages it for [Termux](https://termux.dev) on Android, providing native bionic binaries with zero glibc dependencies.
 
-Three runtime variants are available:
+Five package families across two generations, installable side by side (v1 and v2 coexist):
 
-| Package | Runtime | Size | TUI | Notes |
-|---------|---------|------|-----|-------|
-| `opencode` | Native bionic | ~66 MB (UPX) | Full | Mainline, recommended |
-| `opencode-compressed` | Native bionic (UPX) | ~66 MB | Full | Alias for `opencode` |
-| `opencode-wrapper` | Bun-termux-loader | ~193 MB | Full | Glibc wrapper, legacy |
+| Package | Gen | Runtime | Size | TUI | Notes |
+|---------|-----|---------|------|-----|-------|
+| `opencode` | v2 | Native bionic | ~66 MB | Full | Mainline, recommended |
+| `opencode-wrapper` | v2 | Bun-termux-loader | ~50 MB | Full | v2 wrapper appendix |
+| `opencode1` | v1 | Native bionic | ~40 MB | Full | v1 mainline |
+| `opencode1-wrapper` | v1 | Glibc runtime payload | ~40 MB | Full | v1 wrapper appendix |
+| `opencode1-compressed` | v1 | Native bionic (UPX) | ~56 MB | Full | UPX outsourced (`.pkg.tar.gz`) |
+
+Within one generation pick exactly ONE of native / wrapper / compressed; v1 (`opencode1*`) and v2 (`opencode*`) coexist.
 
 **Mainline** = native bionic (`opencode`). Zero glibc, Android API >= 28, full TUI via bionic libopentui.so.
 
@@ -72,14 +76,14 @@ pacman -Syu opencode
 
 Packages are published on [GitHub Releases](https://github.com/Hope2333/opencode-termux/releases) under rolling tags:
 
-- `Push260912` -- v1.18.30 / v1.18.31 (last v1 release)
-- `Push260921` -- v2.0.0 GA (current mainline)
+- `Push260922` -- **RC3**: v2.0.[0-12] native & wrapper + v1.18.[30-32] three families, all PKGREL=3 (70 assets, per-file digest-verified)
+- `Push260912` -- archived (prerelease)
 
 ### Package formats
 
 - **deb**: `opencode_<ver>_aarch64.deb` (Termux apt)
-- **pacman**: `opencode-<ver>-1-aarch64.pkg.tar.xz` (Termux pacman)
-- **native UPX**: `opencode-native-<ver>-upx.xz` (binary only, ~66 MB)
+- **pacman**: `opencode-<ver>-<rel>-aarch64.pkg.tar.xz` (Termux pacman; current `rel` = 3)
+- v1 compressed: `opencode1-compressed-<ver>-<rel>-aarch64.pkg.tar.gz` (note `.gz`)
 
 ## Building from source
 
@@ -101,18 +105,16 @@ make pacman-native VER=2.0.0
 
 See [docs/make-maintainer.md](./docs/make-maintainer.md) for full build reference.
 
-## v1 to v2 migration
+## v1 and v2 (two generations)
 
-v2.0.0 is the current mainline. v1.18.x packages are retained for rollback.
-
-If you have v1 installed:
+v2 (`opencode*`, 2.0.x) is the mainline; v1 (`opencode1*`, 1.18.30–32) is maintained and **coexists** with v2 — install both side by side:
 
 ```bash
-# v2 replaces v1 automatically (Conflicts/Replaces in control)
-pkg upgrade opencode
+pacman -S opencode            # v2 mainline
+pacman -S opencode1           # v1 mainline
 ```
 
-Package name changed from `opencode-glibc` (v1) to `opencode-wrapper` (v2 wrapper variant).
+Within one generation, native / wrapper / compressed are mutually exclusive (pick one). The old `opencode-glibc` name is retired — it was renamed `opencode1-wrapper` (v1) / replaced by `opencode-wrapper` (v2).
 
 ## Technical documentation
 
@@ -125,17 +127,15 @@ Package name changed from `opencode-glibc` (v1) to `opencode-wrapper` (v2 wrappe
 
 ![Discussions](https://raw.githubusercontent.com/Hope2333/opencode-termux/native-android/assets/discussions-banner.svg)
 
-**简体中文** — 聊天吹水、问答求助、点子脑洞。RC3 双代全家族已上架：v2 native/wrapper 各 13 版 + v1 三族 1.18.30–32，全量 PKGREL=3，70 件 digest 逐件对账。
 **English** — Chat, Q&A and ideas. RC3 refreshed the whole two-generation family: 13 v2 versions (native & wrapper) + v1 three families (1.18.30–32), all PKGREL=3, 70 assets digest-verified.
-**繁體中文** — 聊天吹水、問答求助、點子腦洞。RC3 雙代全家族已上架：v2 native/wrapper 各 13 版 + v1 三族 1.18.30–32，全量 PKGREL=3，70 件逐筆對帳。
-**日本語** — 雑談・Q&A・アイデア募集中。RC3 で二世代ファミリーを全面リフレッシュ：v2 native/wrapper 各 13 バージョン + v1 3 ファミリー（1.18.30–32）、全て PKGREL=3、70 アセット。
-**Español** — Charla, preguntas e ideas. RC3 renovó toda la familia en dos generaciones: 13 versiones v2 (native y wrapper) + 3 familias v1 (1.18.30–32), todo con PKGREL=3 y 70 assets verificados.
 
-[![General](https://img.shields.io/badge/General-%E9%97%B2%E8%81%8A%E5%90%B9%E6%B0%B4-3fb950?style=for-the-badge)](https://github.com/Hope2333/opencode-termux/discussions/categories/general)
-[![Q&A](https://img.shields.io/badge/Q%26A-%E5%AE%89%E8%A3%85%E6%B1%82%E5%8A%A9-1f6feb?style=for-the-badge)](https://github.com/Hope2333/opencode-termux/discussions/categories/q-a)
-[![Ideas](https://img.shields.io/badge/Ideas-%E7%82%B9%E5%AD%90%E8%84%91%E6%B4%9E-9e6a03?style=for-the-badge)](https://github.com/Hope2333/opencode-termux/discussions/categories/ideas)
-[![Announcements](https://img.shields.io/badge/Announcements-%E5%8F%91%E7%89%88%E5%85%AC%E5%91%8A-db6d28?style=for-the-badge)](https://github.com/Hope2333/opencode-termux/discussions/categories/announcements)
-[![Show and tell](https://img.shields.io/badge/Show_and_tell-%E6%99%92%E6%88%90%E6%9E%9C-8957e5?style=for-the-badge)](https://github.com/Hope2333/opencode-termux/discussions/categories/show-and-tell)
+Other languages: [简体中文](./README.zh.md#-community--discussions) · [繁體中文](./README.zht.md#-community--discussions) · [日本語](./README.ja.md#-community--discussions) · [Español](./README.es.md#-community--discussions)
+
+[![General](https://img.shields.io/badge/General-chat-3fb950?style=for-the-badge)](https://github.com/Hope2333/opencode-termux/discussions/categories/general)
+[![Q&A](https://img.shields.io/badge/Q%26A-help-1f6feb?style=for-the-badge)](https://github.com/Hope2333/opencode-termux/discussions/categories/q-a)
+[![Ideas](https://img.shields.io/badge/Ideas-share_ideas-9e6a03?style=for-the-badge)](https://github.com/Hope2333/opencode-termux/discussions/categories/ideas)
+[![Announcements](https://img.shields.io/badge/Announcements-releases-db6d28?style=for-the-badge)](https://github.com/Hope2333/opencode-termux/discussions/categories/announcements)
+[![Show and tell](https://img.shields.io/badge/Show_and_tell-show_off-8957e5?style=for-the-badge)](https://github.com/Hope2333/opencode-termux/discussions/categories/show-and-tell)
 
 ## License
 
