@@ -18,6 +18,7 @@ This directory is the single source of truth for the current Termux packing/runt
 - `plugin-management.md` — plugin install/update/rollback commands
 - `make-maintainer.md` — maintainer build/upload/cache operations (Make system doctrine, `tools/maintain.sh`, fleet push, cache cleanup)
 - `ci-prebuild-armv7.md` — Phase A armv7-only CI prebuild handoff scope
+- `ops-lessons-rc3.md` — RC3 发布实战经验（PKGREL 矩阵 / clean-version / chunk 漂移防线 / 网络链路 / v2 native shim open item）
 - `plugin-packaging-design.md` — package-manager-driven plugin model for apt/pacman
 - `OCTPLUGIN-PREBRANCH-RESEARCH.md` — single-file pre-split plugin research baseline
 - `system-skills-hook-architecture.md` — package-mode system skill + hook framework
