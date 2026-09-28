@@ -11,6 +11,22 @@ MORE ?=
 ODIR ?=
 MIX ?= 0
 
+# ── Packaging hook registry (version-ranged; resolved at packaging time) ──
+# Hooks ship inside package maintainer scripts (postinst / .INSTALL) and are
+# gated by the packager scripts via hook_enabled():
+#   enabled = name in HOOKS_DISABLE ? 0
+#           : name in HOOKS_ENABLE  ? 1
+#           : VERSION matches the hook's default version-glob ? 1 : 0
+# Registered hooks:
+#   stale-serve-kill — postinst/post_upgrade stops stale `serve` daemons of the
+#     upgraded binary (new TUI otherwise times out waiting for the background
+#     service, issue #17). Default scope: v2 native 2.0.[0-3] ONLY — upstream
+#     opencode 2.0.4+ resolves the stale-service handling itself; do not widen
+#     without checking upstream.
+HOOKS_ENABLE ?=
+HOOKS_DISABLE ?=
+HOOK_STALE_SERVE_KILL_VERSIONS ?= 2.0.[0-3]
+
 # Release upload target variables
 TAG ?= Push$(shell date +%y%m%d)
 REPO ?= Hope2333/opencode-termux
@@ -194,7 +210,7 @@ deb-native:
 		exit 1; \
 	fi
 	rm -rf packing/dpkg-native/work
-	MAINTAINER='$(PACKAGER_NAME)' VERSION='$(VER)' ./scripts/package/package_deb_native.sh
+	MAINTAINER='$(PACKAGER_NAME)' VERSION='$(VER)' HOOKS_ENABLE='$(HOOKS_ENABLE)' HOOKS_DISABLE='$(HOOKS_DISABLE)' HOOK_STALE_SERVE_KILL_VERSIONS='$(HOOK_STALE_SERVE_KILL_VERSIONS)' ./scripts/package/package_deb_native.sh
 	@if [ "$(OUTPUT_ROOT)" != "$(CURDIR)/packing" ]; then \
 		if [ "$(MIX)" = "1" ]; then \
 			mkdir -p "$(OUTPUT_ROOT)" && cp -f $$(case $(VER) in 1.*) echo opencode1;; *) echo opencode;; esac)_$(VER)_aarch64.deb "$(OUTPUT_ROOT)/"; \
@@ -209,7 +225,7 @@ pacman-native:
 		exit 1; \
 	fi
 	rm -rf packing/pacman/pkg packing/pacman/src
-	PACKAGER_NAME='$(PACKAGER_NAME)' VERSION='$(VER)' ./scripts/package/package_pacman_native.sh
+	PACKAGER_NAME='$(PACKAGER_NAME)' VERSION='$(VER)' HOOKS_ENABLE='$(HOOKS_ENABLE)' HOOKS_DISABLE='$(HOOKS_DISABLE)' HOOK_STALE_SERVE_KILL_VERSIONS='$(HOOK_STALE_SERVE_KILL_VERSIONS)' ./scripts/package/package_pacman_native.sh
 	@if [ "$(OUTPUT_ROOT)" != "$(CURDIR)/packing" ]; then \
 		if [ "$(MIX)" = "1" ]; then \
 			mkdir -p "$(OUTPUT_ROOT)" && cp -f packing/pacman/$$(case $(VER) in 1.*) echo opencode1;; *) echo opencode;; esac)-$(VER)-*.pkg.* "$(OUTPUT_ROOT)/"; \

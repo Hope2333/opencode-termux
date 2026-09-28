@@ -58,6 +58,15 @@ case "$VERSION" in
 	*)   PKG_NAME="opencode";  PKG_CONFLICTS="opencode-wrapper"; PKG_REPLACES="" ;;
 esac
 
+# hook_enabled NAME DEFAULT-GLOB — packaging hook registry resolver (Makefile:
+# HOOKS_ENABLE / HOOKS_DISABLE / HOOK_*_VERSIONS). HOOKS_DISABLE wins over
+# HOOKS_ENABLE; otherwise the hook's default version-glob decides.
+hook_enabled() {
+	case " ${HOOKS_DISABLE:-} " in *" $1 "*) return 1 ;; esac
+	case " ${HOOKS_ENABLE:-} " in *" $1 "*) return 0 ;; esac
+	case "${VERSION:-}" in $2) return 0 ;; *) return 1 ;; esac
+}
+
 DEB_ROOT="$ROOT_DIR/packing/dpkg-native/work"
 OUT_DIR="$ROOT_DIR/packing/dpkg-native"
 OUT_FILE="$OUT_DIR/${PKG_NAME}_${VERSION}_${ARCH_DEB}.deb"
@@ -124,6 +133,28 @@ echo "Installed-Size: $INSTALLED_SIZE" >>"$DEB_ROOT/DEBIAN/control"
 cat >"$DEB_ROOT/DEBIAN/postinst" <<'POSTINST'
 #!/data/data/com.termux/files/usr/bin/bash
 set -e
+POSTINST
+# stale-serve-kill hook (issue #17): gated by the packaging hook registry —
+# default scope v2 native 2.0.[0-3] only; HOOKS_ENABLE / HOOKS_DISABLE override.
+if hook_enabled stale-serve-kill "2.0.[0-3]"; then
+  cat >>"$DEB_ROOT/DEBIAN/postinst" <<'POSTINST_HOOK'
+# Stale-service cleanup: an upgrade replaces the binary while an old `serve`
+# daemon may still hold the background-service socket -> the new TUI times
+# out waiting for it. Kill only THIS package binary's serve processes; the
+# other generation's runtime path differs and is never matched.
+P="$(printf '%s' "${DPKG_MAINTSCRIPT_PACKAGE:-}")"
+case "$P" in
+  opencode)  SRV="$PREFIX/bin/opencode" ;;
+  opencode1) SRV="$PREFIX/lib/opencode1/runtime/opencode" ;;
+  *)         SRV="" ;;
+esac
+if [ -n "$SRV" ] && pgrep -f "^$SRV( |$)" >/dev/null 2>&1; then
+  pkill -f "^$SRV( |$)" 2>/dev/null || true
+  echo "Stopped stale $(basename "$SRV") serve processes (pre-upgrade instances)."
+fi
+POSTINST_HOOK
+fi
+cat >>"$DEB_ROOT/DEBIAN/postinst" <<'POSTINST'
 # v1 (opencode1) or v2 (opencode) install hook.
 # v1: auto-migrate any pre-v2-era config under ~/.config/opencode (etc.) into
 #     the opencode1-isolated dirs, exactly once, never clobbering existing

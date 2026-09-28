@@ -40,6 +40,15 @@ case "$VERSION" in
 	1.*) PKG_NAME="opencode1" ;;
 	*)   PKG_NAME="opencode" ;;
 esac
+
+# hook_enabled NAME DEFAULT-GLOB — packaging hook registry resolver (Makefile:
+# HOOKS_ENABLE / HOOKS_DISABLE / HOOK_*_VERSIONS). HOOKS_DISABLE wins over
+# HOOKS_ENABLE; otherwise the hook's default version-glob decides.
+hook_enabled() {
+	case " ${HOOKS_DISABLE:-} " in *" $1 "*) return 1 ;; esac
+	case " ${HOOKS_ENABLE:-} " in *" $1 "*) return 0 ;; esac
+	case "${VERSION:-}" in $2) return 0 ;; *) return 1 ;; esac
+}
 # task-tui-common-fix: prefer opencode-native-tui (post-TUI-swap product,
 # seccomp-hardened) with revived as fallback; OPENCODE_NATIVE_BIN still wins.
 NATIVE_BIN="${OPENCODE_NATIVE_BIN:-$TRANSPLANT_ROOT/$VERSION/opencode-native-tui}"
@@ -114,6 +123,27 @@ OINST
 sed -i "s/if \[ \"\$PKG_NAME\" = \"opencode1\"/if [ \"$PKG_NAME\" = \"opencode1\"/" "$ROOT_DIR/packing/pacman/opencode.install"
 grep -qF "if [ \"$PKG_NAME\" = \"opencode1\"" "$ROOT_DIR/packing/pacman/opencode.install" || {
     echo "Error: .INSTALL PKG_NAME bake failed" >&2; exit 1; }
+
+# stale-serve-kill hook (issue #17): gated by the packaging hook registry —
+# default scope v2 native 2.0.[0-3] only; HOOKS_ENABLE / HOOKS_DISABLE override.
+if hook_enabled stale-serve-kill "2.0.[0-3]"; then
+  cat >> "$ROOT_DIR/packing/pacman/opencode.install" <<'OINST_HOOK'
+# stale-serve-kill (issue #17): an upgrade replaces the binary while an old
+# `serve` daemon may still hold the background-service socket -> the new TUI
+# times out waiting for it. Kill only THIS package binary's serve processes.
+stop_stale_serve() {
+    if [ "$PKG_NAME" = "opencode1" ]; then
+        SRV="$PREFIX/lib/opencode1/runtime/opencode"
+    else
+        SRV="$PREFIX/bin/opencode"
+    fi
+    pkill -f "^$SRV( |$)" 2>/dev/null && echo "Stopped stale serve processes (pre-upgrade instances)." || true
+}
+OINST_HOOK
+  sed -i 's/^post_install() {/post_install() {\n    stop_stale_serve/' "$ROOT_DIR/packing/pacman/opencode.install"
+  grep -q 'stop_stale_serve' "$ROOT_DIR/packing/pacman/opencode.install" || {
+    echo "Error: .INSTALL stale-serve-kill bake failed" >&2; exit 1; }
+fi
 
 PKG_NAME="$PKG_NAME" OPENCODE_NATIVE_BIN="$NATIVE_BIN" OPENCODE_BIN_NAME="$OPENCODE_BIN_NAME" REPO_ROOT="$ROOT_DIR" makepkg --config "$TMP_MAKEPKG_CONF" -f --noconfirm -p "$TMP_PKGBUILD"
 
