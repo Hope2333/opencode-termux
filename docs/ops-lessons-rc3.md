@@ -54,3 +54,12 @@
 - Discussions 多语言五语（en/zh-Hans/zh-Hant/ja/es）公告与欢迎帖模板已落 31 仓（Announcements/General 板块）；新语言加一行即可。
 - README 五语对标结构：`README{,.zh,.es,.zht,.ja}.md` 各 140 行逐章节对齐；横幅单源 `assets/discussions-banner.svg`（SMIL 动画，camo 下可动）。
 - API 边界：Discussions 分类**创建/改名/描述/置顶**均无 API（UI-only）；发帖/改帖经 GraphQL `createDiscussion`/`updateDiscussion`。
+
+---
+
+## §8 RC4 追加（2026-09-29）
+
+- **UPX-on-bionic 证伪**：stock UPX 压制手术过的 bun standalone bionic ELF（DT_NEEDED/RUNPATH 补丁 + .bun section）→ 同机未压制版正常、压制版 SIGSEGV@0x11。UPX aarch64 stub 按 glibc 惯例假设，不可靠；压制需求走 opencode-compressed-branch 外包路线。RC3/RC4 计划 Must-NOT-have「UPX 零触碰」再次验证正确。
+- **嵌入资产污染检测法**：上游把平台二进制以 sha256 字符串形式嵌进编译产物——对产物 `strings | grep -c <hash>` 即可判定嵌入的是哪个变体（musl f9b069d3… / gnu 25e9273e…）。时序坑：修复合入前构建的包仍带旧资产，修复合入后必须全量重建或逐版断言。
+- **源码获取双路**：codeload.github.com 间歇阻断（fake-IP 代理白名单外抖动），`git clone --depth 1 --branch vX` 直连 github.com 主机稳定；tarball 下载后必须 gzip -t 完整性校验（--max-time 截断会产出半截包，播种坏源坑后续构建）。
+- **ENOSPC 纪律**：13 版批量构建前先 df 闸；v2src 源树/中间件（.pre-crhandler）用完即清；~/.bun/install/cache 单项可达 3.4G。
