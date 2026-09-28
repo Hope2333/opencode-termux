@@ -111,3 +111,14 @@ error: no embedded Bun runtime (missing BUNWRAP1)
 - https://github.com/oven-sh/bun
 - https://github.com/Hope2333/bun-termux-loader
 - https://github.com/thdxr/bun (patch 分支)
+
+
+---
+
+## 2026-09-28 追加（RC3 实证）
+
+| 仓库 | issue | 当前结论 | 本地动作 |
+|------|-------|---------|---------|
+| Hope2333/opencode-termux | #25 | OpenTUI 0.5.12 chunk 文件名漂移破构建 | 已修：apply-platform-patch.sh 动态发现（ce1c2ca），已关闭 |
+| Hope2333/opencode-termux | #23/#24/#17 | bun 1.4.2 SIGSEGV@0x40 / SIGSYS 报告 | RC3 全家族 bun 1.4.0 重建；v1 1.18.32-3 已获用户实证通过 |
+| Hope2333/opencode-termux | #17（open item） | **v2 native 包缺 seccomp shim**：kernel 4.19 上 SIGSYS，LD_PRELOAD v1 shim 可解 | 待办：family-v2-native 接 harden-native + deb/pacman-native ship shim，重建上架；详见 ops-lessons-rc3.md §6 |
