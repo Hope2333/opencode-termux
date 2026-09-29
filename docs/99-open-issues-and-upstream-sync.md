@@ -122,3 +122,12 @@ error: no embedded Bun runtime (missing BUNWRAP1)
 | Hope2333/opencode-termux | #25 | OpenTUI 0.5.12 chunk 文件名漂移破构建 | 已修：apply-platform-patch.sh 动态发现（ce1c2ca），已关闭 |
 | Hope2333/opencode-termux | #23/#24/#17 | bun 1.4.2 SIGSEGV@0x40 / SIGSYS 报告 | RC3 全家族 bun 1.4.0 重建；v1 1.18.32-3 已获用户实证通过 |
 | Hope2333/opencode-termux | #17（open item） | **v2 native 包缺 seccomp shim**：kernel 4.19 上 SIGSYS，LD_PRELOAD v1 shim 可解 | 待办：family-v2-native 接 harden-native + deb/pacman-native ship shim，重建上架；详见 ops-lessons-rc3.md §6 |
+
+## 2026-09-29 追加（RC4 实测反馈，mozzaru 2/2 复现）
+
+| bug | 现象 | 根因 | 处置 |
+|-----|------|------|------|
+| mirrorlist 校验和不匹配（2/2） | `hope2333-mirrorlist-1.0.20260928-1` 全新下载仍 sha 不符 | Server 走 `releases/latest/download/`，latest 漂移（RC4 上线）期间 db/pkg 来自不同轮 site-rebuild 自愈（非原子对） | **待修**：site-rebuild db+pkg 原子成对上传（用户侧自动化）；当前货架已收敛一致（7ec10039 双向验证） |
+| `.INSTALL` 钩子静默不跑（2/2） | post_install/pre_remove 报 `/usr/tmp/alpm_*/.INSTALL: No such file`；pacman -R 残留 $PREFIX/bin/opencode | termux-pacman libalpm 事务临时目录落在 /usr/tmp（Android 只读） | **RC5 包装轮**：关键逻辑迁 pacman hook 文件（HookDir 真实路径）；.INSTALL 降级为 best-effort 并文档化 |
+
+#17 实证：4.19 两轮独立干净安装零 SIGSYS（shim 生效）✓；#27 实证：Android 16 serve 正常（musl pty 生效）✓——RC4 双修均获独立设备确认。
