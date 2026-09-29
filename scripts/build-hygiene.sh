@@ -21,13 +21,15 @@ sweep_intermediates() {
   hg_log "sweep_intermediates ok"
 }
 
-# F3: bun cache LRU GC（按顶层目录 mtime 从旧到新删，直到低于上限）
+# F3: bun cache LRU GC（按顶层目录 mtime 最旧优先删，直到低于上限）
+# 枚举用 GNU find（-printf mtime 排序）：toybox ls 管道下会漏列最旧条目，
+# 且 -t（最新优先）方向与 LRU 相反——两坑均为 2026-09-29 实测。
 bun_cache_gc() {
   [ -d "$BUN_CACHE" ] || return 0
   local used; used=$(du -sk "$BUN_CACHE" 2>/dev/null | awk '{print $1}')
   [ "${used:-0}" -le "$BUN_CACHE_CAP_KB" ] && { hg_log "bun cache ${used:-0}K under cap, skip"; return 0; }
   local d sz
-  for d in $(ls -dt "$BUN_CACHE"/*/ 2>/dev/null); do
+  for d in $(find "$BUN_CACHE" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' 2>/dev/null | sort -n | cut -d' ' -f2-); do
     [ "$used" -le "$BUN_CACHE_CAP_KB" ] && break
     sz=$(du -sk "$d" 2>/dev/null | awk '{print $1}')
     rm -rf "$d"; used=$((used - ${sz:-0}))
@@ -36,9 +38,10 @@ bun_cache_gc() {
 }
 
 # F4: 源码树 LRU（保留最近 TREE_KEEP 棵；与 PTY_VARIANT/PKGREL 无关可共享）
+# 枚举同 bun_cache_gc：GNU find + mtime 排序（最新优先，跳过前 TREE_KEEP）
 sweep_trees() {
   local i=0 d
-  for d in $(ls -dt "$TREE_ROOT"/opencode-* 2>/dev/null); do
+  for d in $(find "$TREE_ROOT" -mindepth 1 -maxdepth 1 -type d -name 'opencode-*' -printf '%T@ %p\n' 2>/dev/null | sort -rn | cut -d' ' -f2-); do
     i=$((i+1)); [ "$i" -le "$TREE_KEEP" ] && continue
     rm -rf "$d"; hg_log "sweep_trees removed $d"
   done
