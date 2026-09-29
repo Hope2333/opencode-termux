@@ -63,3 +63,11 @@
 - **嵌入资产污染检测法**：上游把平台二进制以 sha256 字符串形式嵌进编译产物——对产物 `strings | grep -c <hash>` 即可判定嵌入的是哪个变体（musl f9b069d3… / gnu 25e9273e…）。时序坑：修复合入前构建的包仍带旧资产，修复合入后必须全量重建或逐版断言。
 - **源码获取双路**：codeload.github.com 间歇阻断（fake-IP 代理白名单外抖动），`git clone --depth 1 --branch vX` 直连 github.com 主机稳定；tarball 下载后必须 gzip -t 完整性校验（--max-time 截断会产出半截包，播种坏源坑后续构建）。
 - **ENOSPC 纪律**：13 版批量构建前先 df 闸；v2src 源树/中间件（.pre-crhandler）用完即清；~/.bun/install/cache 单项可达 3.4G。
+
+## §9 RC4 收口追加（2026-09-29）
+
+- **本机 $PREFIX/glibc 消失事件**：wrapper 门空输出的真因是本机 vendored glibc 运行时缺失（连货架 2.0.12 wrapper 都报 `open ld.so failed`）。gpkg glibc 包 payload 路径自带 `data/data/com.termux/files/usr/glibc` 前缀，在 RootDir=/data/data/com.termux/files 下装入**双重嵌套路径**；用最小文件级符号链接桥接（343 个运行库文件、**排除 libc.so 文本 ld script**——目录级链接会把脚本暴露给 termux-exec preload，bash 启动即死 invalid ELF header）。教训：wrapper 门失败先测货架旧 wrapper 是否同样失败，区分「包坏了」vs「机器环境坏了」。
+- **bin 守卫误伤 wrapper-only 流程**：`artifacts/build/<VER>` 存在但 revived bin 已被磁盘清理删除时，clean-version 守卫拒绝整个自洁。wrapper-only 批次用 `NOT_CLEAN=1` 绕过（该批次无需自洁）。
+- **makepkg 并发互斥**：batch-v2 的 native 与 wrapper 批次共享 `packing/pacman/{src,pkg}`，禁止并行——必须串行排队。
+- **并行发起竞态**：glibc 修复与依赖它的构建批次不能在同一消息里并行发起（修复落盘前批次已跑到门）。
+- **RC4 终态**：96 计划件（v2 native 38 + v2 wrapper 38 + v1 20）+ site-rebuild 4；RC5=B1(native-gnu) 定版、RC6=B2(native-musl) 定版、compressed 独立 pkgrel、v2.0.12 实验车 UPX_OPTS=-4（RFC discussions/29）。
