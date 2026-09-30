@@ -71,3 +71,9 @@
 - **makepkg 并发互斥**：batch-v2 的 native 与 wrapper 批次共享 `packing/pacman/{src,pkg}`，禁止并行——必须串行排队。
 - **并行发起竞态**：glibc 修复与依赖它的构建批次不能在同一消息里并行发起（修复落盘前批次已跑到门）。
 - **RC4 终态**：96 计划件（v2 native 38 + v2 wrapper 38 + v1 20）+ site-rebuild 4；RC5=B1(native-gnu) 定版、RC6=B2(native-musl) 定版、compressed 独立 pkgrel、v2.0.12 实验车 UPX_OPTS=-4（RFC discussions/29）。
+
+## §10 RC5 追加（2026-09-30）
+
+- **PTY_VARIANT 开关**：build-bionic `PTY_VARIANT=musl|gnu`（默认 musl 行为不变），双模式 2.0.12 验收（musl=2/0 ↔ gnu=0/2）。RC5=B1 定版 38 件上架（Push260930，PKGREL=5）。
+- **受控实验修正早前结论**：UPX -4 直压在 gnu/musl 双基底上**均 SIGSEGV**、未压制对照全活——「压制层杀 bun-standalone」与 PTY 变体无关，是通用问题。对照基线必须与实验件同测试床（RUNPATH $ORIGIN/../lib/opencode 相对解析，测试床缺伴生 lib 时连未压制对照都会假死）。
+- **R-A 外包配方**：opencode-compressed-branch 实体未寻获（Hope2333 名下/本仓分支/本地目录均无），ELF-diff 反推（v1 57M packed 真身 vs 失败 rb1）待批。
