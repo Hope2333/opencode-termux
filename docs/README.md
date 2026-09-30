@@ -20,6 +20,12 @@ This directory is the single source of truth for the current Termux packing/runt
 - `ci-prebuild-armv7.md` — Phase A armv7-only CI prebuild handoff scope
 - `ops-lessons-rc3.md` — RC3 发布实战经验（PKGREL 矩阵 / clean-version / chunk 漂移防线 / 网络链路 / v2 native shim open item）
 - `native-line-evolution.md` — native 线演进史（A 线拼接手术 → B 线真编译 → RC3~4 制度化；B/B1 方案对照）
+- `upx-v2-fix.md` — v2 UPX 压制修复：四假说（bin 结构/内嵌 store/crhandler/版本漂移）+ 检验序列 + v1 两成功线辨析（2026-09-30）
+- `handover/recall-pack.md` — 回忆拼图包（交接老代理，五节：现状/拼图/精确提问/检索法/对照基准）
+- `handover/release-runbook.md` — D1 发布运行手册（环境自检→PTY_VARIANT→构建→hygiene→PKGREL→上架→对账→双机→回写）
+- `handover/machine-env.md` — D2 机器与环境手册（fake-IP/glibc 桥接/termux-exec 陷阱/实验机/磁盘纪律/RootDir 双机）
+- `handover/community-state.md` — D3 社区与 issue 状态（开放案/已闭案底/RFC29/语言规则/回帖模板）
+- `handover/open-items.md` — D4 进行中与待决清单（UPX R-A/RC6 定版/原子对上传等 9 项，快照 2026-09-30）
 - `plugin-packaging-design.md` — package-manager-driven plugin model for apt/pacman
 - `OCTPLUGIN-PREBRANCH-RESEARCH.md` — single-file pre-split plugin research baseline
 - `system-skills-hook-architecture.md` — package-mode system skill + hook framework
