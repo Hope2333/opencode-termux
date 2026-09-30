@@ -236,3 +236,37 @@ patchelf --remove-needed libopencode-crhandler.so /tmp/v2-unhardened  # ③
 - `artifacts/build/2.0.12/opencode-native-revived` ✓
 - `artifacts/transplant/1.18.21/` ✓（若已 clean 则从 release 下载）
 - `/data/data/com.termux/files/usr/bin/upx` ✓ (5.2.1)
+
+---
+
+## 6. 实测裁决（2026-09-30/10-01 R-A 判决链，回填 2026-10-01）
+
+> 证据全文：`.omo/evidence/rc3-release/ra-forensics.txt` L139-170（老代理三段更新）
+
+### 判决链
+
+1. **readelf 权威对比（09-30）**：v1 57M packed = ELF DYN PIE static、NDK r27c、4 PH、PT_LOAD align **0x10000 (64KB)**、大段 R+E @0xab20000；`upx -t` 过、`upx -l` 识别 5.2.1。曾推断「外包用 NDK 自编 UPX stub」——**后被反转**。
+2. **二次反转（09-30）**：「外包 compressed-branch」=**错误记忆**。v1 配方就在本仓 = `make transplant-upx`（stock upx，`UPX_OPTS` 默认 `--best`，Makefile:365，~70min nohup）；硬约束 packed MUST be final pipeline step（Makefile:330）；v2 已有对应目标 `build-native-upx`（37e1972）。v1 用 `--best`、v2 实验用 `-4`——level 是否致死当时未测。
+3. **T3' 判决（10-01）**：v1.18.33 runtime（180,664,156B，deb 抽取）→ `stock upx -4` → 60,961,016B（33.7%）→ `--version` rc=0 **VIABLE**。
+
+### 四假说判决状态（以 T3' 为准）
+
+| 假说 | 判决 | 依据 |
+|------|------|------|
+| ① bin 结构 | **坐实（收窄到内嵌维度）** | v1 splice 期 bin -4 活 vs v2 bun-standalone 死；readelf 布局差（4PH/64KB 对齐） |
+| ② 内嵌 store | **坐实 = 根因方向** | T3' 排除链后「崩溃 = v2 bin 特有内嵌结构（资产布局/自省）」 |
+| ③ crhandler DT_NEEDED | 未单独裁决 | 被 ② 的排除链覆盖（若 strace 指向 /proc/self/exe 自省则进一步降级） |
+| ④ UPX 版本回归 | **证伪** | 同一 stock 5.2.1 压 v1 成功 |
+
+**排除三件套**（T3'）：stock UPX 本体、`-4` level、本机压制能力——v1 revived 全过；压制率 v1 33.7% vs v2 35% 正常，压缩层无异常。
+
+### 下一探针（判决链指定）
+
+```bash
+# 铁证判据：v2 bin 启动是否读 /proc/self/exe（bun embedded-assets 经文件偏移自省）
+strace -f -e trace=openat,open,read,pread64   artifacts/build/2.0.12/opencode-native-revived --version 2>&1 | grep -E '/proc/self/exe' | head -20
+```
+- 命中 `/proc/self/exe` → bun 在 UPX 解包后仍按**文件偏移**自省 embed 资产（解包只在内存，文件偏移指向已压缩布局）→ 铁证
+- 修法方向：①压制前剥自省依赖 ②保文件布局一致（launcher 挂载法复活）③等上游 bun 支持 packed ELF
+
+**配方级答案（老代理交付）**：v1 配方 = `make transplant-upx`（stock upx `--best`，final step，nohup）；v2 不能直接套——阻塞点=v2 内嵌自省结构，非工具/level/版本问题。

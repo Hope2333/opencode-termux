@@ -7,9 +7,9 @@
 
 ## 1. UPX R-A 路线（v2 compressed 复活）
 
-- **现状**: 四假说已成文（`docs/upx-v2-fix.md`），ELF-diff 取证线（ra-forensics.txt）已附；`opencode-compressed-branch` 实体仓库未寻获（只在架成品+记忆）；`.omo/plans/v2-upx-revival.md` 三路线（R-A/R-B1/R-B2）已批待跑
-- **下一步**: ①recall-pack 交老代理出配方级答案（20-30min）；②并行跑四假说检验序列（`docs/upx-v2-fix.md` §3 排序）；③R-A/R-B1/R-B2 三路实弹 → 晋级裁决
-- **阻塞点**: 老代理会话可用性；upx 5.2.0 二进制若不在手则假说 ④ 需先下载
+- **现状（2026-10-01 更新）**: **T3' 判决已出**——v1 bin + stock upx -4 = VIABLE（33.7%），坐实崩溃=v2 内嵌自省结构（非工具/level/版本）；「外包」确认为误记，v1 配方=本机 `make transplant-upx --best`（Makefile:365）；四假说判决表已入 `docs/upx-v2-fix.md` §6；下一探针=strace `/proc/self/exe` 自省铁证
+- **下一步**: ①跑 `/proc/self/exe` strace 铁证探针（§6）；②按自省结论选修法（剥自省/launcher 挂载/等上游）→ R-A/R-B1/R-B2 三路复测；③`v2-upx-revival.md` T1 可勾（取证已被 recall-pack+§6 承接）
+- **阻塞点**: strace 铁证未跑；修法选型待铁证
 
 ## 2. RC6 = B2 定版（musl 家族）
 
