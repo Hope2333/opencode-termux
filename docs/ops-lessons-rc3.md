@@ -77,3 +77,13 @@
 - **PTY_VARIANT 开关**：build-bionic `PTY_VARIANT=musl|gnu`（默认 musl 行为不变），双模式 2.0.12 验收（musl=2/0 ↔ gnu=0/2）。RC5=B1 定版 38 件上架（Push260930，PKGREL=5）。
 - **受控实验修正早前结论**：UPX -4 直压在 gnu/musl 双基底上**均 SIGSEGV**、未压制对照全活——「压制层杀 bun-standalone」与 PTY 变体无关，是通用问题。对照基线必须与实验件同测试床（RUNPATH $ORIGIN/../lib/opencode 相对解析，测试床缺伴生 lib 时连未压制对照都会假死）。
 - **R-A 外包配方**：opencode-compressed-branch 实体未寻获（Hope2333 名下/本仓分支/本地目录均无），ELF-diff 反推（v1 57M packed 真身 vs 失败 rb1）待批。
+
+## §11 RC5 撤销与发布门（2026-10-01）
+
+- **用户令**：RC5 撤销；发布门升级为「**UPX 压制通过**」硬性要求——UPX 不过，不许发布。
+- **机制定谳**（ra-mechanism.md，18min 子代理取证）：stock UPX 5.2.1 stub 把 282MB v2 镜像整体映射为 MAP_PRIVATE|MAP_FIXED|**ANONYMOUS**（仅代码段走 /memfd:upx 文件后备）；启动期 192MB `.bun`（$bunfs graph）在匿名映射中被丢成零页且无文件可回填 → bun 读零 → 空指针 SIGSEGV（`ldrb w0,[x26,x4]`，x26=0）。v1 的 180MB 镜像同区全程常驻（90672/90672 kB 字节一致）故存活。`upx -d` 往返 sha256 一致 = 压制无损，**死在映射形态**。
+- **证伪记录**：EOF 自省（+4KB 垃圾照跑）、节头定位（清 e_shoff 照跑）均不成立；两代同为 Bun 1.4.0；`packing/dpkg-compressed` 的 1794B launcher 不做解压只设 env。
+- **配方**：①v2 未压缩发布（RC4 口径=现状正确）；②省体积走 xz + launcher（解压到 $TMPDIR 后 exec 恢复文件后备映射）；③**UPX 对 v2 判死**。
+- **v1 配法祛魅**：v1 压制 = 本仓 `make transplant-upx`（UPX_OPTS?=--best，Makefile:365），「外包 compressed-branch」为错误记忆——v1 成功仅因镜像形态耐匿名映射。
+- **撤销执行**：Push260930 标 prerelease + make_latest=false（note 加双语 REVOKED banner）；RC4 回位 latest；site-rebuild dispatch 触发 db 回退再生；本机回装 2.0.18-4 musl（--version 通过，pty 嵌入=2）；wiki RC5 页双语标注；RFC #29 撤销公告。
+- **教训**：UPX 对 bun-standalone 的兼容性是**映射形态问题而非压缩正确性问题**——`upx -t` 通过、`upx -d` 无损都挡不住运行时死；发布门若依赖压制件，必须以「真实运行冒烟」为准，不能只测压缩工具自身校验。
