@@ -87,3 +87,12 @@
 - **v1 配法祛魅**：v1 压制 = 本仓 `make transplant-upx`（UPX_OPTS?=--best，Makefile:365），「外包 compressed-branch」为错误记忆——v1 成功仅因镜像形态耐匿名映射。
 - **撤销执行**：Push260930 标 prerelease + make_latest=false（note 加双语 REVOKED banner）；RC4 回位 latest；site-rebuild dispatch 触发 db 回退再生；本机回装 2.0.18-4 musl（--version 通过，pty 嵌入=2）；wiki RC5 页双语标注；RFC #29 撤销公告。
 - **教训**：UPX 对 bun-standalone 的兼容性是**映射形态问题而非压缩正确性问题**——`upx -t` 通过、`upx -d` 无损都挡不住运行时死；发布门若依赖压制件，必须以「真实运行冒烟」为准，不能只测压缩工具自身校验。
+
+## §12 UPX 复活战役（rc56-upx-gate，2026-10-01）
+
+- **补丁落地**：UPX 5.2.1 stub 非 PF_X 段从 mmap_privanon 改为每段独立 memfd 文件后备（`tools/upx-stub/v2-memfd-data.patch`，+31/-1）；数据段无 MFD_EXEC、offset=p_offset-frag 布局、RO 段重映 MAP_PRIVATE、W 段保 MAP_SHARED。
+- **工具链**：PATH shim 换链（Makefile 零改动）——arm64-linux-gcc-4.9.2 系同名 shim → gobjcopy/gobjdump(binutils-2.47)+ld.bfd；clang IAS 拒绝 .S 重复标号需 -fno-integrated-as；仅 fold.h 需重出（entry 系保官方字节）。一键脚本 `tools/upx-stub/build-android.sh`。
+- **实测裁决**：v2.0.12 gnu+musl 压制件（37.08/37.10%）本机四项与对照全一致；stock 阳性对照四项全 SIGSEGV（因果闭环）；oscar（3.18/3.6G RAM）6/6 冷启动零崩、dmesg 零命中、run 完整 LLM 往返。**门 1/门 2 双达标**（云发布仍冻结至 10-05）。
+- **Makefile**：build-native-upx 引 `UPX_BIN`（默认 upx）+ `UPX_OPTS?=-4` 统一；family-v2-compressed 透传。
+- **教训**：①测试床伴生 lib（RUNPATH $ORIGIN/../lib/opencode）缺失会让未压对照假死——基线必须与实验件同测试床；②GNU binutils 与 llvm-objdump 布局断言不兼容，stub 重建必须 GNU 系真身（本机 gobjcopy/gobjdump 包）；③TUI 在 adb pty harness 下压件与对照一致崩=测试床限制，一致性即可判过，真实验证依赖实机 GUI。
+- 遗留：其它压缩等级/so 变体未逐一跑；RC5/RC6 再发布（新 tag）待 10-05 解冻后按双门契约执行。
