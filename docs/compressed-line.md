@@ -94,3 +94,10 @@ shim 源码在 `tools/bun-pty-splice/shim.c`（canary 需设
 > linker 缺陷（JIT 归因系 bun.report ucontext 错位巧合）；设备侧「任意
 > Android/内核组合 → TUI 可达性 + 修补清单」判定表见
 > `docs/tui-reachability.md`。
+
+## 过渡期命名注记（2026-10-02）
+
+`opencode1-compressed` 包名沿用 v1 时代（当时装 v1 压缩件 1.18.32-3）；RC4 起该名位实际装载
+**v2 compressed**（2.0.12-1，B2 musl 系拼接线）。族代与版本号在旧 db 快照期会错位迷惑
+（`pacman -S opencode1` 仍解析 v1 native 1.18.33-3，与 compressed 位按 D1 互斥）。
+解冻期动作：db 再生同步 2.0.12-1；RC6 命名决策（RFC #29）定「改名 + replace 迁移」或延续。
