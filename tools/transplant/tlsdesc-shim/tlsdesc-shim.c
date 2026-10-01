@@ -1,0 +1,226 @@
+/* tlsdesc-shim.c — self-contained TLSDESC fallback resolver for bionic < 11.
+ *
+ * Context (task-1 adjudication: .omo/evidence/rc6-b2-upx-tui/task-1-jsc.txt):
+ *   zig 0.16 hardcodes the .generaldynamic TLS IR model, and LLVM's AArch64
+ *   backend lowers it to R_AARCH64_TLSDESC unconditionally (no dialect knob,
+ *   no -ftls-model path for zig code). Bionic 9 (API 28) ignores TLSDESC
+ *   relocs entirely (android-9.0.0_r1 linker.cpp has no case for them), so the
+ *   descriptor slots keep their file value (0) and the first access does
+ *   `blr NULL` -> SIGSEGV SEGV_MAPERR@0x0 (Thread.maybeAttachSignalStack).
+ *   Bionic 10+ (API 29+) implements TLSDESC natively (static + dynamic
+ *   resolvers, linker_relocate.cpp) — those linkers fill every slot BEFORE
+ *   constructors run, so the fallback below never activates there.
+ *
+ *   The IE-model alternative (offline TLSDESC->TPREL relaxation) is NOT viable:
+ *   bionic 9's R_AARCH64_TLS_TPREL64 case is a TRACE-ONLY STUB (no slot write),
+ *   and bionic >= 11 REJECTS IE access from a dlopened library whose TLS does
+ *   not fit the static TLS surplus ("TLS symbol ... using IE access model") —
+ *   this module's TLS is ~256KB (zig std signal_stack), far above surplus.
+ *
+ * Mechanism (emutls semantics retrofitted into TLSDESC slots):
+ *   An .init_array constructor scans this module's own .rela.dyn for
+ *   R_AARCH64_TLSDESC entries. Any slot whose resolver is still NULL is filled
+ *   with {tlsdesc_resolver_stub, tls_offset}. The resolver keeps a per-thread
+ *   zero-initialized block (pthread_getspecific + calloc of PT_TLS p_memsz —
+ *   every TLS var in this module lives in .tbss, i.e. zero-init, so one block
+ *   reproduces real TLS semantics exactly) and returns
+ *   (block + tls_offset) - tp. Slots already filled by the linker (bionic 11+)
+ *   are left untouched, preserving native static/dynamic resolution.
+ *
+ * ABI (hard-won, oscar crash 0xffffffffff547568 — Io.Threaded.Syscall.start
+ * kept its argument in x8 across `blr x1` and the C resolver clobbered it):
+ *   The AArch64 TLSDESC resolver is called with x0 = &descriptor and returns
+ *   the tp-relative offset in x0. The generated access sequence keeps OTHER
+ *   caller registers live across the call, so the resolver must preserve
+ *   x1-x18, x30, SP and NZCV. A plain C implementation cannot guarantee that
+ *   (it calls calloc/pthread_*), hence the naked asm stub below saves and
+ *   restores the full register bank around the C body.
+ *
+ * RELRO note: the TLSDESC slots sit inside GNU_RELRO, and bionic protects
+ * RELRO *before* calling constructors (android-9.0.0_r1 linker.cpp:
+ * protect_relro() in link_image(), call_constructors() after). The
+ * constructor therefore mprotect()s the slot pages R|W, fills them, and
+ * restores R.
+ *
+ * This file compiles under -std=c99, uses no TLS of its own, and adds no
+ * dynamic TLS relocations, so it is safe to build into the module it fixes.
+ */
+
+#define _GNU_SOURCE
+#include <dlfcn.h>
+#include <elf.h>
+#include <link.h>
+#include <pthread.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/mman.h>
+#include <unistd.h>
+
+typedef struct {
+  uintptr_t resolver;
+  uintptr_t arg;
+} Tlsdesc;
+
+static pthread_key_t g_block_key;
+static int g_key_ok = 0;
+static size_t g_tls_memsz = 0;
+
+/* Per-thread TLS block, allocated on first TLSDESC access in that thread. */
+static void tlsdesc_block_dtor(void *p) { free(p); }
+
+static void tlsdesc_key_init(void) {
+  g_key_ok = (pthread_key_create(&g_block_key, tlsdesc_block_dtor) == 0);
+}
+
+static void *tlsdesc_get_block(void) {
+  void *blk = pthread_getspecific(g_block_key);
+  if (blk == NULL) {
+    blk = calloc(1, g_tls_memsz ? g_tls_memsz : 4096);
+    if (blk == NULL)
+      return NULL;
+    pthread_setspecific(g_block_key, blk);
+  }
+  return blk;
+}
+
+/* C body of the resolver. Called by the naked stub with x1-x18/x30/NZCV saved
+ * on the stub's stack frame, so it may use the normal C ABI freely. */
+__attribute__((used)) __attribute__((visibility("hidden"))) uintptr_t tlsdesc_resolver_impl(Tlsdesc *d) {
+  uintptr_t tp = (uintptr_t)__builtin_thread_pointer();
+  void *blk = tlsdesc_get_block();
+  if (blk == NULL)
+    return 0; /* OOM: degrade to tp+0 rather than dereferencing wild memory */
+  return (uintptr_t)blk + d->arg - tp;
+}
+
+/* TLSDESC ABI entry. x0 = &descriptor in, x0 = tp-offset out; every other
+ * register (x1-x18, x30), SP and NZCV must survive the call — the generated
+ * access sequence keeps caller values live across `blr x1`. */
+__attribute__((naked)) __attribute__((visibility("hidden"))) uintptr_t tlsdesc_resolver_stub(Tlsdesc *d) {
+  __asm__ volatile(
+      "stp x1, x2, [sp, #-0xb0]!\n\t"
+      "stp x3, x4, [sp, #0x10]\n\t"
+      "stp x5, x6, [sp, #0x20]\n\t"
+      "stp x7, x8, [sp, #0x30]\n\t"
+      "stp x9, x10, [sp, #0x40]\n\t"
+      "stp x11, x12, [sp, #0x50]\n\t"
+      "stp x13, x14, [sp, #0x60]\n\t"
+      "stp x15, x16, [sp, #0x70]\n\t"
+      "stp x17, x18, [sp, #0x80]\n\t"
+      "str x30, [sp, #0xa0]\n\t"
+      "mrs x9, nzcv\n\t"
+      "str x9, [sp, #0xa8]\n\t"
+      "bl tlsdesc_resolver_impl\n\t"
+      "ldr x30, [sp, #0xa0]\n\t"
+      "ldp x3, x4, [sp, #0x10]\n\t"
+      "ldp x5, x6, [sp, #0x20]\n\t"
+      "ldp x7, x8, [sp, #0x30]\n\t"
+      "ldp x11, x12, [sp, #0x50]\n\t"
+      "ldp x13, x14, [sp, #0x60]\n\t"
+      "ldp x15, x16, [sp, #0x70]\n\t"
+      "ldp x17, x18, [sp, #0x80]\n\t"
+      "ldp x1, x2, [sp, #0x0]\n\t"
+      "ldp x9, x10, [sp, #0x40]\n\t"
+      "ldr x1, [sp, #0xa8]\n\t"
+      "msr nzcv, x1\n\t"
+      "ldp x1, x2, [sp], #0xb0\n\t"
+      "ret\n\t");
+}
+
+static int tlsdesc_phdr_cb(struct dl_phdr_info *info, size_t size, void *data) {
+  (void)size;
+  uintptr_t self_addr = (uintptr_t)&tlsdesc_resolver_stub;
+  const ElfW(Phdr) *tls_phdr = NULL;
+  const ElfW(Phdr) *dyn_phdr = NULL;
+  uintptr_t load_bias = info->dlpi_addr;
+  int found_self = 0;
+  int n;
+
+  for (n = 0; n < info->dlpi_phnum; n++) {
+    const ElfW(Phdr) *ph = &info->dlpi_phdr[n];
+    if (ph->p_type == PT_LOAD && !found_self) {
+      uintptr_t lo = load_bias + ph->p_vaddr;
+      uintptr_t hi = lo + ph->p_memsz;
+      if (self_addr >= lo && self_addr < hi)
+        found_self = 1;
+    }
+    if (ph->p_type == PT_TLS)
+      tls_phdr = ph;
+    if (ph->p_type == PT_DYNAMIC)
+      dyn_phdr = ph;
+  }
+  if (!found_self || tls_phdr == NULL || dyn_phdr == NULL)
+    return 0; /* keep iterating */
+
+  const ElfW(Dyn) *dyn =
+      (const ElfW(Dyn) *)(load_bias + dyn_phdr->p_vaddr);
+  uintptr_t rela = 0;
+  size_t relasz = 0, relaent = sizeof(ElfW(Rela));
+  for (; dyn->d_tag != DT_NULL; dyn++) {
+    if (dyn->d_tag == DT_RELA)
+      /* bionic keeps DT_* d_ptr entries as link-time vaddrs (unbiased);
+         verified empirically via dl_iterate_phdr on bionic 15/9 */
+      rela = load_bias + (uintptr_t)dyn->d_un.d_ptr;
+    else if (dyn->d_tag == DT_RELASZ)
+      relasz = (size_t)dyn->d_un.d_val;
+    else if (dyn->d_tag == DT_RELAENT && dyn->d_un.d_val != 0)
+      relaent = (size_t)dyn->d_un.d_val;
+  }
+  if (rela == 0 || relasz == 0 || relaent != sizeof(ElfW(Rela)))
+    return 1; /* our module, but nothing to do */
+
+  /* Collect unfilled TLSDESC slots first so one mprotect window covers all. */
+  uintptr_t page_size = (uintptr_t)sysconf(_SC_PAGESIZE);
+  uintptr_t lo_page = 0, hi_page = 0;
+  size_t count = relasz / sizeof(ElfW(Rela));
+  size_t i, filled = 0;
+  for (i = 0; i < count; i++) {
+    const ElfW(Rela) *rel =
+        (const ElfW(Rela) *)(rela + i * sizeof(ElfW(Rela)));
+    if (ELF64_R_TYPE(rel->r_info) != R_AARCH64_TLSDESC)
+      continue;
+    Tlsdesc *slot = (Tlsdesc *)(load_bias + rel->r_offset);
+    if (slot->resolver != 0)
+      continue; /* linker (bionic >= 10) already installed a real resolver */
+    uintptr_t pg = (uintptr_t)slot & ~(page_size - 1);
+    if (filled == 0 || pg < lo_page)
+      lo_page = pg;
+    if (filled == 0 || pg + page_size > hi_page)
+      hi_page = pg + page_size;
+    filled++;
+  }
+  if (filled == 0)
+    return 1; /* our module, nothing unfilled (bionic >= 10 host) */
+
+  if (mprotect((void *)lo_page, hi_page - lo_page,
+               PROT_READ | PROT_WRITE) != 0)
+    return 1; /* cannot fill safely; leave as-is rather than half-fix */
+
+  g_tls_memsz = (size_t)tls_phdr->p_memsz;
+  for (i = 0; i < count; i++) {
+    const ElfW(Rela) *rel =
+        (const ElfW(Rela) *)(rela + i * sizeof(ElfW(Rela)));
+    if (ELF64_R_TYPE(rel->r_info) != R_AARCH64_TLSDESC)
+      continue;
+    Tlsdesc *slot = (Tlsdesc *)(load_bias + rel->r_offset);
+    if (slot->resolver != 0)
+      continue;
+    slot->resolver = (uintptr_t)&tlsdesc_resolver_stub;
+    slot->arg = (uintptr_t)rel->r_addend; /* offset within module TLS block */
+  }
+  mprotect((void *)lo_page, hi_page - lo_page, PROT_READ);
+  return 1; /* done with our module */
+}
+
+/* Constructor priority: must run before the first TLSDESC access. No other
+ * constructor in this module touches module TLS before the TUI spawns its
+ * first thread, so plain .init_array ordering suffices. */
+__attribute__((constructor)) static void tlsdesc_shim_init(void) {
+  if (!g_key_ok) {
+    if (pthread_key_create(&g_block_key, tlsdesc_block_dtor) != 0)
+      return; /* cannot back TLS blocks; leave slots untouched */
+    g_key_ok = 1;
+  }
+  dl_iterate_phdr(tlsdesc_phdr_cb, NULL);
+}
