@@ -92,6 +92,17 @@ if [[ -n "$BUILT_PKG" ]]; then
     echo "Regression guard: OK (no data/ payload paths)"
 fi
 
+# launcher guard (unconditional): the launcher is the ONLY supported entry —
+# the UPX stub maps segments under /memfd:upx where DT_RUNPATH $ORIGIN
+# resolution dies, so a direct runtime exec cannot find libopencode-crhandler.so.
+if [[ -n "$BUILT_PKG" ]]; then
+    if ! bsdtar -tf "$BUILT_PKG" | grep -qE 'usr/bin/opencode1$'; then
+        echo "FATAL: package does not ship the usr/bin/opencode1 launcher (launcher-only contract)" >&2
+        exit 1
+    fi
+    echo "launcher guard: OK (usr/bin/opencode1 shipped)"
+fi
+
 # crhandler guard (unconditional): the package MUST contain the shim.
 if [[ -n "$BUILT_PKG" ]]; then
     if ! bsdtar -tf "$BUILT_PKG" | grep -qE 'usr/lib/(opencode|opencode1)/libopencode-crhandler.so'; then
