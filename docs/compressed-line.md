@@ -89,3 +89,8 @@ shim 源码在 `tools/bun-pty-splice/shim.c`（canary 需设
 - `opencode1 --version` 回归通过；会话期（TUI 内真实 pty 会话）验证
   **延后**：JIT 层崩溃未修（todo 1/2），headless `run` 亦不加载 pty
   （pty 仅在终端会话路径加载）。
+
+> 后记（rc6-b2-upx-tui）：TUI 崩溃真因后经定谳为 bionic<11 的 TLSDESC
+> linker 缺陷（JIT 归因系 bun.report ucontext 错位巧合）；设备侧「任意
+> Android/内核组合 → TUI 可达性 + 修补清单」判定表见
+> `docs/tui-reachability.md`。
