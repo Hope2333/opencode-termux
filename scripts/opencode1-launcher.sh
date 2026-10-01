@@ -18,7 +18,18 @@ export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}/opencode1"
 export XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}/opencode1"
 export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.cache}/opencode1"
 export XDG_STATE_HOME="${XDG_STATE_HOME:-$HOME/.local/state}/opencode1"
-export LD_LIBRARY_PATH="$P/lib/opencode:$P/lib/opencode1${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export LD_LIBRARY_PATH="$P/lib/opencode:$P/lib/opencode1:$P/lib/opencode1/pty${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+
+# pty splice (optional asset, backward compatible): when the compressed package
+# ships the patched musl librust_pty (bun-pty 0.4.11 splice — see
+# tools/bun-pty-splice/ and docs/compressed-line.md), point bun-pty's
+# BUN_PTY_LIB probe at it so the runtime dlopens the bionic-compatible build
+# instead of failing on the inlined asset. Its DT_NEEDED shim.so resolves via
+# the pty dir added to LD_LIBRARY_PATH above. Old packages without the asset
+# are unaffected (no export).
+if [ -f "$P/lib/opencode1/pty/librust_pty_arm64_musl_patched.so" ]; then
+	export BUN_PTY_LIB="$P/lib/opencode1/pty/librust_pty_arm64_musl_patched.so"
+fi
 
 # runtime probe order: layered (native/compressed v12.1 layout) first, then the
 # wrapper line's original staged layout. Sibling Conflicts (opencode1 vs
