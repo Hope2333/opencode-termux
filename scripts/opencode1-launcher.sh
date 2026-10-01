@@ -20,6 +20,25 @@ export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.cache}/opencode1"
 export XDG_STATE_HOME="${XDG_STATE_HOME:-$HOME/.local/state}/opencode1"
 export LD_LIBRARY_PATH="$P/lib/opencode:$P/lib/opencode1:$P/lib/opencode1/pty${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
+# service-port split (readiness fix, evidence: tools/opencode-readiness-fix/):
+# both v2 generations default the managed service port to 0xc0de=49374, but the
+# XDG isolation keeps their registration files apart — a plain-generation daemon
+# squatting 49374 is invisible to this generation's discovery, so every
+# `serve --service` contender dies of EADDRINUSE and the TUI handshake stalls
+# until ensure()'s 120s deadline ("Timed out waiting for the background
+# service"). Bootstrap a per-generation port (49376) in this generation's
+# service config: absent file -> write one; existing file without a "port" key
+# -> inject one (opencode writes pretty JSON whose first line is always "{").
+# Best-effort: any failure falls back to the stock default port.
+CFG_DIR="${XDG_CONFIG_HOME}/opencode"
+CFG_FILE="${CFG_DIR}/service.json"
+if [ ! -f "$CFG_FILE" ]; then
+	mkdir -p "$CFG_DIR" 2>/dev/null || true
+	printf '{"port": 49376}\n' > "$CFG_FILE" 2>/dev/null || true
+elif ! grep -q '"port"' "$CFG_FILE" 2>/dev/null; then
+	sed -i '1s/^{$/{\n  "port": 49376,/' "$CFG_FILE" 2>/dev/null || true
+fi
+
 # pty splice (optional asset, backward compatible): when the compressed package
 # ships the patched musl librust_pty (bun-pty 0.4.11 splice — see
 # tools/bun-pty-splice/ and docs/compressed-line.md), point bun-pty's
