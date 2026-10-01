@@ -830,10 +830,11 @@ build-native-upx:
 	src="artifacts/build/$(VER)/opencode-native-revived"; \
 	if [ ! -f "$$src" ]; then echo "Error: $$src missing; run 'make build-native VER=$(VER)' first"; exit 1; fi; \
 	cp -p "$$src" "artifacts/build/$(VER)/opencode-native-revived-upx"; \
-	upx $(UPX_OPTS) --no-color "artifacts/build/$(VER)/opencode-native-revived-upx"; \
+	$(UPX_BIN) $(UPX_OPTS) --no-color "artifacts/build/$(VER)/opencode-native-revived-upx"; \
 	sha256sum "artifacts/build/$(VER)/opencode-native-revived-upx" | awk '{print $$1}' > "artifacts/build/$(VER)/build-upx.sha256"; \
 	echo "==> upx: artifacts/build/$(VER)/opencode-native-revived-upx ($$(stat -c%s artifacts/build/$(VER)/opencode-native-revived-upx) B)"
-build-native-upx: UPX_OPTS?=
+build-native-upx: UPX_BIN?=upx
+build-native-upx: UPX_OPTS?=-4
 
 # family-v2-native: B-line compile + native deb/pacman (v1 provider scripts)
 # Usage: make family-v2-native VER=2.0.0
@@ -853,6 +854,7 @@ family-v2-native:
 # family-v2-compressed: B-line + UPX + compressed deb/pacman (v1 standalone scheme)
 # Usage: make family-v2-compressed VER=2.0.0
 .PHONY: family-v2-compressed
+family-v2-compressed: UPX_BIN?=upx
 family-v2-compressed:
 	@if [ -z "$(VER_IS_SET)" ]; then \
 		echo "Error: VER is required. Example: make family-v2-compressed VER=2.0.0"; \
@@ -860,7 +862,7 @@ family-v2-compressed:
 	fi
 	$(MAKE) --no-print-directory build-native VER=$(VER) V2_SRC='$(V2_SRC)'
 	$(MAKE) --no-print-directory harden-native VER=$(VER)
-	$(MAKE) --no-print-directory build-native-upx VER=$(VER)
+	UPX_BIN='$(UPX_BIN)' $(MAKE) --no-print-directory build-native-upx VER=$(VER)
 	TRANSPLANT_ROOT=$(CURDIR)/artifacts/build OPENCODE_COMPRESSED_BIN=$(CURDIR)/artifacts/build/$(VER)/opencode-native-revived-upx OPENCODE_CRHANDLER_SO=$(CURDIR)/artifacts/build/$(VER)/libopencode-crhandler.so $(MAKE) --no-print-directory deb-compressed VER=$(VER)
 	TRANSPLANT_ROOT=$(CURDIR)/artifacts/build OPENCODE_COMPRESSED_BIN=$(CURDIR)/artifacts/build/$(VER)/opencode-native-revived-upx OPENCODE_CRHANDLER_SO=$(CURDIR)/artifacts/build/$(VER)/libopencode-crhandler.so $(MAKE) --no-print-directory pacman-compressed VER=$(VER)
 	@if [ -n "$(VER_IS_SET)" ] && [ "$(NOT_CLEAN)" != "1" ]; then $(MAKE) --no-print-directory clean-version VER=$(VER) || exit 1; fi
