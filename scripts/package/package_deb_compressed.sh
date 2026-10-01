@@ -107,6 +107,7 @@ set -e
 CFG_DIR="$(printf '%s' "${XDG_CONFIG_HOME:-$HOME/.config}/opencode")"
 echo "OpenCode1 compressed variant installed (UPX-packed v1 bionic runtime; coexists with v2 opencode)"
 echo "Run: opencode1 --version"
+echo "Runtime is UPX-packed: invoke via the opencode1 launcher only (direct runtime exec cannot resolve libs under memfd)."
 if [ -e "$CFG_DIR" ] && [ ! -e "${CFG_DIR}1" ] && command -v migrate-to-opencode1.sh >/dev/null 2>&1; then
   echo "Detected pre-v2-era opencode config; migrating to ${CFG_DIR}1 ..."
   migrate-to-opencode1.sh isolate >/dev/null 2>&1 && echo "Migrated: v1 config now under *opencode1 dirs." || echo "Migration skipped (already isolated or no v1 data)."
@@ -130,3 +131,12 @@ dpkg-deb -c "$OUT_FILE" | grep -q "lib/opencode1/libopencode-crhandler.so" || {
 	exit 1
 }
 echo "crhandler guard: OK (shim shipped)"
+
+# launcher guard (unconditional): the launcher is the ONLY supported entry —
+# the UPX stub maps segments under /memfd:upx where DT_RUNPATH $ORIGIN
+# resolution dies, so a direct runtime exec cannot find libopencode-crhandler.so.
+dpkg-deb -c "$OUT_FILE" | grep -qE 'bin/opencode1$' || {
+	echo "FATAL: deb does not ship the bin/opencode1 launcher (launcher-only contract)" >&2
+	exit 1
+}
+echo "launcher guard: OK (bin/opencode1 shipped)"

@@ -145,6 +145,30 @@ OINST_HOOK
     echo "Error: .INSTALL stale-serve-kill bake failed" >&2; exit 1; }
 fi
 
+# stale-runtime-quarantine: conservative rename-backup of an unowned, same-arch
+# stale runtime at $PREFIX/lib/opencode/runtime/opencode (pre-v12.1 v1-era
+# leftover). NEVER rm user files; the owner decides deletion.
+cat >> "$ROOT_DIR/packing/pacman/opencode.install" <<'OINST_STALE'
+quarantine_stale_runtime() {
+    STALE="$PREFIX/lib/opencode/runtime/opencode"
+    [ -f "$STALE" ] || return 0
+    command -v file >/dev/null 2>&1 || return 0
+    pacman -Qo "$STALE" >/dev/null 2>&1 && return 0
+    case "$(file -b "$STALE")" in
+        *ELF*aarch64*|*aarch64*ELF*)
+            BAK="$STALE.stale-$(date +%Y%m%d)"
+            if mv -n "$STALE" "$BAK" 2>/dev/null && [ ! -f "$STALE" ]; then
+                echo "Quarantined unowned stale runtime: $STALE -> $BAK"
+                echo "(no pacman package owns it; delete manually if unneeded)"
+            fi
+            ;;
+    esac
+}
+OINST_STALE
+sed -i 's/^post_install() {/post_install() {\n    quarantine_stale_runtime/' "$ROOT_DIR/packing/pacman/opencode.install"
+grep -q 'quarantine_stale_runtime' "$ROOT_DIR/packing/pacman/opencode.install" || {
+    echo "Error: .INSTALL stale-runtime-quarantine bake failed" >&2; exit 1; }
+
 PKG_NAME="$PKG_NAME" OPENCODE_NATIVE_BIN="$NATIVE_BIN" OPENCODE_BIN_NAME="$OPENCODE_BIN_NAME" REPO_ROOT="$ROOT_DIR" makepkg --config "$TMP_MAKEPKG_CONF" -f --noconfirm -p "$TMP_PKGBUILD"
 
 echo "Native pacman package created under: $ROOT_DIR/packing/pacman"

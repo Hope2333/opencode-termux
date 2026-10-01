@@ -72,3 +72,26 @@ echo "Installed-Size: $INSTALLED_SIZE" >>"$DEB_ROOT/DEBIAN/control"
 
 dpkg-deb --build "$DEB_ROOT" "$OUT_FILE"
 echo "DEB package created: $OUT_FILE"
+
+# B1 payload gate (ISSUS@001): launcher + non-empty runtime must ship, and no
+# doubled directory (bin/bin, lib/lib, share/share) may ever appear (field
+# incident layout). Termux dpkg maps data/data/com.termux/files/... paths, so
+# the entry must sit at $PREFIX/bin/opencode1.
+PAYLOAD_LIST=$(dpkg-deb -c "$OUT_FILE")
+grep -qE "\./?${PREFIX#/}/bin/opencode1$" <<<"$PAYLOAD_LIST" || {
+	echo "FATAL: deb payload missing $PREFIX/bin/opencode1 launcher" >&2
+	echo "$PAYLOAD_LIST" >&2
+	exit 1
+}
+RT_SIZE=$(grep -E "\./?${PREFIX#/}/lib/opencode/runtime/opencode$" <<<"$PAYLOAD_LIST" | awk '{print $3}')
+[[ -n "$RT_SIZE" && "$RT_SIZE" -gt 0 ]] || {
+	echo "FATAL: deb payload missing/empty $PREFIX/lib/opencode/runtime/opencode" >&2
+	echo "$PAYLOAD_LIST" >&2
+	exit 1
+}
+NESTED=$(echo "$PAYLOAD_LIST" | grep -E '(^|/)(bin/bin|lib/lib|share/share)/' | head -1 || true)
+if [[ -n "$NESTED" ]]; then
+	echo "FATAL: deb payload contains a doubled directory: $NESTED" >&2
+	exit 1
+fi
+echo "Payload gate: OK (launcher + runtime present, no doubled dirs)"

@@ -96,3 +96,11 @@
 - **Makefile**：build-native-upx 引 `UPX_BIN`（默认 upx）+ `UPX_OPTS?=-4` 统一；family-v2-compressed 透传。
 - **教训**：①测试床伴生 lib（RUNPATH $ORIGIN/../lib/opencode）缺失会让未压对照假死——基线必须与实验件同测试床；②GNU binutils 与 llvm-objdump 布局断言不兼容，stub 重建必须 GNU 系真身（本机 gobjcopy/gobjdump 包）；③TUI 在 adb pty harness 下压件与对照一致崩=测试床限制，一致性即可判过，真实验证依赖实机 GUI。
 - 遗留：其它压缩等级/so 变体未逐一跑；RC5/RC6 再发布（新 tag）待 10-05 解冻后按双门契约执行。
+
+## §13 TUI 根因定谳与门 2 修订（2026-10-01，oscar 实机）
+
+- **双修正**：①「TUI adb-harness 一致崩=假象」作废——真终端/ssh+script 真 PTY 同签名崩（SIGSEGV@0x0 rc=139）；②「UPX-memfd 信令失效」存疑作废——F-comp 125s 超时是 glibc pty 族根因的次生表现（compressed 掩盖 dlopen 崩改走服务回退）。
+- **根因**：「gnu/musl」双线只换 pty daemon（B2=静态 musl f9b069d3 已换对）；**librust_pty napi .so B1/B2 同件 glibc（libc.so.6）**→ v2 TUI 零 glibc 机全变体必死。组件级实锤：gnu daemon oscar exec "No such file or directory"、musl daemon 活；单换 daemon 无效。
+- **UPX 补丁中性确认**：压/未压一致性门含 TUI 一致崩全过；B2-upx oscar 实测 version/run/serve 全过（37.19%）。
+- **门 2 修订（用户裁决 A）**：非 TUI 功能双变体双机全过=判据主体；TUI 零 glibc 豁免。B 路线（musl librust_pty splice）划归 RC6/B2 任务。
+- **方法论教训**：验收判据必须区分「环境可达面」——同一二进制在不同 glibc 可用性环境下功能面不同，组件级甄别（exec/dlopen 逐件验）比整机推断快且准；bun 对 pty 资产加载失败的错误路径未兜住（崩溃而非降级），上游可报。

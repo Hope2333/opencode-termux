@@ -48,6 +48,7 @@ post_install() {
     echo ""
     echo "OpenCode1 compressed variant installed (UPX-packed native bionic runtime)"
     echo "Usage: opencode1 --version"
+    echo "Runtime is UPX-packed: invoke via the opencode1 launcher only (direct runtime exec cannot resolve libs under memfd)."
     echo "Scope: same runtime as the native mainline, UPX-packed for size."
     echo "v1 compressed variant (coexists with v2 opencode)."
 }

@@ -155,6 +155,26 @@ fi
 POSTINST_HOOK
 fi
 cat >>"$DEB_ROOT/DEBIAN/postinst" <<'POSTINST'
+# stale-runtime-quarantine: $PREFIX/lib/opencode/runtime/opencode may be a
+# pre-v12.1 v1-era leftover (e.g. a June 1.17.9) that no current package owns.
+# Conservative rename-backup ONLY if all hold: file exists, unowned
+# (dpkg -S finds no package), and same-arch (aarch64 ELF) as this runtime.
+# NEVER rm user files; the owner (user) decides deletion.
+STALE="$PREFIX/lib/opencode/runtime/opencode"
+if [ -f "$STALE" ] && command -v file >/dev/null 2>&1; then
+  if ! dpkg -S "$STALE" >/dev/null 2>&1; then
+    case "$(file -b "$STALE")" in
+      *ELF*aarch64*|*aarch64*ELF*)
+        BAK="$STALE.stale-$(date +%Y%m%d)"
+        if mv -n "$STALE" "$BAK" 2>/dev/null && [ ! -f "$STALE" ]; then
+          echo "Quarantined unowned stale runtime: $STALE -> $BAK"
+          echo "(no dpkg package owns it; delete manually if unneeded)"
+        fi
+        ;;
+    esac
+  fi
+fi
+
 # v1 (opencode1) or v2 (opencode) install hook.
 # v1: auto-migrate any pre-v2-era config under ~/.config/opencode (etc.) into
 #     the opencode1-isolated dirs, exactly once, never clobbering existing
