@@ -1,0 +1,50 @@
+diff --git a/src/stub/src/amd64-linux.elf-main2.c b/src/stub/src/amd64-linux.elf-main2.c
+index 4033434..d5048cf 100644
+--- a/src/stub/src/amd64-linux.elf-main2.c
++++ b/src/stub/src/amd64-linux.elf-main2.c
+@@ -647,7 +647,22 @@ do_xmap( // mapped addr
+             if (xi) {
+                 tprot |=  PROT_WRITE;  // De-compression needs Write
+                 tprot &= ~PROT_EXEC;  // Avoid simultaneous Write and eXecute
+-                if (addr != mmap_privanon(addr, mlen, tprot, MAP_FIXED|MAP_PRIVATE)) {
++                // Data segments need file backing, too: on Android a purely
++                // anonymous MAP_PRIVATE mapping that is written during
++                // de-compression may be discarded by the kernel (pages become
++                // all-zero with no file backfill), so decompress into a memfd
++                // like the PF_X case above.
++                mfd = upxfd_create(addr_string("upx"), 0);  // data: no MFD_EXEC
++                // The mapping below starts at file offset (p_offset - frag),
++                // so lay out the contents at their true file offsets: the
++                // gap [0, p_offset - frag) stays zero-filled by ftruncate,
++                // and de-compressed bytes land at file offset p_offset
++                // because xo.buf == addr is 'frag' bytes into the mapping.
++                if (0 != ftruncate(mfd, (phdr->p_offset - frag) + mlen)) {
++                    err_exit(11);
++                }
++                if (addr != mmap(addr, mlen, tprot, MAP_FIXED|MAP_SHARED, mfd,
++                            phdr->p_offset - frag)) {
+                     err_exit(11);
+                 }
+             }
+@@ -683,6 +698,21 @@ do_xmap( // mapped addr
+             }
+             close(mfd);
+         }
++        else if (mfd) {  // xi && !(PF_X): de-compressed into a data memfd
++            if (0 == (prot & PROT_WRITE)) {  // read-only: toss writable VMA
++                // Map the contents of mfd as per *phdr, private file-backed
++                // like a real ELF load; the file already has the bytes.
++                Psync(addr, mlen, MS_SYNC); // be sure file gets de-compressed bytes
++                munmap(addr, mlen);
++                if (addr != mmap(addr, mlen, prot, MAP_FIXED|MAP_PRIVATE, mfd,
++                            phdr->p_offset - frag)) {
++                    err_exit(9);
++                }
++            }
++            // Writable segments keep the MAP_SHARED file-backed mapping:
++            // the memfd is process-private, so no COW is needed.
++            close(mfd);
++        }
+         else if ((PROT_WRITE|PROT_READ) != prot
+         &&  0!=Pprotect(addr, mlen, prot)) {
+             err_exit(10);
