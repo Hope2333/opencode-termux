@@ -62,5 +62,24 @@ if [[ -n "$BUILT_PKG" ]]; then
         echo "Ensure PKGBUILD stages to \$pkgdir/usr/ (relative), not \$pkgdir\$prefix." >&2
         exit 1
     fi
+    # B1 payload gate (ISSUS@001): launcher + non-empty runtime must both
+    # ship, and no doubled directory (bin/bin, lib/lib, share/share).
+    PAYLOAD_LIST=$(bsdtar -tf "$BUILT_PKG")
+    grep -qx 'usr/bin/opencode-wrapper' <<<"$PAYLOAD_LIST" || {
+        echo "FATAL: package payload missing usr/bin/opencode-wrapper launcher" >&2
+        echo "$PAYLOAD_LIST" >&2
+        exit 1
+    }
+    RT_SIZE=$(bsdtar -tvf "$BUILT_PKG" usr/lib/opencode-wrapper/runtime/opencode 2>/dev/null | awk '{print $5}')
+    [[ -n "$RT_SIZE" && "$RT_SIZE" -gt 0 ]] || {
+        echo "FATAL: package payload missing/empty usr/lib/opencode-wrapper/runtime/opencode" >&2
+        echo "$PAYLOAD_LIST" >&2
+        exit 1
+    }
+    NESTED=$(echo "$PAYLOAD_LIST" | grep -E '(^|/)(bin/bin|lib/lib|share/share)/' | head -1 || true)
+    if [[ -n "$NESTED" ]]; then
+        echo "FATAL: regression guard triggered — nested doubled directory in payload: $NESTED" >&2
+        exit 1
+    fi
     echo "Regression guard: OK (no data/ payload paths)"
 fi

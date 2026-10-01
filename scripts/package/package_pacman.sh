@@ -46,9 +46,20 @@ sed -i "s/^pkgrel=.*/pkgrel=$PKGREL/" "$TMP_PKGBUILD"
 # Bin-only: ship ONLY usr/bin/opencode (no full-prefix copy)
 # The PKGBUILD template is already edited for bin-only; these sed commands
 # enforce it on the temp copy as a safety net.
-sed -i '/^package() {/,/^}/c\package() {\n  mkdir -p "$pkgdir/usr/bin" "$pkgdir/usr/lib/opencode/runtime"\n  install -D -m755 "${_staged_prefix}/lib/opencode/runtime/opencode" "$pkgdir/usr/lib/opencode/runtime/opencode"\n  install -D -m755 "$REPO_ROOT/scripts/opencode1-launcher.sh" "$pkgdir/usr/bin/opencode1"\n}' "$TMP_PKGBUILD" 2>/dev/null || true
+sed -i '/^package() {/,/^}/c\package() {\n  mkdir -p "$pkgdir/usr/bin" "$pkgdir/usr/lib/opencode/runtime"\n  install -D -m755 "${_staged_prefix}/lib/opencode/runtime/opencode" "$pkgdir/usr/lib/opencode/runtime/opencode"\n  install -D -m755 "$REPO_ROOT/scripts/opencode1-launcher.sh" "$pkgdir/usr/bin/opencode1"\n}' "$TMP_PKGBUILD"
 # Remove hook scripts that reference dropped files (run-system-skills.sh)
-sed -i '/^post_install() {/,/^}/d; /^post_upgrade() {/,/^}/d; /^pre_remove() {/,/^}/d; /^post_remove() {/,/^}/d' "$TMP_PKGBUILD" 2>/dev/null || true
+sed -i '/^post_install() {/,/^}/d; /^post_upgrade() {/,/^}/d; /^pre_remove() {/,/^}/d; /^post_remove() {/,/^}/d' "$TMP_PKGBUILD"
+
+# B1 guard (ISSUS@001): sed does NOT fail on an unmatched range, so template
+# drift (e.g. an indented `package() {`) used to keep a stale package()
+# silently — historically binary-only with no launcher, producing an install
+# with no opencode1 command. The sed-installed launcher line is the only
+# marker the rewrite leaves (the template's own package() spells REPO_ROOT
+# as ${REPO_ROOT:?...}); require it before building.
+grep -qF 'install -D -m755 "$REPO_ROOT/scripts/opencode1-launcher.sh" "$pkgdir/usr/bin/opencode1"' "$TMP_PKGBUILD" || {
+	echo "FATAL: package() rewrite did not land on the PKGBUILD (template anchor drifted?)" >&2
+	exit 1
+}
 
 STAGED_PREFIX="$STAGED_PREFIX" REPO_ROOT="$ROOT_DIR" makepkg --config "$TMP_MAKEPKG_CONF" -f --noconfirm -p "$TMP_PKGBUILD"
 
@@ -63,5 +74,25 @@ if [[ -n "$BUILT_PKG" ]]; then
         echo "Ensure PKGBUILD stages to \$pkgdir/usr/ (relative), not \$pkgdir\$prefix." >&2
         exit 1
     fi
-    echo "Regression guard: OK (no data/ payload paths)"
+    # B1 payload gate (ISSUS@001): the launcher and a non-empty runtime must
+    # both ship, and no doubled directory (bin/bin, lib/lib, share/share) —
+    # the field incident's exact malformed layout — may ever appear.
+    PAYLOAD_LIST=$(bsdtar -tf "$BUILT_PKG")
+    grep -qx 'usr/bin/opencode1' <<<"$PAYLOAD_LIST" || {
+        echo "FATAL: package payload missing usr/bin/opencode1 launcher" >&2
+        echo "$PAYLOAD_LIST" >&2
+        exit 1
+    }
+    RT_SIZE=$(bsdtar -tvf "$BUILT_PKG" usr/lib/opencode/runtime/opencode 2>/dev/null | awk '{print $5}')
+    [[ -n "$RT_SIZE" && "$RT_SIZE" -gt 0 ]] || {
+        echo "FATAL: package payload missing/empty usr/lib/opencode/runtime/opencode" >&2
+        echo "$PAYLOAD_LIST" >&2
+        exit 1
+    }
+    NESTED=$(echo "$PAYLOAD_LIST" | grep -E '(^|/)(bin/bin|lib/lib|share/share)/' | head -1 || true)
+    if [[ -n "$NESTED" ]]; then
+        echo "FATAL: regression guard triggered — nested doubled directory in payload: $NESTED" >&2
+        exit 1
+    fi
+    echo "Payload gate: OK (launcher + runtime present, no data/ or doubled dirs)"
 fi
