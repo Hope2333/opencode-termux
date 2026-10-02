@@ -42,3 +42,13 @@
 - migrate-to-opencode1.sh：`check` 子命令（零改动 dry-run）+ autopilot shim 的 v2_installed 门
 - 三处 postinst/.INSTALL 调用点（deb compressed / deb native / pacman native）：检测优先、不再静默、失败明示数据未动
 - v1-compressed pacman 侧补齐：`opencode1-compressed.install`（install= 注入 + MIGRATE_HOOK 烘焙）+ migrate-to-opencode1.sh 随包；v2 族输出零变化（MIGRATE_HOOK=0 字面量，零 hook 契约）
+
+## 五、实测注记（2026-10-02，rc6-b2-upx-tui）
+
+- **v1-compressed pacman 装 .INSTALL hook 静默不跑**：termux-pacman libalpm 事务临时目录
+  落在 `/usr/tmp`（Android 只读），.INSTALL 执行报 `/usr/tmp/alpm_*/.INSTALL: No such file`
+  ——#17 家族 Bug B（上游问题表见 `docs/99-open-issues-and-upstream-sync.md`）。oscar 实测
+  `pacman -U` 时 post_install 报错同属此 scriptlet TMPDIR quirk。
+- **推论：pacman 线 hook 可靠性 = 待解**。在关键逻辑迁 pacman hook 文件（HookDir 真实路径）
+  落地之前，本提案中所有 pacman 侧 .INSTALL hook（含 v1 native/v1 compressed 的 migrate、
+  四 §三待裁决项的 pacman 面）**均不可视为可靠执行**；deb postinst 不受影响。

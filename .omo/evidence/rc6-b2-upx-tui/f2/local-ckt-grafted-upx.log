@@ -1,0 +1,297 @@
+[arm] SIGSEGV prev=0x000000762cffa4f8 flags=0x0000000018000804 loop=0
+[arm] SIGILL prev=0x000000762d3c0970 flags=0xffffffff98000004 loop=0
+[arm] SIGBUS prev=0x000000762d3c0970 flags=0xffffffff98000004 loop=0
+[arm] SIGSEGV prev=0x000000762edc4600 flags=0x0000000000000004 loop=1
+[arm] SIGBUS prev=0x000000762edc4600 flags=0x0000000000000004 loop=1
+FAULT tid=29063 sig=11 si_code=1 si_addr=0x0000000000000011 pc=0x000000762f789694 lr=0x000000762fbd4be4 sp=0x0000007fc1177930 fp=0x0000007fc1177940 x0=0x00000075712bac80 x1=0x00000075696d0000
+
+=== FULL DUMP sig=11 si_code=1 si_errno=0 si_addr=0x0000000000000011 fault_addr(mcontext)=0x0000000000000011
+x0=0x00000075712bac80 x1=0x00000075696d0000 x2=0x000000756e339380 x3=0x0000000000000000 x4=0x0000000000000000 x5=0x0000000000000000 x6=0x6071666e7162686c x7=0x7f7f7f7f7f7f7f7f 
+x8=0x0000000000000000 x9=0x000000756b877580 x10=0x0000000000000001 x11=0x0000000000000000 x12=0x0000000000000008 x13=0x0000000000000008 x14=0x0000000000000008 x15=0x000000756c024630 
+x16=0x0000007632467ee0 x17=0x00000076412c67a0 x18=0x00000076434d0000 x19=0x0000007fc1177bc0 x20=0x00000075696d0000 x21=0x000000000000000a x22=0x000000756aa90fd0 x23=0x000000756e339380 
+x24=0x0000007fc1177bc0 x25=0x000000756b4767f0 x26=0x00000075712bac80 x27=0x0000000000000000 x28=0x0000000000000002 x29=0x0000007fc1177940 x30=0x000000762fbd4be4 
+sp=0x0000007fc1177930 pc=0x000000762f789694 lr=0x000000762fbd4be4 pstate=0x0000000020001000
+frame0 fp=0x0000007fc1177940 ret=0x000000762fbd4be4
+frame1 fp=0x0000007fc11779e0 ret=0x000000762fbd28dc
+frame2 fp=0x0000007fc1177b00 ret=0x000000762fe34f18
+frame3 fp=0x0000007fc1177d90 ret=0x000000762ff6c670
+frame4 fp=0x0000007fc1177e30 ret=0x000000762e767e60
+frame5 fp=0x0000007fc1177e90 ret=0x0000007548ed0adc
+frame6 fp=0x0000007fc1177ea0 ret=0x000000762ef020b4
+frame7 fp=0x0000007fc1177f30 ret=0x000000762eedd6c0
+frame8 fp=0x0000007fc1178010 ret=0x000000762f787fc4
+frame9 fp=0x0000007fc11780b0 ret=0x000000762fa24df8
+frame10 fp=0x0000007fc1178130 ret=0x000000762e5a5af8
+frame11 fp=0x0000007fc11781e0 ret=0x000000762e4ee4b0
+frame12 fp=0x0000007fc1178210 ret=0x000000762d914e60
+frame13 fp=0x0000007fc1178240 ret=0x000000762e072c7c
+frame14 fp=0x0000007fc1178290 ret=0x000000762d8fc5e4
+frame15 fp=0x0000007fc1178300 ret=0x000000762dfe4708
+frame16 fp=0x0000007fc1178390 ret=0x000000762df5f1c8
+frame17 fp=0x0000007fc1178e30 ret=0x000000762df5cfc8
+frame18 fp=0x0000007fc1178ea0 ret=0x000000762d213e8c
+frame19 fp=0x0000007fc1178ee0 ret=0x00000076412af6cc
+frame20 fp=0x0000007fc1178f00 ret=0x000000762d21386c
+frame21 fp=0x0000007fc1178f70 ret=0x00708e0000000000
+[fp stop: non-monotonic]
+--- maps ---7400000000-7500000000 rw-p 00000000 00:00 0                              [anon:JSStructureHeap]
+7537840000-753844c000 ---p 00000000 00:00 0 
+753844c000-7538450000 rw-p 00000000 00:00 0 
+7538450000-7538ac0000 ---p 00000000 00:00 0 
+7538ac0000-7538ac4000 rw-p 00000000 00:00 0 
+7538ac4000-7539840000 ---p 00000000 00:00 0 
+7539840000-7539844000 ---p 00000000 00:00 0 
+7539844000-7539c48000 rw-p 00000000 00:00 0                              [anon:stack_and_tls:29306]
+7539c48000-7539c50000 ---p 00000000 00:00 0 
+7539c50000-753a054000 rw-p 00000000 00:00 0                              [anon:stack_and_tls:29305]
+753a054000-753a058000 ---p 00000000 00:00 0 
+753a058000-753ad14000 ---p 00000000 00:00 0 
+753ad14000-753ad18000 rw-p 00000000 00:00 0 
+753ad18000-753bbec000 ---p 00000000 00:00 0 
+753bbec000-753bbf0000 rw-p 00000000 00:00 0 
+753bbf0000-753c058000 ---p 00000000 00:00 0 
+753c058000-753c05c000 ---p 00000000 00:00 0 
+753c05c000-753c460000 rw-p 00000000 00:00 0                              [anon:stack_and_tls:29303]
+753c460000-753c464000 ---p 00000000 00:00 0 
+753c464000-753cc1c000 ---p 00000000 00:00 0 
+753cc1c000-753cc20000 rw-p 00000000 00:00 0 
+753cc20000-753d464000 ---p 00000000 00:00 0 
+753d464000-753d468000 ---p 00000000 00:00 0 
+753d468000-753d86c000 rw-p 00000000 00:00 0                              [anon:stack_and_tls:29301]
+753d86c000-753d870000 ---p 00000000 00:00 0 
+753d870000-753d968000 r--p 00000000 fe:6b 4788580                        /data/data/com.termux/files/usr/tmp/ocomp-audit/pac/usr/tmp/.bun-10450-6b234171fedd8d8d.so
+753d968000-753d977000 ---p 00000000 00:00 0 
+753d977000-753dc10000 r-xp 000f7000 fe:6b 4788580                        /data/data/com.termux/files/usr/tmp/ocomp-audit/pac/usr/tmp/.bun-10450-6b234171fedd8d8d.so
+753dc10000-753dc1f000 ---p 00000000 00:00 0 
+753dc1f000-753dc28000 r--p 0038f000 fe:6b 4788580                        /data/data/com.termux/files/usr/tmp/ocomp-audit/pac/usr/tmp/.bun-10450-6b234171fedd8d8d.so
+753dc28000-753dc37000 ---p 00000000 00:00 0 
+753dc37000-753ddc3000 rw-p 00397000 fe:6b 4788580                        /data/data/com.termux/files/usr/tmp/ocomp-audit/pac/usr/tmp/.bun-10450-6b234171fedd8d8d.so
+753ddc3000-753dde4000 rw-p 00000000 00:00 0                              [anon:.bss]
+753de00000-753ee00000 ---p 00000000 00:00 0 
+753eece000-753fb64000 ---p 00000000 00:00 0 
+753fb64000-753fb68000 rw-p 00000000 00:00 0 
+753fb68000-7540a04000 ---p 00000000 00:00 0 
+7540a04000-7540a08000 rw-p 00000000 00:00 0 
+7540a08000-75411ec000 ---p 00000000 00:00 0 
+75411ec000-75411f0000 rw-p 00000000 00:00 0 
+75411f0000-754219c000 ---p 00000000 00:00 0 
+754219c000-75421a0000 rw-p 00000000 00:00 0 
+75421a0000-7543b70000 ---p 00000000 00:00 0 
+7543b70000-7543b74000 rw-p 00000000 00:00 0 
+7543b74000-75448dc000 ---p 00000000 00:00 0 
+75448dc000-75448e0000 rw-p 00000000 00:00 0 
+75448e0000-754546c000 ---p 00000000 00:00 0 
+754546c000-7545470000 rw-p 00000000 00:00 0 
+7545470000-7546d2c000 ---p 00000000 00:00 0 
+7546d2c000-7546d30000 rw-p 00000000 00:00 0 
+7546d30000-7547e88000 ---p 00000000 00:00 0 
+7547e88000-7547e8c000 rw-p 00000000 00:00 0 
+7547e8c000-7548068000 ---p 00000000 00:00 0 
+7548068000-754806c000 rw-p 00000000 00:00 0 
+754806c000-7548ecf000 ---p 00000000 00:00 0 
+7548ecf000-7568ecf000 rwxp 00000000 00:00 0                              [anon:JSJITCode]
+7568ecf000-7568ed0000 ---p 00000000 00:00 0 
+7568ed0000-75a8ed0000 rw-p 00000000 00:00 0                              [anon:mimalloc]
+75a8eda000-75a9283000 ---p 00000000 00:00 0                              [anon:cfi shadow]
+75a9283000-75a9284000 r--p 00000000 00:00 0                              [anon:cfi shadow]
+75a9284000-75a928b000 ---p 00000000 00:00 0                              [anon:cfi shadow]
+75a928b000-75a928c000 r--p 00000000 00:00 0                              [anon:cfi shadow]
+75a928c000-75a928d000 r--p 00000000 00:00 0                              [anon:cfi shadow]
+75a928d000-7628eda000 ---p 00000000 00:00 0                              [anon:cfi shadow]
+7628eda000-7628f52000 r--p 00000000 fe:33 29479563                       /system/lib64/libc++.so
+7628f52000-7628f55000 ---p 00000000 00:00 0 
+7628f55000-7628fd5000 r-xp 00077000 fe:33 29479563                       /system/lib64/libc++.so
+7628fd5000-7628fd8000 ---p 00000000 00:00 0 
+7628fd8000-7628fe0000 r--p 000f6000 fe:33 29479563                       /system/lib64/libc++.so
+7628fe0000-7628fe3000 ---p 00000000 00:00 0 
+7628fe3000-7628fe4000 rw-p 000fd000 fe:33 29479563                       /system/lib64/libc++.so
+7628fe4000-7628fec000 rw-p 00000000 00:00 0                              [anon:.bss]
+7629000000-762ce00000 ---p 00000000 00:00 0 
+762ce28000-762ce2c000 ---p 00000000 00:00 0 
+762ce2c000-762ce34000 rw-p 00000000 00:00 0                              [anon:thread signal stack]
+762ce34000-762ce38000 ---p 00000000 00:00 0 
+762ce38000-762cebc000 rw-p 00000000 00:00 0                              [anon:stack_and_tls:29304]
+762cebc000-762cec0000 ---p 00000000 00:00 0 
+762cec0000-762cee0000 rw-p 00000000 00:00 0 
+762cee0000-762cee4000 ---p 00000000 00:00 0 
+762cee4000-762ceec000 rw-p 00000000 00:00 0                              [anon:thread signal stack]
+762ceec000-762cef0000 ---p 00000000 00:00 0 
+762cef0000-762cef8000 rw-p 00000000 00:00 0                              [anon:thread signal stack]
+762cef8000-762cf47000 r--p 00000000 07:148 88351                         /apex/com.android.runtime/bin/linker64
+762cf47000-762cf48000 ---p 00000000 00:00 0 
+762cf48000-762d078000 r-xp 00050000 07:148 88351                         /apex/com.android.runtime/bin/linker64
+762d078000-762d083000 r--p 00180000 07:148 88351                         /apex/com.android.runtime/bin/linker64
+762d083000-762d084000 ---p 00000000 00:00 0 
+762d084000-762d086000 rw-p 0018c000 07:148 88351                         /apex/com.android.runtime/bin/linker64
+762d086000-762d090000 rw-p 00000000 00:00 0                              [anon:.bss]
+762d090000-762d094000 r--p 00000000 00:00 0                              [anon:.bss]
+762d094000-762d09f000 rw-p 00000000 00:00 0                              [anon:.bss]
+762d0a0000-763038c000 r-xs 00000000 00:01 75541093                       /memfd:upx (deleted)
+763038c000-7632440000 rw-p 00000000 00:00 0 
+7632440000-7632460000 r--p 00000000 00:00 0 
+7632460000-763dda0000 rw-p 00000000 00:00 0 
+763dda2000-763dda6000 ---p 00000000 00:00 0 
+763dda6000-763de2a000 rw-p 00000000 00:00 0                              [anon:stack_and_tls:29243]
+763de2a000-763de32000 ---p 00000000 00:00 0 
+763de32000-763deb6000 rw-p 00000000 00:00 0                              [anon:stack_and_tls:29242]
+763deb6000-763debe000 ---p 00000000 00:00 0 
+763debe000-763df42000 rw-p 00000000 00:00 0                              [anon:stack_and_tls:29240]
+763df42000-763df4a000 ---p 00000000 00:00 0 
+763df4a000-763dfce000 rw-p 00000000 00:00 0                              [anon:stack_and_tls:29239]
+763dfce000-763dfd6000 ---p 00000000 00:00 0 
+763dfd6000-763e05a000 rw-p 00000000 00:00 0                              [anon:stack_and_tls:29238]
+763e05a000-763e062000 ---p 00000000 00:00 0 
+763e062000-763e0e6000 rw-p 00000000 00:00 0                              [anon:stack_and_tls:29237]
+763e0e6000-763e0ee000 ---p 00000000 00:00 0 
+763e0ee000-763e172000 rw-p 00000000 00:00 0                              [anon:stack_and_tls:29236]
+763e172000-763e17a000 ---p 00000000 00:00 0 
+763e17a000-763e1fe000 rw-p 00000000 00:00 0                              [anon:stack_and_tls:29231]
+763e1fe000-763e206000 ---p 00000000 00:00 0 
+763e206000-763e28a000 rw-p 00000000 00:00 0                              [anon:stack_and_tls:29230]
+763e28a000-763e292000 ---p 00000000 00:00 0 
+763e292000-763e316000 rw-p 00000000 00:00 0                              [anon:stack_and_tls:29227]
+763e316000-763e31a000 ---p 00000000 00:00 0 
+763e31a000-763e71a000 rw-p 00000000 00:00 0 
+763e71a000-763edc4000 ---p 00000000 00:00 0 
+763edc4000-763edc8000 rw-p 00000000 00:00 0 
+763edc8000-763f71a000 ---p 00000000 00:00 0 
+763f71a000-763f71e000 ---p 00000000 00:00 0 
+763f71e000-763f81a000 rw-p 00000000 00:00 0                              [anon:stack_and_tls:29223]
+763f81a000-763f81e000 ---p 00000000 00:00 0 
+763f81e000-763f82e000 rw-p 00000000 00:00 0                              [anon:mimalloc]
+763f82e000-763fc1f000 ---p 00000000 00:00 0                              [anon:mimalloc]
+763fc1f000-763fc2f000 rw-p 00000000 00:00 0                              [anon:mimalloc]
+763fc2f000-763fc5e000 ---p 00000000 00:00 0                              [anon:mimalloc]
+763fc5e000-76409cc000 ---p 00000000 00:00 0 
+76409cc000-76409d0000 rw-p 00000000 00:00 0 
+76409d0000-7640c5e000 ---p 00000000 00:00 0 
+7640c5e000-7640c62000 ---p 00000000 00:00 0 
+7640c62000-7640ca6000 rw-p 00000000 00:00 0                              [anon:stack_and_tls:29222]
+7640ca6000-7640caa000 ---p 00000000 00:00 0 
+7640caa000-7640cea000 r--s 00000000 00:12 355                            /dev/__properties__/u:object_r:exported_default_prop:s0
+7640cea000-7640d2a000 r--s 00000000 00:12 252                            /dev/__properties__/u:object_r:build_prop:s0
+7640d2a000-7640d2d000 r--p 00000000 fe:33 29480896                       /system/lib64/libnetd_client.so
+7640d2d000-7640d2e000 ---p 00000000 00:00 0                              [page size compat]
+7640d2e000-7640d33000 r-xp 00004000 fe:33 29480896                       /system/lib64/libnetd_client.so
+7640d33000-7640d36000 ---p 00000000 00:00 0                              [page size compat]
+7640d36000-7640d37000 r--p 0000c000 fe:33 29480896                       /system/lib64/libnetd_client.so
+7640d37000-7640d3a000 ---p 00000000 00:00 0 
+7640d3a000-7640d3b000 rw-p 00010000 fe:33 29480896                       /system/lib64/libnetd_client.so
+7640d40000-7640d80000 r--s 00000000 00:12 379                            /dev/__properties__/u:object_r:heapprofd_prop:s0
+7640d80000-7640dc0000 r--s 00000000 00:12 403                            /dev/__properties__/u:object_r:libc_debug_prop:s0
+7640dc0000-7640e00000 r--s 00000000 00:12 374                            /dev/__properties__/u:object_r:gwp_asan_prop:s0
+7640e00000-7641200000 rw-p 00000000 00:00 0                              [anon:libc_malloc]
+7641207000-764120b000 ---p 00000000 00:00 0 
+764120b000-7641213000 rw-p 00000000 00:00 0                              [anon:thread signal stack]
+7641213000-7641217000 ---p 00000000 00:00 0 
+7641217000-764121f000 rw-p 00000000 00:00 0                              [anon:thread signal stack]
+764121f000-7641223000 ---p 00000000 00:00 0 
+7641223000-764122b000 rw-p 00000000 00:00 0                              [anon:thread signal stack]
+764122b000-7641285000 r--p 00000000 07:148 128279                        /apex/com.android.runtime/lib64/bionic/libc.so
+7641285000-7641287000 ---p 00000000 00:00 0                              [page size compat]
+7641287000-7641337000 r-xp 0005c000 07:148 128279                        /apex/com.android.runtime/lib64/bionic/libc.so
+7641337000-764133c000 r--p 0010c000 07:148 128279                        /apex/com.android.runtime/lib64/bionic/libc.so
+764133c000-764133f000 ---p 00000000 00:00 0 
+764133f000-7641340000 rw-p 00114000 07:148 128279                        /apex/com.android.runtime/lib64/bionic/libc.so
+7641340000-7641347000 rw-p 00000000 00:00 0                              [anon:.bss]
+7641347000-764134b000 r--p 00000000 00:00 0                              [anon:.bss]
+764134b000-7641353000 rw-p 00000000 00:00 0                              [anon:.bss]
+7641355000-7641359000 ---p 00000000 00:00 0 
+7641359000-7641361000 rw-p 00000000 00:00 0                              [anon:thread signal stack]
+7641361000-7641365000 ---p 00000000 00:00 0 
+7641365000-764136d000 rw-p 00000000 00:00 0                              [anon:thread signal stack]
+764136d000-76413cd000 rw-p 00000000 00:00 0                              [anon:linker_alloc]
+76413cd000-76413ce000 r-xp 00000000 fe:6b 5537955                        /data/data/com.termux/files/usr/tmp/ocomp-audit/pac/usr/lib/opencode/libopencode-crhandler.so
+76413ce000-76413d1000 ---p 00000000 00:00 0 
+76413d1000-76413d3000 r--p 00000000 fe:6b 5537955                        /data/data/com.termux/files/usr/tmp/ocomp-audit/pac/usr/lib/opencode/libopencode-crhandler.so
+76413d3000-76413d6000 ---p 00000000 00:00 0 
+76413d6000-76413d7000 rw-p 00001000 fe:6b 5537955                        /data/data/com.termux/files/usr/tmp/ocomp-audit/pac/usr/lib/opencode/libopencode-crhandler.so
+76413dc000-76413e0000 ---p 00000000 00:00 0 
+76413e0000-76413e8000 rw-p 00000000 00:00 0                              [anon:thread signal stack]
+76413e8000-76413ec000 ---p 00000000 00:00 0 
+76413ec000-76413f4000 rw-p 00000000 00:00 0                              [anon:thread signal stack]
+76413f4000-76413f8000 ---p 00000000 00:00 0 
+76413f8000-7641400000 rw-p 00000000 00:00 0                              [anon:thread signal stack]
+7641400000-7642c00000 ---p 00000000 00:00 0 
+7642c01000-7642c05000 ---p 00000000 00:00 0 
+7642c05000-7642c0d000 rw-p 00000000 00:00 0                              [anon:thread signal stack]
+7642c0d000-7642c11000 ---p 00000000 00:00 0 
+7642c11000-7642c19000 rw-p 00000000 00:00 0                              [anon:thread signal stack]
+7642c19000-7642c59000 r--s 00000000 00:12 303                            /dev/__properties__/u:object_r:debug_prop:s0
+7642c59000-7642c6c000 r--p 00000000 07:148 128330                        /apex/com.android.runtime/lib64/bionic/libm.so
+7642c6c000-7642c6d000 ---p 00000000 00:00 0                              [page size compat]
+7642c6d000-7642c92000 r-xp 00014000 07:148 128330                        /apex/com.android.runtime/lib64/bionic/libm.so
+7642c92000-7642c95000 ---p 00000000 00:00 0                              [page size compat]
+7642c95000-7642c96000 r--p 0003c000 07:148 128330                        /apex/com.android.runtime/lib64/bionic/libm.so
+7642c96000-7642c99000 ---p 00000000 00:00 0 
+7642c99000-7642c9a000 rw-p 00040000 07:148 128330                        /apex/com.android.runtime/lib64/bionic/libm.so
+7642ca4000-7642ca8000 ---p 00000000 00:00 0 
+7642ca8000-7642cb0000 rw-p 00000000 00:00 0                              [anon:thread signal stack]
+7642cb0000-7642cf0000 r--s 00000000 00:12 1000                           /dev/__properties__/properties_serial
+7642cf0000-7642cf1000 r--p 00000000 07:148 128323                        /apex/com.android.runtime/lib64/bionic/libdl.so
+7642cf1000-7642cf4000 ---p 00000000 00:00 0                              [page size compat]
+7642cf4000-7642cf5000 r-xp 00004000 07:148 128323                        /apex/com.android.runtime/lib64/bionic/libdl.so
+7642cf5000-7642cf8000 ---p 00000000 00:00 0                              [page size compat]
+7642cf8000-7642cf9000 r--p 00008000 07:148 128323                        /apex/com.android.runtime/lib64/bionic/libdl.so
+7642cf9000-7642cfc000 ---p 00000000 00:00 0 
+7642cfc000-7642cfd000 r--p 00000000 00:00 0                              [anon:.bss]
+7642cfd000-7642d00000 rw-p 00000000 00:00 0                              [anon:.bss]
+7642d01000-7642d05000 ---p 00000000 00:00 0 
+7642d05000-7642d0d000 rw-p 00000000 00:00 0                              [anon:thread signal stack]
+7642d0d000-7642d10000 r-xp 00000000 fe:6b 4212630                        /data/data/com.termux/files/usr/tmp/ckt.so
+7642d10000-7642d13000 ---p 00000000 00:00 0 
+7642d13000-7642d14000 r--p 00002000 fe:6b 4212630                        /data/data/com.termux/files/usr/tmp/ckt.so
+7642d14000-7642d17000 ---p 00000000 00:00 0 
+7642d17000-7642d18000 rw-p 00002000 fe:6b 4212630                        /data/data/com.termux/files/usr/tmp/ckt.so
+7642d21000-7642d31000 rw-p 00000000 00:00 0                              [anon:mimalloc]
+7642d31000-7642d6c000 r--s 00000000 00:12 210                            /dev/__properties__/property_info
+7642d70000-7642d80000 rw-p 00000000 00:00 0                              [anon:mimalloc]
+7642d80000-7642d84000 ---p 00000000 00:00 0 
+7642d84000-7642d8c000 rw-p 00000000 00:00 0                              [anon:thread signal stack]
+7642d8c000-7642dcc000 r--s 00000000 00:12 974                            /dev/__properties__/u:object_r:vendor_socket_hook_prop:s0
+7642dcc000-7642e8c000 r--p 00000000 00:00 0                              [anon:linker_alloc]
+7642e8c000-7642ecc000 r--s 00000000 00:12 985                            /dev/__properties__/u:object_r:vndk_prop:s0
+7642ecc000-7642ed0000 rw-p 00000000 00:00 0                              [anon:bionic_alloc_small_objects]
+7642ed3000-7642ed5000 rw-p 00000000 00:00 0                              [anon:bionic_alloc_small_objects]
+7642ed7000-7642ed8000 rw-p 00000000 00:00 0                              [anon:bionic_alloc_small_objects]
+7642edc000-7642edd000 rw-p 00000000 00:00 0                              [anon:bionic_alloc_small_objects]
+7642ede000-7642edf000 rw-p 00000000 00:00 0                              [anon:bionic_alloc_small_objects]
+7642ee3000-7642ee4000 rw-p 00000000 00:00 0                              [anon:bionic_alloc_small_objects]
+7642ee5000-7642ee9000 ---p 00000000 00:00 0 
+7642ee9000-7642ef1000 rw-p 00000000 00:00 0                              [anon:thread signal stack]
+7642ef1000-7642ef2000 rw-p 00000000 00:00 0                              [anon:bionic_alloc_small_objects]
+7642efd000-7642f05000 rw-p 00000000 00:00 0                              [anon:System property context nodes]
+7642f05000-7642f09000 ---p 00000000 00:00 0 
+7642f09000-7642f0d000 rw-p 00000000 00:00 0                              [anon:stack_and_tls:main]
+7642f0d000-7642f11000 ---p 00000000 00:00 0 
+7642f11000-7642f20000 rw-p 00000000 00:00 0                              [anon:bionic_alloc_small_objects]
+7642f20000-7642f60000 r--s 00000000 00:12 320                            /dev/__properties__/u:object_r:device_config_memory_safety_native_prop:s0
+7642f60000-7642fa0000 r--s 00000000 00:12 223                            /dev/__properties__/u:object_r:arm64_memtag_prop:s0
+7642fa0000-7643000000 r--p 00000000 00:00 0                              [anon:linker_alloc]
+7643000000-7643001000 rw-p 00000000 00:00 0                              [anon:bionic_alloc_small_objects]
+7643001000-7643041000 r--s 00000000 00:12 303                            /dev/__properties__/u:object_r:debug_prop:s0
+7643041000-7643042000 ---p 00000000 00:00 0 
+7643042000-764304a000 rw-p 00000000 00:00 0 
+764304a000-764304b000 ---p 00000000 00:00 0 
+764304b000-764308b000 r--s 00000000 00:12 1000                           /dev/__properties__/properties_serial
+764308b000-7643093000 rw-p 00000000 00:00 0                              [anon:System property context nodes]
+7643093000-76430ce000 r--s 00000000 00:12 210                            /dev/__properties__/property_info
+76430ce000-764312e000 r--p 00000000 00:00 0                              [anon:linker_alloc]
+764312e000-764312f000 rw-p 00000000 00:00 0                              [anon:bionic_alloc_small_objects]
+764312f000-7643130000 r--p 00000000 00:00 0                              [anon:atexit handlers]
+7643130000-7643132000 rw-p 00000000 00:00 0                              [anon:bionic_alloc_small_objects]
+7643132000-76434d0000 ---p 00000000 00:00 0 
+76434d0000-76434d4000 rw-p 00000000 00:00 0 
+76434d4000-7644132000 ---p 00000000 00:00 0 
+7644132000-7644136000 ---p 00000000 00:00 0 
+7644136000-764413e000 rw-p 00000000 00:00 0                              [anon:thread signal stack]
+764413e000-764413f000 rw-p 00000000 00:00 0                              [anon:arc4random data]
+764413f000-7644140000 rw-p 00000000 00:00 0 
+7644140000-7644141000 r--p 00000000 00:00 0                              [anon:atexit handlers]
+7644141000-7644142000 rw-p 00000000 00:00 0                              [anon:arc4random data]
+7644142000-7644143000 r--p 00000000 fe:6b 4677857                        /data/data/com.termux/files/usr/tmp/ocomp-audit/pac/usr/lib/opencode/runtime/opencode
+7644143000-7644144000 r-xs 00000000 00:01 75541092                       /memfd:upx (deleted)
+7644144000-7644146000 r--p 00000000 00:00 0                              [vvar]
+7644146000-7644147000 r-xp 00000000 00:00 0                              [vdso]
+7fc115b000-7fc117f000 rw-p 00000000 00:00 0                              [stack]
+=== end full dump ===

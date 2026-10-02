@@ -90,10 +90,11 @@ shim 源码在 `tools/bun-pty-splice/shim.c`（canary 需设
   **延后**：JIT 层崩溃未修（todo 1/2），headless `run` 亦不加载 pty
   （pty 仅在终端会话路径加载）。
 
-> 后记（rc6-b2-upx-tui）：TUI 崩溃真因后经定谳为 bionic<11 的 TLSDESC
-> linker 缺陷（JIT 归因系 bun.report ucontext 错位巧合）；设备侧「任意
-> Android/内核组合 → TUI 可达性 + 修补清单」判定表见
-> `docs/tui-reachability.md`。
+> 后记（rc6-b2-upx-tui 终版）：TUI 崩溃真因后经定谳为 bionic<11 的 TLSDESC
+> linker 缺陷（JIT 归因系 bun.report ucontext 错位巧合）；TLSDESC shim graft
+> 后 v1/v2 双代 TUI 均已实证活化（oscar 真 PTY 全渲染 + session LLM 往返），
+> 上行「验证延后」随之关闭。设备侧「任意 Android/内核组合 → TUI 可达性 +
+> 修补清单」判定表见 `docs/tui-reachability.md`。
 
 ## 过渡期命名注记（2026-10-02）
 
@@ -101,3 +102,19 @@ shim 源码在 `tools/bun-pty-splice/shim.c`（canary 需设
 **v2 compressed**（2.0.12-1，B2 musl 系拼接线）。族代与版本号在旧 db 快照期会错位迷惑
 （`pacman -S opencode1` 仍解析 v1 native 1.18.33-3，与 compressed 位按 D1 互斥）。
 解冻期动作：db 再生同步 2.0.12-1；RC6 命名决策（RFC #29）定「改名 + replace 迁移」或延续。
+→ 命名红线已由用户裁决终局（o1 族只许 v1；2.0.12-1 误装 o1 位已卸除），终局规则见下节。
+
+## 族名治理（2026-10-02 终局）
+
+- **`opencode1*` 族（opencode1 / opencode1-compressed）= v1 专用**：o1 族只许装 v1 件，
+  不许装 v2（命名红线，task-formal-install.txt 用户裁决；污染期 v2 所写的 o1 db 已隔离
+  改名 `opencode.db.polluted-20261002`，零删除可回滚）。
+- **v2 压缩线正名 `opencode-compressed`**：经 `OCOMP_FAMILY=opencode` 参数化现有打包脚本
+  产出（f126a18，v1 默认路径字节级不变），派生 launcher `scripts/opencode-launcher.sh`
+  （同代共用裸 XDG 根、无 49376 端口分代注入）。deb 身份：`Provides: opencode (= $VERSION)`
+  + `Conflicts: opencode, opencode-wrapper, opencode-wrapper-standalone`；pacman `.PKGINFO`
+  同构（provides/conflict）——与 v2 native `opencode` **同槽互斥**，装压缩件即替换 native 位。
+- **双族并存实证（oscar 终态，task-ocomp-graft.txt 换装后）**：`opencode-compressed 2.0.12-2`
+  与 `opencode1-compressed 1.18.32-3` 在同一台 oscar（pacman db）共存，分代路径
+  `lib/opencode` vs `lib/opencode1` 互不干扰；`opencode --version` → 2.0.12、
+  `opencode1 --version` → 1.18.32 双 rc=0。

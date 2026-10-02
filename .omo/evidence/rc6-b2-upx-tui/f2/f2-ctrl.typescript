@@ -1,0 +1,22 @@
+Script started on 2026-10-02 18:04:18+08:00 [COMMAND="env HOME=/data/local/tmp/f2/xdg/home TMPDIR=/data/local/tmp/f2/xdg/tmp XDG_CONFIG_HOME=/data/local/tmp/f2/xdg/config XDG_DATA_HOME=/data/local/tmp/f2/xdg/data XDG_STATE_HOME=/data/local/tmp/f2/xdg/state XDG_CACHE_HOME=/data/local/tmp/f2/xdg/cache TERM=xterm-256color LD_LIBRARY_PATH=/data/local/tmp/f2/prefix/usr/lib/opencode:/data/local/tmp/f2/prefix/usr/lib/opencode/pty timeout 180 '/data/local/tmp/f2/runtime-1-upx'" <not executed on terminal>]
+============================================================
+[0m[2mBun v1.4.0 (34cbb9a40) Android arm64
+Android Kernel v3.18.140 | bionic
+CPU: neon fp aes crc32
+Args: "/data/local/tmp/f2/runtime-1-upx" "--smol" "--user-agent=opencode/latest/2.0.12/cli" "--use-system-ca" "--no-warnings" "--"
+Features: Bun.stderr(2) Bun.stdin(2) Bun.stdout(2) fetch(3) jsc standalone_executable 
+Builtins: "bun:ffi" "bun:main" "bun:sqlite" "node:assert" "node:buffer" "node:child_process" "node:console" "node:crypto" "node:events" "node:fs" "node:fs/promises" "node:http" "node:inspector" "node:module" "node:net" "node:os" "node:path" "node:perf_hooks" "node:process" "node:readline" "node:stream" "node:stream/promises" "node:string_decoder" "node:timers/promises" "node:tty" "node:url" "node:util" "node:worker_threads" "node:zlib" "ws" 
+
+Elapsed: 2011ms | User: 5010ms | Sys: 890ms
+RSS: 0.16 GB | Peak: 0.33 GB | Commit: 0.24 GB | Faults: 10 | Machine: 3.75 GB
+[0m
+[31mpanic[0m[2m: [0mSegmentation fault at address 0x0
+oh no[0m[2m:[0m Bun has crashed. This indicates a bug in Bun, not your code.
+
+To send a redacted crash report to Bun's team,
+please file a GitHub issue using the link below:
+
+[36m https://bun.report/1.4.0/La134cbb9aEugogCuiloGurkp6B+oDm2yrF+n2yG+8khB+g6I_A2AA
+[0m
+
+Script done on 2026-10-02 18:04:24+08:00 [COMMAND_EXIT_CODE="139"]
