@@ -8,6 +8,12 @@
 pkgname=opencode1-compressed
 pkgver=0.0.0
 pkgrel=1
+# Install script is injected by package_pacman_compressed.sh (install= sed):
+# the baked .INSTALL carries the v1 data-isolation hook with a build-time
+# MIGRATE_HOOK literal (1 = opencode1 family, 0 = v2 family zero-hook).
+# pkgname/pkgver/pkgrel/MIGRATE_HOOK are rewritten there.
+# MIGRATE_HOOK also gates the migrate helper install in package() below.
+MIGRATE_HOOK=0
 pkgdesc='OpenCode compressed variant for Termux (UPX-packed native bionic runtime, zero glibc)'
 arch=('aarch64')
 url='https://github.com/anomalyco/opencode'
@@ -57,15 +63,27 @@ package() {
             warning "OPENCODE_PTY_SPLICE_DIR set but splice files missing — shipping without"
         fi
     fi
-}
-
-post_install() {
-    echo ""
-    echo "OpenCode1 compressed variant installed (UPX-packed native bionic runtime)"
-    echo "Usage: opencode1 --version"
-    echo "Runtime is UPX-packed: invoke via the opencode1 launcher only (direct runtime exec cannot resolve libs under memfd)."
-    echo "Scope: same runtime as the native mainline, UPX-packed for size."
-    echo "v1 compressed variant (coexists with v2 opencode)."
+    # epoll compat shim (OPTIONAL): bionic LD_PRELOAD shim translating
+    # epoll_pwait2(441) -> epoll_pwait for pre-#32490 bun builds. Shipped
+    # when the packaging script exports OPENCODE_EPOLL_SHIM_SO; the launcher
+    # injects LD_PRELOAD only when the file exists (backward compatible).
+    if [[ -n "${OPENCODE_EPOLL_SHIM_SO:-}" ]]; then
+        if [[ -f "$OPENCODE_EPOLL_SHIM_SO" ]]; then
+            install -m755 "$OPENCODE_EPOLL_SHIM_SO" "$pkgdir/usr/lib/opencode1/libepoll-compat.so"
+            msg "epoll compat shim installed under usr/lib/opencode1/"
+        else
+            warning "OPENCODE_EPOLL_SHIM_SO set but shim missing — shipping without"
+        fi
+    fi
+    # v1 migration helper (v1 family only, baked at build time via the
+    # .INSTALL MIGRATE_HOOK literal — see opencode1-compressed.install and
+    # the packaging script's install= injection): the .INSTALL post_install
+    # hook calls it — feature detection first, never a blind migration.
+    if [[ "$MIGRATE_HOOK" == "1" ]]; then
+        install -m755 "${REPO_ROOT:?REPO_ROOT must point at the repo root}/scripts/migrate-to-opencode1.sh" \
+            "$pkgdir/usr/bin/migrate-to-opencode1.sh"
+        msg "v1 migration helper installed (migrate-to-opencode1.sh)"
+    fi
 }
 
 post_upgrade() {

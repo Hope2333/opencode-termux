@@ -50,6 +50,17 @@ if [ -f "$P/lib/opencode1/pty/librust_pty_arm64_musl_patched.so" ]; then
 	export BUN_PTY_LIB="$P/lib/opencode1/pty/librust_pty_arm64_musl_patched.so"
 fi
 
+# epoll compat shim (optional asset, backward compatible): pre-#32490 bun
+# builds (v1.4.0 34cbb9a40, as shipped in 1.18.32-4) call epoll_pwait2
+# (syscall 441, kernel >= 5.1) via libc::syscall and crash on older kernels
+# (oscar 3.18.140: TUI SIGSEGV ~4.4s, see task-v1rebuild.txt). The shim
+# translates 441 -> epoll_pwait with a timespec->ms conversion. Injected via
+# LD_PRELOAD ONLY when the package shipped the asset; packages built before
+# the asset are unaffected (no export).
+if [ -f "$P/lib/opencode1/libepoll-compat.so" ]; then
+	export LD_PRELOAD="$P/lib/opencode1/libepoll-compat.so${LD_PRELOAD:+:$LD_PRELOAD}"
+fi
+
 # runtime probe order: layered (native/compressed v12.1 layout) first, then the
 # wrapper line's original staged layout. Sibling Conflicts (opencode1 vs
 # opencode1-wrapper) guarantee at most one candidate exists per install.

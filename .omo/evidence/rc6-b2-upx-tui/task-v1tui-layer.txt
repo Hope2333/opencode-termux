@@ -1,0 +1,36 @@
+# task-v1tui-layer — v1 1.18.32 TUI 崩因层位判决实验（press vs runtime）
+
+日期：2026-10-02　执行：hist-compressed　分支：rc6-b2-upx-tui/hist-ocomp
+oscar 沙盒：/data/local/tmp/v1c-sandbox/，真 PTY（script 录制），sshd 真实 Termux 上下文 u0_a115。
+
+## 实验设计
+
+被试 A（未压 runtime）：artifacts/v1c-rebuild/runtime-unpacked（sha256 e5885da6a46b3683…，bionic opentui 内嵌，**无 UPX、无 memfd**），ssh 流式推送，oscar 侧 sha 逐字节校验一致。
+对照 B（已压件）：同 runtime 的 -4 memfd press（sha 8a1183034…）当日四组真 PTY TUI 捕获（tui-noshim/tui-shim/tui-shim2/tui-probe.typescript，16:55-17:07）。
+环境：HOME/TMPDIR/XDG 全沙盒化，LD_LIBRARY_PATH=$F（crhandler），TERM=xterm-256color。
+
+## 结果矩阵
+
+| 被试 | 压制 | 内嵌 bun | opentui | TUI 存活 | 崩点签名 |
+|---|---|---|---|---|---|
+| A 未压 | 无 | 1.4.0 (34cbb9a40) | bionic | **4471ms** | SIGSEGV@0x0, bun.report La134cbb9a… |
+| B 压件 ×4 | memfd UPX | 1.4.0 (34cbb9a40) | bionic | 4373/4410/4434/4784ms | SIGSEGV@0x0, 同签名逐字节一致 |
+| （参考）-3 stock 压件 serve | stock UPX | 1.4.2 (744846f84) | glibc | serve ~5.8s 崩 @0x40 | 不同签名（另一问题） |
+| （参考）-4/-5 压件 serve | memfd UPX | 1.4.0 | bionic | 65s/25s PASS | 不崩 |
+
+同一 runtime、压 vs 未压，TUI 崩溃时刻（4.4-4.8s）、崩点（SIGSEGV@0x0）、bun.report 签名完全一致；serve 同 runtime 65s PASS 不受累。
+
+## 判决
+
+**V1TUI_LAYER: runtime**
+
+- UPX press/memfd 层排除：未压件崩况与压件逐字节同签名
+- syscall 可用性层排除（前序实验）：epoll_pwait2(441) seccomp TRAP+模拟在 oscar 机制全验证有效，TUI 仍崩；probe 模式证崩前未触碰任何 3.18 缺失 syscall
+- 定位收缩：bun 1.4.0 (34cbb9a40) TUI 路径在 kernel 3.18 的固有缺陷（opentui dlopen/FFI/JIT 链，serve 路径不受累；JIT 不可关——opentui 依赖 bun:ffi requires JIT）
+- 推论：旧名 -1（bun 1.4.2 744846f84）在 3.18 上 TUI 亦必不活，「-1 OK」实证只能来自非 3.18 设备；oscar 3.18 上 v1 族 TUI 活化需 bun 重生（kernel gate 补丁或升级 build），属独立任务
+
+## 取证与清理
+
+- tui-unpacked.typescript（本实验）+ tui-{noshim,shim,shim2,probe}.typescript（压件对照）留存沙盒
+- runtime-unpacked（172M）测试后已删；runtime-v4 已删（压件对照以当日 4 组 typescript 为准，二进制可从本地 -4/-5 包随时重取）
+- oscar /data 回收至 ~234M 可用（对 52G 盘仍是 100% 水位，后续沙盒试验前务必 df）

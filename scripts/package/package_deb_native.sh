@@ -183,10 +183,16 @@ CFG_DIR="$(printf '%s' "${XDG_CONFIG_HOME:-$HOME/.config}/opencode")"
 case "${PKG_NAME:-$DPKG_MAINTSCRIPT_PACKAGE}" in
   opencode1)
     echo "OpenCode1 (v1 family) installed — coexists with v2 opencode."
+    # Feature detection FIRST (v12.2): `check` prints the detected state and
+    # exits 0 when every skip condition is met — only then does isolate run,
+    # and unsilenced so the operator sees detected-state and every action.
     if { [ -e "$CFG_DIR" ] || [ -d "${CFG_DIR}1" ]; } && command -v migrate-to-opencode1.sh >/dev/null 2>&1; then
-      echo "Running opencode1 data isolation (nested layout, idempotent) ..."
-      migrate-to-opencode1.sh isolate >/dev/null 2>&1 && echo "Migrated: v1 config now under opencode1/opencode (nested), plugins auto-patched." || {
-        echo "Migration skipped (already isolated or no v1 data)."
+      if migrate-to-opencode1.sh check; then
+        echo "Feature check: nothing to migrate — skipped (already isolated / no v1-era data / plugins clean)."
+      elif migrate-to-opencode1.sh isolate; then
+        echo "Migrated: v1 config now under opencode1/opencode (nested), plugins auto-patched (see detected-state above)."
+      else
+        echo "Migration not completed (see detected-state above); data left untouched."
         # v2 guard may have blocked the plain->nested move. If v1-era leftovers
         # still live at the plain roots, surface the explicit recovery path.
         if { [ -f "${HOME}/.local/share/opencode/opencode.db" ] || [ -d "${XDG_CONFIG_HOME:-$HOME/.config}/opencode" ]; } \
@@ -197,7 +203,7 @@ case "${PKG_NAME:-$DPKG_MAINTSCRIPT_PACKAGE}" in
           echo "      want opencode1 to see, run:  migrate-to-opencode1.sh isolate --take-plain"
           echo "      (skipped automatically because a v2 opencode package is installed)."
         fi
-      }
+      fi
     else
       echo "No legacy v1 config found (or already isolated); nothing to migrate."
     fi

@@ -97,11 +97,17 @@ post_install() {
     if [ "$PKG_NAME" = "opencode1" ]; then
         echo "OpenCode1 (v1 family) installed - coexists with v2 opencode."
         CFG_DIR="$(printf '%s' "${XDG_CONFIG_HOME:-$HOME/.config}/opencode")"
+        # Feature detection FIRST (v12.2): `check` prints the detected state
+        # and exits 0 when every skip condition is met — only then does
+        # isolate run, and unsilenced so the operator sees every action.
         if { [ -e "$CFG_DIR" ] || [ -d "${CFG_DIR}1" ]; } && command -v migrate-to-opencode1.sh >/dev/null 2>&1; then
-            echo "Running opencode1 data isolation (nested layout, idempotent) ..."
-            migrate-to-opencode1.sh isolate >/dev/null 2>&1 \
-                && echo "Migrated: v1 config now under opencode1/opencode (nested), plugins auto-patched." \
-                || echo "Migration skipped (already isolated or no v1 data)."
+            if migrate-to-opencode1.sh check; then
+                echo "Feature check: nothing to migrate — skipped (already isolated / no v1-era data / plugins clean)."
+            elif migrate-to-opencode1.sh isolate; then
+                echo "Migrated: v1 config now under opencode1/opencode (nested), plugins auto-patched (see detected-state above)."
+            else
+                echo "Migration not completed (see detected-state above); data left untouched."
+            fi
         else
             echo "No legacy v1 config found (or already isolated); nothing to migrate."
         fi

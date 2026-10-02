@@ -1,0 +1,107 @@
+# task-hist-ocomp — 三合一考古 + 重建链改造 + hook 特征识别
+
+日期：2026-10-02　执行：hist-compressed　分支：rc6-b2-upx-tui/hist-ocomp（基于 f126a18）
+
+## Part 1 考古：v1 时代压制族「当年 OK」配方卡（git + 实物解包双源）
+
+实物：packing/pacman/opencode-compressed-{1.18.28,1.18.30,1.18.32}-1（货架旧件，UPX -d 解压后抽验）。
+git 谱系（--follow package_deb_compressed.sh / package_pacman_compressed.sh）：
+- 81b51c2 压制族诞生：OPENCODE_COMPRESSED_BIN=T3 产物 opencode-native-revived-upx，bin-direct usr/bin/opencode，无 wrapper；postinst 仅 echo
+- 0337d9b/26eec0b 冲突矩阵 + crhandler shim；e46f5e6 改名 -wrapper；a404af6 v1 族改名 opencode1*（单家族→双家族分裂点）
+- def914a v1/v2 共存 A方案；c0bb70f deb 内携带 migrate-to-opencode1.sh（Part 3 盲迁移起点）；ca56754 nested data layout v12.1
+- 611c1b9 launcher-only contract；b302432 pty splice；f126a18 OCOMP_FAMILY 参数化；dc412d6 (v1c-rebuild) 1.18.32-4 双修
+
+配方卡逐维对比（旧 1.18.28-1 / 1.18.32-1 实测）：
+
+| 维度 | 旧 v1 时代 | 现 1.18.32-4 重建 | 回归？ |
+|---|---|---|---|
+| 内嵌 bun | 1.4.0 (34cbb9a40) / 1.18.32-1: 1.4.2 (744846f84) | 同 hash 34cbb9a40 | **无** |
+| opentui 资产 | bionic（SONAME=libopentui.so, NEEDED=libm/libc/libdl 无版本后缀，1.18.28-1 与 1.18.32-1 均实证） | bionic（P1 修复） | **无** |
+| UPX | stock UPX 5.20 / 5.21（尾部 UPX! l_info 完整） | 自编 memfd 补丁 5.2.1 -4 | 有意变更（修 serve） |
+| 打包形态 | bin-direct、无 launcher/迁移/pty-splice | launcher-only + crhandler + nested layout + pty splice | 有意变更 |
+| 验证环境 | v1 时代真机 | oscar 3.18.140 | **关键** |
+
+**结论**：runtime 内容配方（bun build、opentui 滋味）零回归；「当年 OK」是环境命题——压制族从未在 oscar 3.18 上验证过（旧真机内核 ≥5.1 推断，epoll_pwait2 原生可用）。oscar 上的 serve 崩（SIGSEGV@0x40）是 UPX press 问题，已由 -4 的 memfd 补丁 press 修复（serve 65s PASS，dc412d6）。
+
+## Part 2 重建链改造：epoll-compat shim 战役（含重大归因纠正）
+
+### 假设 1（LD_PRELOAD 符号插桩）— 构建并证伪
+tools/epoll-shim/：interpose libc `syscall`，441→22（epoll_pwait），timespec→ms 向上取整，aarch64 内联 svc passthrough（无 dlsym 零递归）。
+oscar 实测：TUI 无 shim 4410ms 崩 vs 有 shim 4373ms 崩，bun.report 签名逐字节相同 → 插桩拦不到。
+**源码定谳**：bun-src checkout 恰为 34cbb9a4（工作树 clean），src/platform/linux.rs `sys_epoll_pwait2` = Rust 内联 `svc #0`（raw_syscall6），不走 libc 符号——插桩从机制上不可能生效。
+
+### 假设 2（seccomp TRAP+模拟，内核级）— 机制全验证，但 TUI 仍崩 → 441 排除
+重写 tools/epoll-shim/epoll-compat.c：seccomp-bpf 441→SECCOMP_RET_TRAP，SIGSYS handler 用 epoll_pwait 模拟，x0 写回 + pc 自校准（si_call_addr 比较，兼容 ELR 已越过/未越过两种内核行为）；保留符号插桩双保险；可选 probe 模式（TRAP 全部 ≥424/291/286，handler raw write 记录 nr 后返回 -ENOSYS）。
+- 本机（6.6）selftest：T1-T4 全 PASS，T4 = 内联 svc 直发 441 ×3（真驱动 TRAP 层），插桩探针 PASS
+- **oscar selftest：baseline T1 ret=-1 errno=38 / T4 ret=-38（ENOSYS 实证），带 shim T1-T4 全 PASS（200ms/100ms 精确）→ seccomp 机制在 3.18 完全成立**
+- **oscar TUI：带 shim 仍 4784ms/4434ms SIGSEGV@0x0 → 441 排除**
+- probe 模式跑 TUI：零命中（崩前未触碰任何 3.18 缺失 syscall）→ 崩因与 syscall 可用性无关
+- 源码侧佐证：vanilla 34cbb9a4 的 bun-usockets epoll_kqueue.c **已含** has_epoll_pwait2 ENOSYS 回退门（#32490 修复在 1.4.0 内）；task-v1rebuild 的「修复前 build / 不认旗标」归因不成立
+- JIT 假设：BUN_JSC_useJIT=0 → "bun:ffi requires the JIT"（opentui 依赖 FFI，JIT 不可关），此路不通
+
+**交付状态**：shim 作为可选资产保留（机制已双内核验证、对现有路径惰性、对未来无回退门的 bun build 有真实价值），打包链接线完成；**TUI 4.5s 崩根因未解，归因需重做**（tombstone 不可用——Termux 进程崩不进 /data/tombstones；oscar 磁盘 98M 剩余装不上 strace；后续建议：解包 runtime 上 oscar 分层定位 UPX/memfd vs runtime 因素，或 ADB root 下 gserver/perf，或解码 bun.report 栈）。
+
+### 链路接线（可选资产契约，与 pty splice 同型）
+- scripts/opencode1-launcher.sh：**只加不改**新增注入块（libepoll-compat.so 存在才 LD_PRELOAD）
+- scripts/package/package_deb_compressed.sh：可选安装（仅 OCOMP_FAMILY=opencode1，v2 输出字节不变）+ 条件 guard
+- scripts/package/package_pacman_compressed.sh + packing/pacman/PKGBUILD.compressed：同型可选注入 + guard
+- 端到端验证：以 v1c worktree 官方 -4 输入重建 deb，三 guard 全过；runtime payload sha256 = 8a11830342db7485…（与 dc412d6 记录字节级一致）；control Version 1.18.32-4
+
+## Part 3 hook 特征识别优先
+
+scripts/migrate-to-opencode1.sh：
+- 新增 `check` 子命令（--dry-run 式，零改动）：打印四根 detected-state + v2 安装态 + WOULD MOVE/REDIRECT/REWRITE 清单；exit 0=全部跳过条件满足（已隔离/无 v1 期数据/插件干净），exit 1=isolate 有实活
+- **link_autopilot_shims 加 v2_installed 门**：v2 在装时 plain 根属 live v2，移动+symlink 会把 v2 读写重定向进 v1 数据（跨代混染）——skip + 明示，--take-plain 可强制
+- 三处 postinst 调用点改「检测优先 + 不再静默」：package_deb_compressed.sh / package_deb_native.sh / package_pacman_native.sh —— 先 `check`（打印 detected-state），exit 0 则明示跳过；有活才 `isolate`，全程可见；幂等不变
+- 沙盒验证（stub v2 安装态）：S1-S5（v2 在装→SKIP 不盲动）、A1-A6（v2 缺席→检出 MOVE+REDIRECT→isolate→check 回 SKIP）、A4-A5（flat re-nest 检出/执行）、B1-B3（插件 patch 检出→改写 1 处→check clean）；autopilot shim 在 v2 在装时 WOULD SKIP 实证
+
+## 环境事件
+- 本机磁盘 100% 满（31M 剩）阻塞开工：清理 $TMPDIR 五个昨夜及更早 scratch（bun-termux-cache 1.5G / v2src 983M / upx-matrix 739M / t3prime 520M / ptyck-2.0.0 272M，均 0 当日改动且对应分支已 merge），回收 ~4G；当日活跃的 bun-src/t1c/debverify 未碰
+- oscar 沙盒 /data/local/tmp/v1c-sandbox 内试验，常驻未动；oscar Termux 新装 strace（其磁盘 98M 剩余，未完成安装）
+
+## 交付物
+- tools/epoll-shim/{epoll-compat.c, build-android.sh, selftest.c, selftest.sh, dist/libepoll-compat.so}
+- launcher/打包链接线 + migrate check 模式（diff 见本分支 commits）
+- oscar 取证：/data/local/tmp/v1c-sandbox/{tui-noshim,tui-shim,tui-shim2,tui-probe,tui-nojit2}.typescript
+
+---
+
+# 追加任务面（同日第二轮）：焦点收窄 + 六族 hook 矩阵 + 设计提案
+
+## Part 1' 考古收窄：OK 基准 = opencode-compressed-1.18.32-1（用户实证）
+
+解包对照 -1（OK 基准，52M）vs -3（oscar 崩件，57M）：
+
+| 维度 | 1.18.32-1（旧名，OK） | 1.18.32-3（改名重打，崩） |
+|---|---|---|
+| runtime sha（压制态） | 8edf5764… | ec51269d…（57373256 B） |
+| 解包 runtime sha | 41794066… | 662a1b34…（均 ~179M，bun v1.4.2 744846f84 同） |
+| UPX | stock 5.21 | stock 5.21 |
+| **内嵌 opentui blob（@同偏移 0x9dab0bf）** | **bionic**（NEEDED=libm/libc/libdl 无后缀，fead56eb） | **glibc**（NEEDED=libm.so.6/libpthread.so.0/libc.so.6/libdl.so.2，7e0ee94a） |
+| crhandler | ebf59e44…（与 -3 相同） | 同 |
+| 布局 | bin-direct usr/bin/opencode + lib/opencode/ | launcher-only + lib/opencode1/runtime/（v12.1 嵌套） |
+| glibc 内嵌件（watcher.node 等） | 有（既有状态） | 有 |
+
+**改写后的配方卡（-1 基准）**：OK 配方 = bun 1.4.2 (744846f84) bionic runtime + **bionic opentui 内嵌** + stock UPX 压制 + bin-direct。回归点 = 改名/重打边界（a404af6 同日重打包 → repack 时代 -2/-3）：**opentui 从 bionic 换成 glibc**（用户真机 TUI 死因——Termux 无 glibc，干净报错 libm.so.6）；oscar serve 崩（SIGSEGV@0x40）则两代 stock UPX 压件皆有的内核相关问题（-4 的 memfd press 已修）。-2/-3 重打发生在 worktree/scratch（git 无 repack-t9.sh 痕迹，-2/-3 无直接 commit 溯源）。
+
+**Part 2 收敛 → 1.18.32-5 已产出**：-4 链本身就是 OK 配方复活（bionic opentui + memfd press）+ 双族隔离，本轮叠加 epoll-compat shim 可选资产 + 新 hook：
+- deb：packing/dpkg-compressed/opencode1-compressed_1.18.32_aarch64.deb（Version 1.18.32-5）sha256 6ad018eb…，三 guard 过，runtime payload = 8a11830342db7485…（与 -4 字节级一致）
+- pacman：packing/pacman/opencode1-compressed-1.18.32-5-aarch64.pkg.tar.gz sha256 53e9e33a…（最终版），四 guard 过，payload 含 migrate-to-opencode1.sh + libepoll-compat.so
+- oscar 沙盒 serve 复验：rt sha 校验 8a1183034 ✓，serve alive 25s 全 HTTP 200（进程主动杀）→ PASS
+  - 过程陷阱（记录）：oscar /data 仅 ~100M 且 100% 满，首次 tar 解包 ENOSPC 截断 runtime（sha 0dffd5d4）→ SIGBUS 假警报；清 sandbox 可复现残留（runtime-stock/extract-*.so，hash 已在案）后重传校验即 PASS。SIGBUS=磁盘满截断，非包问题。
+
+## Part 3' 六族 hook 覆盖矩阵（postinst / .INSTALL 实装盘点）
+
+矩阵本体见 docs/hook-design-proposal.md §一。摘要：
+- v1 native：deb+pacman 双侧 migrate（已特征化）+ quarantine + gated serve-kill（默认 glob 2.0.[0-3] → 1.18.x 默认关）
+- v1 compressed：deb 有 migrate；**pacman 缺失**（用户实测吻合）——根因是 PKGBUILD.compressed 的 post_install 从未随包（缺 install= 指令），本次补齐
+- v2 native：echo 分支 + quarantine + gated serve-kill（无 migrate，正确）
+- v2 compressed：零 hook（正确）
+- wrapper：deb 无 postinst；pacman 显式删除全部 hook（含 system-skills）
+- standalone：零 hook（冻结定位）
+
+**本次改造（只动 v1 族）**：新增 packing/pacman/opencode1-compressed.install（install= 注入 + MIGRATE_HOOK 构建期字面量烘焙：1=opencode1 / 0=v2 零 hook 契约）+ migrate 随包 + .INSTALL bake guard。技术要点：PKGBUILD 内 post_install 函数若无 install= 指令不随包；.INSTALL 运行在安装期，构建 env 不存在，门必须是烘焙字面量（同 native 的 PKG_NAME bake 先例）。v2 族输出零变化。
+
+## Part 4 hook 设计提案（只落文档）
+
+docs/hook-design-proposal.md：现状矩阵 + 归属原则（迁移 hook 只随 v1 族；v2 趋向零 hook；wrapper/standalone 维持零；跨族一律特征识别）+ 五项待裁决缺口（v1 native serve-kill 默认 glob、v1-compressed 的 serve-kill/quarantine 对齐、v2 native 是否彻底零 hook、PKGBUILD.aarch64/armv7l 死代码、hook 沙盒回归自动化）。

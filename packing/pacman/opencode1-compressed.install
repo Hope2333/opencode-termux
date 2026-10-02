@@ -1,0 +1,32 @@
+# opencode1-compressed .INSTALL template — consumed via install= by
+# package_pacman_compressed.sh (baked: MIGRATE_HOOK literal + version bakes).
+# MIGRATE_HOOK is a BUILD-TIME literal: 1 = opencode1 family (hook active),
+# 0 = v2 family (zero-hook contract). post_install runs at install time,
+# where build env does not exist.
+MIGRATE_HOOK=0
+post_install() {
+    echo ""
+    echo "OpenCode1 compressed variant installed (UPX-packed native bionic runtime)"
+    echo "Usage: opencode1 --version"
+    echo "Runtime is UPX-packed: invoke via the opencode1 launcher only (direct runtime exec cannot resolve libs under memfd)."
+    echo "Scope: same runtime as the native mainline, UPX-packed for size."
+    echo "v1 compressed variant (coexists with v2 opencode)."
+    # v1 data isolation hook — feature detection FIRST (v12.2): `check`
+    # prints the detected state and exits 0 when every skip condition is
+    # met (already isolated / no v1-era data / plugins clean); only then
+    # does isolate run, and unsilenced so the operator sees every action.
+    if [ "$MIGRATE_HOOK" = "1" ] && command -v migrate-to-opencode1.sh >/dev/null 2>&1; then
+        CFG_DIR="$(printf '%s' "${XDG_CONFIG_HOME:-$HOME/.config}/opencode")"
+        if migrate-to-opencode1.sh check; then
+            echo "Feature check: nothing to migrate — skipped (already isolated / no v1-era data / plugins clean)."
+        elif migrate-to-opencode1.sh isolate; then
+            echo "Migrated: v1 config now under opencode1/opencode (nested), plugins auto-patched (see detected-state above)."
+        else
+            echo "Migration not completed (see detected-state above); data left untouched."
+        fi
+    fi
+}
+
+post_upgrade() {
+    post_install
+}

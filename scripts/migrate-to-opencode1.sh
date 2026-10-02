@@ -8,6 +8,9 @@
 #            (--take-plain: force-move plain dirs into nested even when a v2 opencode
 #             package is installed — use ONLY when the plain dirs hold v1-era leftovers
 #             and the nested opencode1 roots are still empty)
+#   check    dry-run feature detection: print detected state + what isolate
+#            would do; exit 0 = skip (nothing to do), 1 = isolate has work.
+#            Package hooks run this FIRST and only migrate when it exits 1.
 #   patch    re-run only the plugin path patch (after plugin updates)
 #   restore  restore the newest (or given) backup
 #   status   show which dirs exist and which mode fits your install
@@ -182,6 +185,14 @@ PY
 # nested v1 history wins; a plain copy that accumulated activity while the old
 # build kept opening it is preserved aside, never deleted.
 link_autopilot_shims() {
+  # Feature detection first: when v2 opencode owns the plain root, its live
+  # autopilot.db sits at the same HOME-literal path — moving it aside and
+  # symlinking would redirect V2 reads into v1 data (cross-generation
+  # mixing). Skip unless --take-plain forces it (v12.2 ruling).
+  if v2_installed && [ "${OPENCODE_MIGRATE_TAKE_PLAIN:-0}" != "1" ]; then
+    note "autopilot shim: skipped (v2 opencode owns the plain root; not rewriting live v2 data)"
+    return 0
+  fi
   local plain="${CFG}/autopilot.db" nested="${CFG1}/opencode/autopilot.db"
   local ts; ts="$(date +%Y%m%d-%H%M%S)"
   [ -e "$plain" ] || [ -h "$plain" ] || return 0
@@ -209,6 +220,77 @@ link_autopilot_shims() {
   done
   ln -s "$nested" "$plain"
   note "shim: $plain -> $nested"
+}
+
+# Feature-detection pass (NO mutation, --dry-run style). Prints the
+# detected state of every root and what `isolate` WOULD do, then exits:
+#   0 = every skip condition met (already isolated / no v1-era plain data /
+#       plugins clean) — callers should skip migration entirely
+#   1 = isolate would perform at least one mutation
+# Package hooks (postinst) call this FIRST and only run `isolate` when it
+# exits 1 — feature detection before any rewrite (v12.2 ruling).
+cmd_check() {
+  local work=0 root root1
+  echo "── opencode1 migration check (dry-run, nothing changed) ──"
+  for root in "$CFG" "$DATA" "$CACHE" "$STATE"; do
+    root1="${root}1"
+    local plain="absent" nested="isolated" flat="absent"
+    [ -e "$root" ] && plain="present"
+    if [ -d "$root1/opencode" ]; then
+      :
+    elif [ -d "$root1" ]; then
+      nested="flat (needs re-nest)"; work=$((work + 1))
+    else
+      nested="absent"
+    fi
+    printf '  %-48s plain:%s nested:%s\n' "$root" "$plain" "$nested"
+  done
+  if v2_installed; then
+    echo "  v2 opencode package: INSTALLED (plain roots belong to live v2 — isolate will not move them)"
+  else
+    echo "  v2 opencode package: not installed"
+  fi
+  for root in "$CFG" "$DATA" "$CACHE" "$STATE"; do
+    root1="${root}1"
+    if [ -e "$root" ] && [ ! -d "$root1/opencode" ] \
+       && { ! v2_installed || [ "${OPENCODE_MIGRATE_TAKE_PLAIN:-0}" = "1" ]; }; then
+      echo "  WOULD MOVE: $root -> ${root1}/opencode"
+      work=$((work + 1))
+    fi
+  done
+  local plain_db="${CFG}/autopilot.db"
+  if [ -e "$plain_db" ] || [ -h "$plain_db" ]; then
+    if v2_installed && [ "${OPENCODE_MIGRATE_TAKE_PLAIN:-0}" != "1" ]; then
+      echo "  autopilot shim: WOULD SKIP (v2 owns the plain root)"
+    else
+      echo "  autopilot shim: WOULD REDIRECT $plain_db -> ${CFG1}/opencode/autopilot.db"
+      work=$((work + 1))
+    fi
+  fi
+  local scan="" r files
+  for r in "$CFG1" "$CACHE1"; do
+    [ -d "$r" ] && scan="$scan $r"
+  done
+  if [ -n "$scan" ]; then
+    files="$(grep -rl --include='*.js' --include='*.mjs' --include='*.cjs' \
+              --include='*.ts' --include='*.json' \
+              -e '.config/opencode' -e '.local/share/opencode' \
+              -e '.cache/opencode' -e '.local/state/opencode' \
+              $scan 2>/dev/null | xargs -r grep -lE '\.config/opencode([^1]|$)|\.local/share/opencode([^1]|$)|\.cache/opencode([^1]|$)|\.local/state/opencode([^1]|$)' 2>/dev/null || true)"
+    if [ -n "$files" ]; then
+      echo "  plugin patch: WOULD REWRITE plain-root refs in:"
+      echo "$files" | sed 's/^/      /'
+      work=$((work + 1))
+    else
+      echo "  plugin patch: clean (no plain-root references)"
+    fi
+  fi
+  if [ "$work" -eq 0 ]; then
+    echo "── verdict: SKIP (all skip conditions met; isolate would be a no-op) ──"
+    return 0
+  fi
+  echo "── verdict: ISOLATE has work ($work item class(es)) ──"
+  return 1
 }
 
 cmd_isolate() {
@@ -295,6 +377,7 @@ usage() {
 main() {
   case "${1:-}" in
     backup)  cmd_backup ;;
+    check)   cmd_check ;;
     isolate)
         case "${2:-}" in
             --take-plain|--merge-plain)
