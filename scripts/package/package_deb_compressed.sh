@@ -77,6 +77,21 @@ SHIM_SO="${OPENCODE_CRHANDLER_SO:-}"
 }
 install -D -m755 "$SHIM_SO" "$DEB_ROOT$PREFIX/lib/opencode1/libopencode-crhandler.so"
 
+# pty splice assets (OPTIONAL, backward compatible): patched musl librust_pty +
+# bionic shim built by tools/bun-pty-splice/build-splice.sh. When present they
+# ship under lib/opencode1/pty/ and the launcher injects BUN_PTY_LIB (see
+# scripts/opencode1-launcher.sh); when absent the package is built exactly as
+# before and nothing in the runtime/launcher path changes.
+PTY_SPLICE_DIR="${OPENCODE_PTY_SPLICE_DIR:-$ROOT_DIR/tools/bun-pty-splice/dist}"
+if [[ -f "$PTY_SPLICE_DIR/librust_pty_arm64_musl_patched.so" && -f "$PTY_SPLICE_DIR/shim.so" ]]; then
+	install -D -m755 "$PTY_SPLICE_DIR/librust_pty_arm64_musl_patched.so" \
+		"$DEB_ROOT$PREFIX/lib/opencode1/pty/librust_pty_arm64_musl_patched.so"
+	install -D -m755 "$PTY_SPLICE_DIR/shim.so" "$DEB_ROOT$PREFIX/lib/opencode1/pty/shim.so"
+	echo "Packaged pty splice assets (BUN_PTY_LIB) from $PTY_SPLICE_DIR"
+else
+	echo "pty splice assets not found under $PTY_SPLICE_DIR — shipping without (launcher degrades gracefully)"
+fi
+
 # Field order matters (B1 lesson): Conflicts MUST precede Description or it
 # gets swallowed into the description text (illegal field order).
 cat >"$DEB_ROOT/DEBIAN/control" <<EOF
@@ -126,7 +141,10 @@ dpkg-deb --build -Zgzip -z6 "$DEB_ROOT" "$OUT_FILE"
 echo "Compressed DEB package created: $OUT_FILE"
 
 # crhandler guard (unconditional): the deb MUST contain the shim.
-dpkg-deb -c "$OUT_FILE" | grep -q "lib/opencode1/libopencode-crhandler.so" || {
+# NOTE: grep without -q (redirect instead) — grep -q exits on first match and
+# SIGPIPEs dpkg-deb's tar mid-listing, which under pipefail fails the guard
+# spuriously (enumeration-order dependent race).
+dpkg-deb -c "$OUT_FILE" | grep "lib/opencode1/libopencode-crhandler.so" >/dev/null || {
 	echo "FATAL: deb does not ship libopencode1/libopencode-crhandler.so" >&2
 	exit 1
 }
@@ -135,7 +153,7 @@ echo "crhandler guard: OK (shim shipped)"
 # launcher guard (unconditional): the launcher is the ONLY supported entry —
 # the UPX stub maps segments under /memfd:upx where DT_RUNPATH $ORIGIN
 # resolution dies, so a direct runtime exec cannot find libopencode-crhandler.so.
-dpkg-deb -c "$OUT_FILE" | grep -qE 'bin/opencode1$' || {
+dpkg-deb -c "$OUT_FILE" | grep -E 'bin/opencode1$' >/dev/null || {
 	echo "FATAL: deb does not ship the bin/opencode1 launcher (launcher-only contract)" >&2
 	exit 1
 }

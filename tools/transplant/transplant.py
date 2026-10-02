@@ -1415,6 +1415,13 @@ def cmd_all(args) -> int:
     bionic_lib = (
         repo_root() / "artifacts" / "transplant" / "opentui-bionic" / "libopentui.so"
     )
+    # Prefer the embed variant (rc6-b2-upx-tui todo2): same sections/vaddrs as
+    # the full build but symtab locals dropped so it fits the exact-length
+    # bunfs slot measured from the previous build. build-libopentui.sh emits
+    # and guard-verifies it alongside the full copy.
+    embed = bionic_lib.with_name(bionic_lib.name.replace(".so", ".embed.so"))
+    if embed.is_file():
+        bionic_lib = embed
     tui_bin = out_dir / "opencode-native-tui"
     swap_src = revived_path if revived_path.is_file() else out_path
     if bionic_lib.is_file() and swap_src.is_file():

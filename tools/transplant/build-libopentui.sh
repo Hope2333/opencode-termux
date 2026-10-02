@@ -252,9 +252,33 @@ echo ">> phase 3: self-verify FFI guard (task-tui-common-fix)"
 guard_check "$SO"
 harness_check "$SO"
 
+# TLSDESC self-resolver shim (rc6-b2-upx-tui todo2): zig emits .generaldynamic
+# TLS (LLVM aarch64 lowers it to TLSDESC unconditionally); bionic < 11 leaves
+# those descriptor slots at 0 -> `blr NULL` SIGSEGV (task-1-jsc.txt). The shim
+# (patches/opentui/tlsdesc-self-resolver.patch -> src/tlsdesc-shim.c) fills
+# unfilled slots from an .init_array ctor. Its presence here is mandatory.
+echo ">> verify TLSDESC self-resolver shim (bionic<11 fallback)"
+if ! llvm-nm "$SO" | grep 'tlsdesc_shim_init' >/dev/null; then
+  echo "ERROR: tlsdesc_shim_init missing — bionic<11 hosts would SIGSEGV at TUI init" >&2
+  exit 1
+fi
+TLSDESC_N=$(llvm-readelf -rW "$SO" 2>/dev/null | grep -c 'R_AARCH64_TLSDESC' || true)
+echo ">> TLSDESC dynamic relocs present: $TLSDESC_N (linker handles them on bionic >= 10; shim covers bionic 9)"
+
 INSTALL_DIR="$(dirname "$INSTALL_PATH")"
 mkdir -p "$INSTALL_DIR"
 cp -f "$SO" "$INSTALL_PATH"
 echo ">> installed: $INSTALL_PATH ($SIZE bytes)"
+
+# Embed variant (rc6-b2-upx-tui todo2): the bunfs slot is exact-length, and the
+# shim's code + symtab growth (~2.5KB) overflows the slot measured from the
+# previous build. Locals are not load-bearing at runtime; the swap gate
+# (swap_tui.has_ffi_guard) is satisfied by the surviving global guard-owner
+# symbols (verified below). Keep the full-symtab copy above as the forensic
+# reference — section vaddrs are identical, only symtab locals are dropped.
+EMBED_PATH="${INSTALL_PATH%.so}.embed.so"
+llvm-objcopy -x "$SO" "$EMBED_PATH"
+echo ">> embed variant: $EMBED_PATH ($(stat -c '%s' "$EMBED_PATH") bytes)"
+guard_check "$EMBED_PATH"
 
 echo ">> OK: $INSTALL_PATH is a bionic-loadable, guard-verified libopentui.so"

@@ -57,6 +57,19 @@ COMPRESSED_BIN="$(readlink -f "$COMPRESSED_BIN")"
 # makepkg cwd, so a relative path would fail there.
 OPENCODE_CRHANDLER_SO="$(readlink -f "${OPENCODE_CRHANDLER_SO:?OPENCODE_CRHANDLER_SO must point to libopencode-crhandler.so}")"
 
+# pty splice assets (OPTIONAL, backward compatible): pass the splice dir to
+# package() only when both files exist; otherwise PKGBUILD ships without and
+# the launcher degrades gracefully (no BUN_PTY_LIB injection).
+PTY_SPLICE_DIR="${OPENCODE_PTY_SPLICE_DIR:-$ROOT_DIR/tools/bun-pty-splice/dist}"
+if [[ -f "$PTY_SPLICE_DIR/librust_pty_arm64_musl_patched.so" && -f "$PTY_SPLICE_DIR/shim.so" ]]; then
+	OPENCODE_PTY_SPLICE_DIR="$(readlink -f "$PTY_SPLICE_DIR")"
+	export OPENCODE_PTY_SPLICE_DIR
+	echo "pty splice assets: shipping from $OPENCODE_PTY_SPLICE_DIR"
+else
+	unset OPENCODE_PTY_SPLICE_DIR || true
+	echo "pty splice assets not found under $PTY_SPLICE_DIR — shipping without (launcher degrades gracefully)"
+fi
+
 
 cd "$ROOT_DIR/packing/pacman"
 rm -rf "$ROOT_DIR/packing/pacman/pkg" "$ROOT_DIR/packing/pacman/src"
@@ -96,7 +109,9 @@ fi
 # the UPX stub maps segments under /memfd:upx where DT_RUNPATH $ORIGIN
 # resolution dies, so a direct runtime exec cannot find libopencode-crhandler.so.
 if [[ -n "$BUILT_PKG" ]]; then
-    if ! bsdtar -tf "$BUILT_PKG" | grep -qE 'usr/bin/opencode1$'; then
+    # grep -q would SIGPIPE bsdtar mid-listing under pipefail (race, order
+    # dependent) — consume full listing with a redirect instead.
+    if ! bsdtar -tf "$BUILT_PKG" | grep -E 'usr/bin/opencode1$' >/dev/null; then
         echo "FATAL: package does not ship the usr/bin/opencode1 launcher (launcher-only contract)" >&2
         exit 1
     fi
@@ -105,7 +120,7 @@ fi
 
 # crhandler guard (unconditional): the package MUST contain the shim.
 if [[ -n "$BUILT_PKG" ]]; then
-    if ! bsdtar -tf "$BUILT_PKG" | grep -qE 'usr/lib/(opencode|opencode1)/libopencode-crhandler.so'; then
+    if ! bsdtar -tf "$BUILT_PKG" | grep -E 'usr/lib/(opencode|opencode1)/libopencode-crhandler.so' >/dev/null; then
         echo "FATAL: package does not ship libopencode-crhandler.so" >&2
         exit 1
     fi

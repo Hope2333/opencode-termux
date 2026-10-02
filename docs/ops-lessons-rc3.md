@@ -104,3 +104,11 @@
 - **UPX 补丁中性确认**：压/未压一致性门含 TUI 一致崩全过；B2-upx oscar 实测 version/run/serve 全过（37.19%）。
 - **门 2 修订（用户裁决 A）**：非 TUI 功能双变体双机全过=判据主体；TUI 零 glibc 豁免。B 路线（musl librust_pty splice）划归 RC6/B2 任务。
 - **方法论教训**：验收判据必须区分「环境可达面」——同一二进制在不同 glibc 可用性环境下功能面不同，组件级甄别（exec/dlopen 逐件验）比整机推断快且准；bun 对 pty 资产加载失败的错误路径未兜住（崩溃而非降级），上游可报。
+
+## §14 TUI 召回终局（rc6-b2-upx-tui，2026-10-02）
+
+- **全案反转**：SIGSEGV@0x0 真凶=TLSDESC（Android ≤10 bionic 无处理，zig 件 libopentui 的 maybeAttachSignalStack slot resolver=NULL→blr 0）；此前 H-glibc/H-epoll/H-memfd/JIT 四假设全部证伪或降级；bun.report JSC 帧=ucontext 布局错位垃圾归因。
+- **修法**：TLSDESC 保留 + .init_array ctor 自解析 shim（dl_iterate_phdr 扫 11 条、resolver==NULL 才回填、每线程 calloc(PT_TLS) 复刻语义、bionic≥10 no-op）；ABI 硬约束=TLSDESC resolver 除 x0 外全寄存器保活（naked asm + 毒化测试）。
+- **F1 终验 PASS**：oscar 真 PTY 110KB 渲染帧 154s 零崩 + LLM 会话往返 3.5s + 干净退出；反例 2（去端口沙盒）复现证明判据有牙；反例 1（去 BUN_PTY_LIB）未复现——pty 能力已内置此件，拼接件降级为可选覆盖（会话期覆盖为间接证据，保留项）。
+- **判定表**：docs/tui-reachability.md——bionic≥10 / 端口分代 / pty splice / 雷区备忘，任意 Android 组合查表即得可达性与对位修补。
+- **教训**：①多假设竞争必须绑裁决实验，垃圾归因（崩溃报告自动符号化）要主动反卷积验证；②「反例通过」也可能是能力内置——maps 取证定加载真相；③port 49374=0xc0de 编译期常量是多代共存的隐形地雷。
