@@ -100,3 +100,57 @@ auth db=常驻 sqlite backup（ro）；runtime 以 symlink 指 /mnt/sdcard_ext4/
 ## F2 判定
 
 F2_VERDICT: PASS（graft 未压 runtime，oscar Android 9 全链可行）
+
+## 正式换装（2026-10-02，team-lead 预授权「可行即装机」）
+
+### 磁盘闸
+- 换装前 /data 仅 611M 可用；按授权顺序清理：v1c-sandbox（13.8M）→
+  zombie-1179（162M，1.17.9 僵尸备份，已被正式件取代）→ 清后 783M 可用
+- 保留：opencode_2.0.18_aarch64.deb（67M，回滚件，sha256 前缀 5359d150890a8b97）
+  + .pre-tlsdesc 副本 + bun-termux-cache（不在授权清单）
+
+### 换装
+- `pacman -U --noconfirm --overwrite 'usr/*' opencode-compressed-2.0.12-2-aarch64.pkg.tar.gz`
+  （设备上 sha256 67d5352ac78cd6e7… 与货架一致）
+- .INSTALL post_install 报错为 Termux pacman scriptlet TMPDIR quirk，cosmetic
+  （v2 家族 MIGRATE_HOOK=0，post_install 仅 echo，无实质动作）
+- 关键事实：常驻 2.0.18 native **无包属主**（pacman -Qo: No package owns
+  bin/opencode）——非 pacman 安装；-U 仅接管碰撞路径，system-skills/tools/hooks
+  资产原样保留；pacman 冲突移除逻辑未触发（旧件本就不在 pacman db）
+- 旧 2.0.18 daemon（pid 4698/30415/15982）手动清除（SIGTERM 不退，kill -9）；
+  opencode-serve 服务（serve --hostname 0.0.0.0）被杀后由 service-daemon 用
+  **新 runtime 自动重生**
+
+### 换装后终态
+- pacman -Q：opencode-compressed 2.0.12-2 + opencode1-compressed 1.18.32-3
+  （双族并存，符合 D1 设计）
+- opencode --version → opencode v2.0.12 rc=0
+- bin/opencode=launcher；lib/opencode/{crhandler,pty/,runtime/opencode(282130080B
+  =graft 未压件)}；system-skills/tools 原样
+- serve 探活：49374 LISTEN（stock 端口）+ curl http=401（password auth，活）
+- 服务重生：runtime/opencode serve --hostname 0.0.0.0（pid 4104）+ serve --service
+  （4714）均为新 2.0.12 runtime
+
+### 真环境 TUI 验证（f2i，非沙盒，真实用户 HOME/XDG/插件/模型）
+| 运行 | rc | ts_bytes | crash_kw | 备注 |
+|---|---|---|---|---|
+| #1 | 0 | 81241 | 0 | TUI 全渲染 + 干净退出（ses_f03de1cb2ffeAgCEujhcbkRm1F） |
+| #2 | 124 | 48383 | 0 | 同上；LLM 往返 provider 侧报错 |
+| #3（longcat 配置覆盖尝试） | 124 | 44562 | 0 | 覆盖未生效（仍 DeepSeek 渠道），同 provider 报错 |
+
+- LLM 往返：请求链路通（provider 响应达 UI 并渲染错误卡），但上游模型
+  "Model is unavailable"（DeepSeek V4 Flash via OpenCode Zen）×3 —— **外部
+  provider 侧问题，非本地缺陷**；沙盒阶段（longcat-2.0-free）已证完整往返能力
+- 插件兼容性观察（另案）：9-10 个用户插件加载失败
+  （oh-my-openagent、opencode-skeleton-pruner、acp、opencode-notify、
+  opencode-working-memory、opencode-subagent-magazine、opencode-visual-cache、
+  gstack、superpowers）——2.0.18 时代插件在 2.0.12 上的兼容性待跟进
+- 证据：f2/f2i-installed.typescript + progress.log（#1）
+
+### 回滚预案
+pacman -R --noconfirm opencode-compressed && cd /data/data/com.termux/files/usr
+&& rm -rf lib/opencode/{pty,runtime} bin/opencode lib/opencode/libopencode-crhandler.so
+&& dpkg-deb -x /data/local/tmp/opencode_2.0.18_aarch64.deb /data/data/com.termux/files
+（或重解 deb 恢复 2.0.18 原生件；注意 2.0.18 本无 pacman 属主，回滚后 pacman db 无 opencode 项）
+
+F2_INSTALL_VERDICT: PASS（换装成功；TUI/serve 判据全过；LLM 往返受上游 provider 不可用阻塞，非本地缺陷）
