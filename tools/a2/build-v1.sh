@@ -51,7 +51,10 @@ BUILTIN_SO="${BUILTIN_SO:-$ROOT_DIR/artifacts/transplant/opentui-bionic/libopent
 BUILD_ROOT="${BUILD_ROOT:-$ROOT_DIR/artifacts/build}"
 MODELS_JSON="${MODELS_JSON:-${TMPDIR:-/data/data/com.termux/files/usr/tmp}/a2-src/models.dev-api.json}"
 OUT_DIR="$BUILD_ROOT/$VER"
-TAG="beta83-baseline"
+# A2 todo2: EFFECT_VER bumps the effect catalog (beta.83 -> beta.103); TAG must
+# follow. Defaults reproduce the beta.83 baseline unchanged.
+EFFECT_VER="${EFFECT_VER:-4.0.0-beta.83}"
+TAG="${TAG:-beta83-baseline}"
 
 for f in "$V1_SRC/packages/opencode/script/build.ts" "$ANDROID_BUN" "$OPENAT2_SHIM" "$BUILTIN_SO"; do
   [[ -e "$f" ]] || { echo "Error: missing $f" >&2; exit 1; }
@@ -78,13 +81,17 @@ if [[ ! -s "$MODELS_JSON" ]]; then
 fi
 echo "    models snapshot: $(du -h "$MODELS_JSON" | cut -f1) ($MODELS_JSON)"
 
-# ── 2. deps (idempotent; store completeness keyed on effect beta.83) ──
-if ! ls -d "$V1_SRC/node_modules/.bun/effect@4.0.0-beta.83" >/dev/null 2>&1; then
-  echo "==> bun install (effect beta.83 store missing)..."
+# ── 2. deps (idempotent; store completeness keyed on effect version) ──
+if ! ls -d "$V1_SRC/node_modules/.bun/effect@$EFFECT_VER" >/dev/null 2>&1; then
+  echo "==> bun install (effect $EFFECT_VER store missing)..."
   (cd "$V1_SRC" && LD_PRELOAD="$OPENAT2_SHIM" "$ANDROID_BUN" install --force --ignore-scripts 2>&1 | tail -3)
 else
-  echo "==> deps OK (effect beta.83 store present, $(ls "$V1_SRC/node_modules/.bun" | wc -l) store keys)"
+  echo "==> deps OK (effect $EFFECT_VER store present, $(ls "$V1_SRC/node_modules/.bun" | wc -l) store keys)"
 fi
+EFFECT_INSTALLED="$(grep -o '"version": "[^"]*"' "$V1_SRC/packages/opencode/node_modules/effect/package.json" | head -1 | cut -d'"' -f4)"
+[[ "$EFFECT_INSTALLED" == "$EFFECT_VER" ]] || {
+  echo "Error: effect version mismatch: node_modules=$EFFECT_INSTALLED expected=$EFFECT_VER" >&2; exit 1; }
+echo "    effect version gate OK: $EFFECT_INSTALLED"
 
 # ── 3. opentui graft (every libopentui.so under node_modules) ─────────
 if readelf -d "$BUILTIN_SO" 2>/dev/null | grep -Eq 'NEEDED.*lib(c|m|dl|pthread|rt)\.so\.[0-9]'; then
@@ -147,21 +154,21 @@ sha256sum "$OUT_BIN" | awk '{print $1}' > "$OUT_DIR/build-v1-$VER-$TAG.sha256"
 echo "==> normalized: $OUT_BIN ($(stat -c%s "$OUT_BIN") B)"
 echo "    sha256: $(cat "$OUT_DIR/build-v1-$VER-$TAG.sha256")"
 
-python3 - "$OUT_DIR" "$VER" "$V1_SRC" "$ANDROID_BUN" "$OUT_BIN" << 'PYEOF'
+python3 - "$OUT_DIR" "$VER" "$V1_SRC" "$ANDROID_BUN" "$OUT_BIN" "$EFFECT_VER" "$TAG" << 'PYEOF'
 import json, hashlib, os, sys
-out_dir, ver, src, bun, out_bin = sys.argv[1:6]
+out_dir, ver, src, bun, out_bin, effect_ver, tag = sys.argv[1:8]
 rec = {
   "version": ver,
-  "kind": "native-a2-v1-baseline",
-  "tag": "beta83-baseline",
+  "kind": "native-a2-v1-baseline" if "beta83" in tag else "native-a2-v1-effect-bump",
+  "tag": tag,
   "source": src,
   "android_bun": bun,
-  "effect": "4.0.0-beta.83 (upstream catalog, control anchor)",
+  "effect": f"{effect_ver} (upstream catalog{' , control anchor' if 'beta83' in tag else ', bumped by A2 todo2'})",
   "note": "v1 source compile on android bun (bionic); bionic libopentui grafted pre-embed; web-ui embed skipped (A2 anchor is TUI + --version); pty uses @lydell/node-pty gnu asset (known gap, not exercised by anchor)",
   "size": os.path.getsize(out_bin),
   "sha256": hashlib.sha256(open(out_bin, "rb").read()).hexdigest(),
 }
-with open(os.path.join(out_dir, f"build-v1-{ver}-beta83-baseline.json"), "w") as f:
+with open(os.path.join(out_dir, f"build-v1-{ver}-{tag}.json"), "w") as f:
     json.dump(rec, f, indent=2, ensure_ascii=False)
 print("    wrote build json")
 PYEOF
