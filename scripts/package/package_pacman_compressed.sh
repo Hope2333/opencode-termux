@@ -98,14 +98,28 @@ else
 	echo "epoll compat shim not shipped (v2 family or asset missing at $EPOLL_SHIM)"
 fi
 
+# v1 migration helper + hook (v1 family ONLY — v2 output stays byte-identical):
+# the deb side ships migrate-to-opencode1.sh and a postinst migration branch
+# (feature-detect first); the pacman side historically shipped neither, which
+# left opencode1-compressed installs without data isolation. The hook lives in
+# opencode1-compressed.install (install= directive — a PKGBUILD post_install
+# function without install= never ships) and is gated by a BUILD-TIME literal
+# (MIGRATE_HOOK), because .INSTALL executes at install time where build env
+# does not exist.
+if [[ "$FAMILY" == "opencode1" ]]; then
+	MIGRATE_SHIP=1
+	echo "v1 migration helper: shipping (migrate-to-opencode1.sh + check-gated .INSTALL hook)"
+fi
+
 
 cd "$ROOT_DIR/packing/pacman"
 rm -rf "$ROOT_DIR/packing/pacman/pkg" "$ROOT_DIR/packing/pacman/src"
 
 TMP_MAKEPKG_CONF="$ROOT_DIR/packing/pacman/.makepkg-opencode1-compressed.conf"
 TMP_PKGBUILD="$ROOT_DIR/packing/pacman/.PKGBUILD.opencode1-compressed.tmp"
+TMP_INSTALL="$ROOT_DIR/packing/pacman/.INSTALL.opencode1-compressed.tmp"
 cleanup() {
-	rm -f "$TMP_MAKEPKG_CONF" "$TMP_PKGBUILD"
+	rm -f "$TMP_MAKEPKG_CONF" "$TMP_PKGBUILD" "$TMP_INSTALL"
 }
 trap cleanup EXIT
 
@@ -131,6 +145,27 @@ if [[ "$FAMILY" == "opencode" ]]; then
 fi
 sed -i "s/^pkgver=.*/pkgver=$VERSION/" "$TMP_PKGBUILD"
 sed -i "s/^pkgrel=.*/pkgrel=$PKGREL/" "$TMP_PKGBUILD"
+if [[ "${MIGRATE_SHIP:-0}" == "1" ]]; then
+	sed -i 's/^MIGRATE_HOOK=.*/MIGRATE_HOOK=1/' "$TMP_PKGBUILD"
+fi
+# .INSTALL bake guard: v1 build MUST carry the active hook switch.
+
+# Bake the .INSTALL (install= directive) with the family literal. Both
+# families get the hook file; the v2 bake keeps MIGRATE_HOOK=0, making its
+# post_install echo-only (zero-hook contract).
+sed -e "s/^MIGRATE_HOOK=.*/MIGRATE_HOOK=${MIGRATE_SHIP:-0}/" \
+	"$ROOT_DIR/packing/pacman/opencode1-compressed.install" >"$TMP_INSTALL"
+sed -i "s|^pkgdesc=|install=\".INSTALL.opencode1-compressed.tmp\"\npkgdesc=|" "$TMP_PKGBUILD"
+grep -qF 'install=".INSTALL.opencode1-compressed.tmp"' "$TMP_PKGBUILD" || {
+	echo "Error: install= injection failed" >&2
+	exit 1
+}
+if [[ "${MIGRATE_SHIP:-0}" == "1" ]]; then
+	grep -q '^MIGRATE_HOOK=1$' "$TMP_INSTALL" || {
+		echo "FATAL: .INSTALL bake missing MIGRATE_HOOK=1" >&2
+		exit 1
+	}
+fi
 
 OPENCODE_COMPRESSED_BIN="$COMPRESSED_BIN" REPO_ROOT="$ROOT_DIR" makepkg --config "$TMP_MAKEPKG_CONF" -f --noconfirm -p "$TMP_PKGBUILD"
 

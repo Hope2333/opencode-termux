@@ -63,3 +63,45 @@ scripts/migrate-to-opencode1.sh：
 - tools/epoll-shim/{epoll-compat.c, build-android.sh, selftest.c, selftest.sh, dist/libepoll-compat.so}
 - launcher/打包链接线 + migrate check 模式（diff 见本分支 commits）
 - oscar 取证：/data/local/tmp/v1c-sandbox/{tui-noshim,tui-shim,tui-shim2,tui-probe,tui-nojit2}.typescript
+
+---
+
+# 追加任务面（同日第二轮）：焦点收窄 + 六族 hook 矩阵 + 设计提案
+
+## Part 1' 考古收窄：OK 基准 = opencode-compressed-1.18.32-1（用户实证）
+
+解包对照 -1（OK 基准，52M）vs -3（oscar 崩件，57M）：
+
+| 维度 | 1.18.32-1（旧名，OK） | 1.18.32-3（改名重打，崩） |
+|---|---|---|
+| runtime sha（压制态） | 8edf5764… | ec51269d…（57373256 B） |
+| 解包 runtime sha | 41794066… | 662a1b34…（均 ~179M，bun v1.4.2 744846f84 同） |
+| UPX | stock 5.21 | stock 5.21 |
+| **内嵌 opentui blob（@同偏移 0x9dab0bf）** | **bionic**（NEEDED=libm/libc/libdl 无后缀，fead56eb） | **glibc**（NEEDED=libm.so.6/libpthread.so.0/libc.so.6/libdl.so.2，7e0ee94a） |
+| crhandler | ebf59e44…（与 -3 相同） | 同 |
+| 布局 | bin-direct usr/bin/opencode + lib/opencode/ | launcher-only + lib/opencode1/runtime/（v12.1 嵌套） |
+| glibc 内嵌件（watcher.node 等） | 有（既有状态） | 有 |
+
+**改写后的配方卡（-1 基准）**：OK 配方 = bun 1.4.2 (744846f84) bionic runtime + **bionic opentui 内嵌** + stock UPX 压制 + bin-direct。回归点 = 改名/重打边界（a404af6 同日重打包 → repack 时代 -2/-3）：**opentui 从 bionic 换成 glibc**（用户真机 TUI 死因——Termux 无 glibc，干净报错 libm.so.6）；oscar serve 崩（SIGSEGV@0x40）则两代 stock UPX 压件皆有的内核相关问题（-4 的 memfd press 已修）。-2/-3 重打发生在 worktree/scratch（git 无 repack-t9.sh 痕迹，-2/-3 无直接 commit 溯源）。
+
+**Part 2 收敛 → 1.18.32-5 已产出**：-4 链本身就是 OK 配方复活（bionic opentui + memfd press）+ 双族隔离，本轮叠加 epoll-compat shim 可选资产 + 新 hook：
+- deb：packing/dpkg-compressed/opencode1-compressed_1.18.32_aarch64.deb（Version 1.18.32-5）sha256 6ad018eb…，三 guard 过，runtime payload = 8a11830342db7485…（与 -4 字节级一致）
+- pacman：packing/pacman/opencode1-compressed-1.18.32-5-aarch64.pkg.tar.gz sha256 53e9e33a…（最终版），四 guard 过，payload 含 migrate-to-opencode1.sh + libepoll-compat.so
+- oscar 沙盒 serve 复验：rt sha 校验 8a1183034 ✓，serve alive 25s 全 HTTP 200（进程主动杀）→ PASS
+  - 过程陷阱（记录）：oscar /data 仅 ~100M 且 100% 满，首次 tar 解包 ENOSPC 截断 runtime（sha 0dffd5d4）→ SIGBUS 假警报；清 sandbox 可复现残留（runtime-stock/extract-*.so，hash 已在案）后重传校验即 PASS。SIGBUS=磁盘满截断，非包问题。
+
+## Part 3' 六族 hook 覆盖矩阵（postinst / .INSTALL 实装盘点）
+
+矩阵本体见 docs/hook-design-proposal.md §一。摘要：
+- v1 native：deb+pacman 双侧 migrate（已特征化）+ quarantine + gated serve-kill（默认 glob 2.0.[0-3] → 1.18.x 默认关）
+- v1 compressed：deb 有 migrate；**pacman 缺失**（用户实测吻合）——根因是 PKGBUILD.compressed 的 post_install 从未随包（缺 install= 指令），本次补齐
+- v2 native：echo 分支 + quarantine + gated serve-kill（无 migrate，正确）
+- v2 compressed：零 hook（正确）
+- wrapper：deb 无 postinst；pacman 显式删除全部 hook（含 system-skills）
+- standalone：零 hook（冻结定位）
+
+**本次改造（只动 v1 族）**：新增 packing/pacman/opencode1-compressed.install（install= 注入 + MIGRATE_HOOK 构建期字面量烘焙：1=opencode1 / 0=v2 零 hook 契约）+ migrate 随包 + .INSTALL bake guard。技术要点：PKGBUILD 内 post_install 函数若无 install= 指令不随包；.INSTALL 运行在安装期，构建 env 不存在，门必须是烘焙字面量（同 native 的 PKG_NAME bake 先例）。v2 族输出零变化。
+
+## Part 4 hook 设计提案（只落文档）
+
+docs/hook-design-proposal.md：现状矩阵 + 归属原则（迁移 hook 只随 v1 族；v2 趋向零 hook；wrapper/standalone 维持零；跨族一律特征识别）+ 五项待裁决缺口（v1 native serve-kill 默认 glob、v1-compressed 的 serve-kill/quarantine 对齐、v2 native 是否彻底零 hook、PKGBUILD.aarch64/armv7l 死代码、hook 沙盒回归自动化）。
