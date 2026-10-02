@@ -1,36 +1,61 @@
-# task-v1tui-layer — v1 1.18.32 TUI 崩因层位判决实验（press vs runtime）
+# task-v1tui-layer — v1 TUI 崩因层位判决实验（UPX press 层 vs runtime 层）
 
-日期：2026-10-02　执行：hist-compressed　分支：rc6-b2-upx-tui/hist-ocomp
-oscar 沙盒：/data/local/tmp/v1c-sandbox/，真 PTY（script 录制），sshd 真实 Termux 上下文 u0_a115。
+日期：2026-10-02　执行：attr-v1tui　分支：rc6-b2-upx-tui/hist-ocomp（未改仓库）
 
-## 实验设计
+## 裁决
 
-被试 A（未压 runtime）：artifacts/v1c-rebuild/runtime-unpacked（sha256 e5885da6a46b3683…，bionic opentui 内嵌，**无 UPX、无 memfd**），ssh 流式推送，oscar 侧 sha 逐字节校验一致。
-对照 B（已压件）：同 runtime 的 -4 memfd press（sha 8a1183034…）当日四组真 PTY TUI 捕获（tui-noshim/tui-shim/tui-shim2/tui-probe.typescript，16:55-17:07）。
-环境：HOME/TMPDIR/XDG 全沙盒化，LD_LIBRARY_PATH=$F（crhandler），TERM=xterm-256color。
+**V1TUI_LAYER: runtime**（置信度：高）
 
-## 结果矩阵
+- 未压 v1 1.18.32 runtime 的 TUI 在 oscar（kernel 3.18 / bionic 9）真 PTY 确定性崩，
+  签名与压件逐字节相同 → UPX press 层对 TUI 崩溃无罪（serve 崩另案，-4 memfd 补丁仍有效）。
+- 前置假说「epoll/syscall 缺失」早被 seccomp 实验证伪（task-hist-ocomp），本实验补齐判决矩阵最后格。
 
-| 被试 | 压制 | 内嵌 bun | opentui | TUI 存活 | 崩点签名 |
-|---|---|---|---|---|---|
-| A 未压 | 无 | 1.4.0 (34cbb9a40) | bionic | **4471ms** | SIGSEGV@0x0, bun.report La134cbb9a… |
-| B 压件 ×4 | memfd UPX | 1.4.0 (34cbb9a40) | bionic | 4373/4410/4434/4784ms | SIGSEGV@0x0, 同签名逐字节一致 |
-| （参考）-3 stock 压件 serve | stock UPX | 1.4.2 (744846f84) | glibc | serve ~5.8s 崩 @0x40 | 不同签名（另一问题） |
-| （参考）-4/-5 压件 serve | memfd UPX | 1.4.0 | bionic | 65s/25s PASS | 不崩 |
+## 判决矩阵
 
-同一 runtime、压 vs 未压，TUI 崩溃时刻（4.4-4.8s）、崩点（SIGSEGV@0x0）、bun.report 签名完全一致；serve 同 runtime 65s PASS 不受累。
+| # | 变体 | fs | 真 PTY TUI | Elapsed | rc | bun.report 签名 |
+|---|---|---|---|---|---|---|
+| 1 | 未压 v1 1.18.32 native runtime（180M, sha e5885da6a46b3683） | SD ext4 | **崩 SIGSEGV@0x0** | 4596ms | 139 | `La134cbb9akwCugg…mm48BA2AA` |
+| 2 | 同上 ×2（确定性） | SD ext4 | **崩 SIGSEGV@0x0** | ~4.5s | 139 | **逐字节相同** |
+| 3 | 同上 + BUN_PTY_LIB=$HOME/ptylib/librust_pty_patched.so（pty 资产切面） | SD ext4 | **崩 SIGSEGV@0x0** | ~4.5s | 139 | **逐字节相同** |
+| 4 | 压件 v4 60.9M（sha 8a11830342db7485，v1c-sandbox runtime-v4） | SD ext4 | **崩 SIGSEGV@0x0** | ~4.5s | 139 | **逐字节相同** |
+| 5 | 压件 v4（历史，v1c-sandbox tui-noshim/shim/shim2） | /data/local/tmp | 崩 SIGSEGV@0x0 | 4410-4784ms | 139 | 逐字节相同（同 #1-4） |
+| 6 | v2 2.0.18（同 bun 1.4.0 34cbb9a4 + TLSDESC shim graft + pty splice） | /data | 正常渲染+会话 | — | 0 | 无 |
 
-## 判决
+RSS 峰值：187MB(r1) / 110MB(r2) / 254MB(v4ctl) —— 非内存耗尽（Machine 3.75GB, MemAvailable 621MB 历史实测）。
+帧产物：v1tui-frames/{tui-*.typescript, rss-*.log}（4 场全部）。
 
-**V1TUI_LAYER: runtime**
+## 关键事实链
 
-- UPX press/memfd 层排除：未压件崩况与压件逐字节同签名
-- syscall 可用性层排除（前序实验）：epoll_pwait2(441) seccomp TRAP+模拟在 oscar 机制全验证有效，TUI 仍崩；probe 模式证崩前未触碰任何 3.18 缺失 syscall
-- 定位收缩：bun 1.4.0 (34cbb9a40) TUI 路径在 kernel 3.18 的固有缺陷（opentui dlopen/FFI/JIT 链，serve 路径不受累；JIT 不可关——opentui 依赖 bun:ffi requires JIT）
-- 推论：旧名 -1（bun 1.4.2 744846f84）在 3.18 上 TUI 亦必不活，「-1 OK」实证只能来自非 3.18 设备；oscar 3.18 上 v1 族 TUI 活化需 bun 重生（kernel gate 补丁或升级 build），属独立任务
+1. **bun 版本同源**：未压 v1 runtime 崩溃 banner 实证 `Bun v1.4.0 (34cbb9a40) Android arm64` ——
+   与 v2 2.0.18 内嵌 bun 同 hash。bun.report 页面确认 "Embedded Bun version: 1.4.0"。
+   **此前「v1 runtime = bun 1.4.2」记载（task-v1c-triage / 配方卡）对本件不成立**；
+   且压件 v4 与未压件崩链逐字节相同，反推 -4 压件同嵌 bun 1.4.0（1.4.2 记载疑为该代归因讹误）。
+   → 「版本差（1.4.2 vs 1.4.0）」假说出局。
+2. **pty 资产切面出局**：BUN_PTY_LIB 注入 v2 已验证的 musl patched lib，崩链不变 → v1 崩点不在 pty 资产。
+3. **fs 变量出局**：同签名跨 SD ext4 与 /data/local/tmp（#1-5）。
+4. **press 变量出局**：未压与压件同签名（#1-2 vs #4-5）。
+5. **remap 栈**（bun.report 页面程序化抓取，`bunpage.html` 逻辑已存本地 scratch）：顶帧 YarrJIT/ARM64Assembler/
+   `crtstuff.c:0 bun_internal_modules_data` —— 文档已定谳此类 JSC 归因不可靠（glibc ucontext 布局读
+   glibc+bionic 混合进程，pc/fp 错位），仅作崩线程身份参考。
+6. **对位文档**：docs/tui-reachability.md 判据 1 —— Android 9 bionic 的 libopentui TLSDESC resolver
+   槽=NULL（linker.cpp 不预填），首次 TLS 访问（zig std signal_stack，Thread.maybeAttachSignalStack 路径）
+   `blr x1`→pc=0 → SIGSEGV SEGV_MAPERR@0x0。v2 经 `tools/transplant/tlsdesc-shim/`（模块内 ctor 扫
+   .rela.dyn R_AARCH64_TLSDESC 回填 emutls 语义槽，bionic 10+ no-op）graft 后 oscar 4/4 渲染零崩。
+   v1 1.18.32 native 线构建于 shim 落地之前（deb 2026-09-27），其内嵌 bionic opentui **无 shim**
+   （shim 符号已 strip，无法 strings 指纹，以构建时序 + 症状全等推断）。
 
-## 取证与清理
+## 下一层建议（runtime 层细分）
 
-- tui-unpacked.typescript（本实验）+ tui-{noshim,shim,shim2,probe}.typescript（压件对照）留存沙盒
-- runtime-unpacked（172M）测试后已删；runtime-v4 已删（压件对照以当日 4 组 typescript 为准，二进制可从本地 -4/-5 包随时重取）
-- oscar /data 回收至 ~234M 可用（对 52G 盘仍是 100% 水位，后续沙盒试验前务必 df）
+1. **首选**：给 v1 1.18.32 native 线重打 TLSDESC shim（transplant.py graft 路线与 v2 同型，
+   `tools/transplant/tlsdesc-shim/` 现成），oscar 复测 TUI。若活 → v1 判定表补判据 1 修补，
+   1.18.32-5 重建链直接采用。
+2. 次选归因加固（若 shim 重打后仍崩）：ckt-shim.c（sigaction-hijack）取真 pc 落点，
+   判 opentui vs opencode JS 1.18.32 自身 TUI 代码。
+3. 遗留小账：配方卡/ops 文档的「1.18.32 内嵌 bun 1.4.2」表述建议按本实验 banner 证据修正。
+
+## 环境与清理
+
+- oscar 沙盒 `/mnt/sdcard_ext4/apps/v1tui-sandbox`（SD ext4 107G 空闲；/data 100% 满容不下 180M 未压件，
+  SD 挂载 rw,nosuid,nodev 无 noexec，ext4 直执行成立且被 #1-5 跨 fs 同签名反证无干扰）。
+- 实验毕沙盒已清零；v1c-sandbox、常驻、~/ptylib 原样未动；无 push、无仓库改动。
+- 本机 scratch（deb 解包/pkg.tar/页面抓包）在 $TMPDIR/v1tui-extract，可随时清。
