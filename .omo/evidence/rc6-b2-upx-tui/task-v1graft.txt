@@ -1,0 +1,77 @@
+# task-v1graft — v1 1.18.32 runtime 重放 TLSDESC shim graft → oscar TUI 复测活化
+
+日期：2026-10-02　执行：impl-v1graft　分支：rc6-b2-upx-tui/v1-graft
+前置：task-v1tui-layer.txt（V1TUI_LAYER=runtime）+ task-2-jitfix.txt（v2 修法与判定表判据 1）
+沙盒：/mnt/sdcard_ext4/apps/v1tui-graft（oscar A4 ssh 8022 u0_a115 真 PTY=ssh+script，SD ext4 直执行）
+
+## 结论（一句话）
+
+**判定表判据 1 现成修法对 v1 线重放成功：TLSDESC shim graft 后，v1 1.18.32 压制 runtime 在
+oscar（Android 9 / kernel 3.18 / bionic 9）真 PTY TUI 完整活化——渲染零崩 + 开 session
+LLM 往返（assistant 回 "ok"，11.1s / 11.7K tok）**。graft 前 4.5s 确定性 SIGSEGV@0x0（引用
+task-v1tui-layer 矩阵 #1-5）。UPX press 与 graft 正交（未压/压件行为一致）。
+
+## 输入与产物（sha256 前 16 位）
+
+| 件 | sha |
+|---|---|
+| v1 runtime（deb 解出未压，180478532B） | e5885da6a46b3683 |
+| v1 内嵌 libopentui 原件（6037032B，asset `/$bunfs/root/libopentui-x8k2b6xk.so`） | 028eaf46a436e906 |
+| graft 库 libopentui.embed.so（5495136B，v2 todo2 同件） | （见 task-2-jitfix） |
+| graft 后 runtime 未压（180478532B） | 4991eb6e199ed254 |
+| graft 后 runtime 自编 upx -4 压件（60794872B，33.69%） | 836dac9225d5cc88 |
+| 双包 deb opencode1-compressed_1.18.32-6 | 605384de37ea0dca |
+| 双包 pacman opencode1-compressed-1.18.32-6 | fe19090d05573066 |
+
+## graft 断言矩阵（v1 与 v2 todo2 同款 readelf 矩阵）
+
+| 断言 | v1 原件（修复前） | v1 graft 后 | v2 参照（todo2） |
+|---|---|---|---|
+| R_AARCH64_TLSDESC 动态重定位 | 11 | **11（保留）** | 11 |
+| INIT_ARRAY / INIT_ARRAYSZ | 无（无 ctor） | **0x3b63b8 / 8B（shim ctor）** | 8B |
+| NEEDED | libm/libc/libdl | 同左 ✓ | libc ✓ |
+| 导出符号漂移 | — | **1934→1934 零漂移**（dyn-syms defined 集合 comm 双向空） | 1933 零漂移 |
+| 槽外字节改动 | — | **0**（只写槽内 3848599B） | 等长换槽 |
+| 槽尺寸 | 6037032B（与 2.0.18 槽同尺寸同名 x8k2b6xk → v1/v2 内嵌 opentui 同代同源） | embed 5495136 ≤ 槽 ✓ | 同 |
+
+v1 原件无 shim 实证：INIT_ARRAY 缺失 + tlsdesc_shim_init 符号 0 + 症状全等 → 构建时序推断
+（deb 2026-09-27 早于 shim 落地）被直接证据补强。
+
+## oscar 三段（真 PTY，f1-driver.sh 同款谱系，BUN_PTY_LIB=~/ptylib/librust_pty_patched.so）
+
+| # | 场 | 压制 | Elapsed | rc | ts_bytes | crash_kw | 判 |
+|---|---|---|---|---|---|---|---|
+| 1 | render（无输入，timeout 45） | 压件 | 45s 打满 | 124 | 520 | 0 | 无崩；但无输入时 TUI 停留在 cap 协商/插件 spinner（见注） |
+| 2 | render 同上 ×1 | 未压件 | 45s 打满 | 124 | 520 | 0 | 无崩；press 正交 |
+| 3 | session（feeder t+150s 喂 prompt，TMO 290） | 压件 | ~280s | 0 | 64020 | 0 | **PASS 三段全绿** |
+
+**session 三段细目**（r2，typescript 留档 v1graft-frames/tui-session-r2-okroundtrip.typescript）：
+1. 渲染：全帧绘制（OpenCode splash logo / "Ask anything…" 输入框 / `Build · Big Pickle · OpenCode Zen` / 底栏 1.18.32），插件加载 ~120s 后 UI 成画；
+2. 会话：prompt "reply with exactly: ok" 注入 → session `Exact ok reply instruction`（ses_f03dc3e1affe2eWSWEw0mb3RkL）；
+3. LLM 往返：assistant 帧渲染 **"ok"**，尾栏 `· 11.1s · 11.7K (6%)`，干净退出（^C ×2 → rc=0）。
+
+**注（方法论）**：`script` 假终端不回 CPR/DA 查询，opentui 1.x 的渲染 tick 由输入事件驱动——
+纯 render 模式（无输入）只见 520B 协商流，喂入 prompt 后（t+150s > 插件加载 ~120s）全帧成画。
+v2 todo2 的 15KB render 捕获是同机制下 spinner+部分帧的产物，判定应以 session 三段为准。
+
+## 对照（graft 前）
+
+task-v1tui-layer.txt 矩阵 #1-5：同 runtime（压/未压/±BUN_PTY_LIB/跨 fs）6 组全部
+SIGSEGV@0x0 @4.4-4.8s，bun.report 签名逐字节相同（La134cbb9a…）。graft 后同机同法零崩
+（r1 session ~157s + r2 session ~280s + render 45s ×2）。变量唯一：内嵌 libopentui 槽内容。
+
+## 双包（货架，gitignored，本地留存）
+
+- deb：packing/dpkg-compressed/opencode1-compressed_1.18.32_aarch64.deb（Version 1.18.32-6，
+  crhandler/launcher/epoll-shim 三 guard OK）
+- pacman：packing/pacman/opencode1-compressed-1.18.32-6-aarch64.pkg.tar.gz（regression/launcher/
+  crhandler/epoll-shim 四 guard OK）
+- T3 压件存档：artifacts/transplant/1.18.32/opencode-native-revived-upx（836dac9225d5cc88）
+
+## 环境与清理
+
+- 推送前后 sha 双端校验一致（runtime 压件 836dac…、未压件 4991eb…、crhandler ebf59e44e737f2ed）；
+  oscar /data df 先查（100%，224MB 残量未占用），沙盒落 SD ext4（112G 空闲）。
+- 实验毕沙盒 /mnt/sdcard_ext4/apps/v1tui-graft 已删；常驻 opencode 进程与 ~/ptylib、
+  /data/local/tmp 原样未动；无 push、无仓库配置改动。
+- 本机 scratch $TMPDIR/v1graft 已清。
