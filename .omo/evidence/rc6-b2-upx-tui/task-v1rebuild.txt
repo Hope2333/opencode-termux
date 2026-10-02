@@ -1,0 +1,51 @@
+# task-v1rebuild — v1 压制线双修重建 opencode1-compressed 1.18.32-4
+
+日期：2026-10-02　执行：impl-v1rebuild　分支：rc6-b2-upx-tui/v1c-rebuild（worktree，基于 f126a18，含 eb1c354 + OCOMP_FAMILY 参数化打包脚本）
+oscar：10.254.129.10，Android 9，kernel 3.18.140，Termux u0_a115(10115)；沙盒 /data/local/tmp/v1c-sandbox/；常驻 opencode 2.0.18 与 opencode1-compressed 1.18.32-3 未动。
+
+## 红测（P1 资产错配前置验证）
+来源：packing/dpkg-native/opencode1_1.18.32_aarch64.deb（40M）解出
+- runtime 未压件：180478532 B，`ELF aarch64 pie, interpreter /system/bin/linker64, for Android 28, NDK r27c`，sha256 e5885da6a46b36833045a81ab4ebb620c89f496dc140dcf3c637f9006736f2d1
+- 抽件扫描（7 处 ELF 魔数逐一抽 blob + readelf -d）：
+  - **opentui blob @166391999：SONAME=libopentui.so，NEEDED = libm.so / libc.so / libdl.so（无版本后缀 → bionic 确认）**，sha256 028eaf46a436e906d53eae7da028b17f43eea0c0e89d30faf6a8f044547e82a4（与 triage-v1c 定谳一致）
+  - 主 ELF NEEDED：libopencode-crhandler.so / libm.so / libdl.so / libc.so（bionic）
+  - 另有 blob @116355874（4919152 B）NEEDED 带 .so.6/.so.0 后缀（glibc 链接的内嵌件，非 opentui，随 v1 native 既有状态）
+- crhandler：sha256 ebf59e44e737f2ed4624d6625ca207cd1090facf24a2c9717c6eab0a643a2fc6
+
+## 压制（P2 自编 memfd upx）
+- 工具：tools/upx-stub/upx-custom-aarch64（UPX 5.2.1 memfd 数据段补丁版，金标准已过）
+- `cp -p runtime-unpacked runtime-packed && upx-custom-aarch64 -4 runtime-packed`
+- 结果：180478532 → 60935240（33.76%），9.2s
+- 压前 file：not stripped pie（未压确认）；压后 file：`statically linked, no section header`（UPX 特征确认）
+- **压件 sha256 8a11830342db748531108dc0e30b34b3421f231b5bc6f02c750b8f21e92db27a**
+
+## 双包重出（VERSION=1.18.32，pkgrel -4）
+env 直调：OCOMP_FAMILY=opencode1 VERSION=1.18.32 DEB_REV=-4 / PKGREL=4，OPENCODE_COMPRESSED_BIN=压件，OPENCODE_CRHANDLER_SO=v1 native deb 抽件，OPENCODE_PTY_SPLICE_DIR=主 checkout tools/bun-pty-splice/dist
+- deb：packing/dpkg-compressed/opencode1-compressed_1.18.32_aarch64.deb（control Version: **1.18.32-4**）sha256 c824ee0b95bf325ff92793ee9705c54562b0faa4958dc28b7cbe19b13b8df733
+- pacman：packing/pacman/opencode1-compressed-1.18.32-4-aarch64.pkg.tar.gz（pkgver 1.18.32 pkgrel 4）sha256 b449d8d5626a10f2f05aff5b4728077718394a9c24fa60249a94239f62b2e11d
+- guard 全过：deb crhandler/launcher OK；pacman data/-payload/launcher/crhandler OK
+- 双包均含 pty splice 资产（librust_pty_arm64_musl_patched.so + shim.so）
+
+## oscar 沙盒实测矩阵
+沙盒布局：/data/local/tmp/v1c-sandbox/{runtime-v4, libopencode-crhandler.so, runtime-stock(对照, cp 自常驻 -3)}，chown 10115。运行身份 u0_a115（sshd 真实 Termux 上下文），LD_LIBRARY_PATH=/data/local/tmp/v1c-sandbox（无 launcher 手动注入，shim 解析实测成立）。
+
+### a. 压件 serve ≥60s — PASS
+`./runtime-v4 serve --port 46511`：13 次采样 × 5s = **65s 全程 alive + HTTP 200**（curl 127.0.0.1:46511）。→ 自编 memfd 补丁 upx 对 v1 3.18 真实负载生效。
+
+### b. 抽件 NEEDED bionic 断言 — PASS
+- TMPDIR 抽件 `.bun-10115-b61ead5c3c4eb355.so`（内容寻址哈希名）sha256 = 028eaf46a436…（与本压件内嵌 opentui blob 逐字节一致）；readelf NEEDED = libm.so/libc.so/libdl.so 无版本后缀 → P1 修复实证
+- TUI 启动新抽件 `.bun-10115-ab41c8324654d685.so`（13995736 B，09:31）readelf：**SONAME=libopentui.so，NEEDED 同上 bionic** → TUI 路径 dlopen 的也是 bionic opentui
+
+### c. TUI 探入（真 PTY）— FAIL（记录报错，新兼容点）
+- 首跑（ssh -tt，fd0=/dev/pts/4）：进程存活 3m11s 不崩、抽出 bionic libopentui、写沙盒日志；SIGTERM 不可杀（SIGKILL 收尾）；未捕获到渲染字节（stdout 重定向文件、/dev/tty 直写未录）
+- 复跑 ×2（script 录 PTY）：**~4.4s SIGSEGV at address 0x0**，Bun v1.4.0 (34cbb9a40) 崩溃横幅（bun.report 链接在案）
+- `BUN_FEATURE_FLAG_DISABLE_EPOLL_PWAIT2=1` 无效（同崩）→ 该 v1 build 不认旗标（修复前 build，无 PR #32490 / uname gate）
+- 归因（特征吻合，设备无 strace 未做 syscall 441 直证）：bun 1.4.0 修复前 epoll_pwait2(441) 在 kernel 3.18 的 libc::syscall 崩（项目记忆 project_bun140_android_crash_mech）；serve 走普通 epoll_wait 故不受累，TUI sigmask 等待路径中招。对照：此前 -3 glibc opentui 是「干净报错」，本版已推进到 dlopen+init 后的 bun 事件循环层
+- 结论：P1/P2 双修到位；v1 TUI 活化需另立任务（v1 runtime 重生带 #32490 修复或 LD_PRELOAD syscall shim，先例 termux/packages/bun 补丁 0004/0005/0009/0006）
+
+### 对照（stock -3 压件 serve）— 复现崩 ✓
+runtime-stock（cp 自常驻 -3，57373256 B）：**~5.8s SIGSEGV at address 0x40**（Bun v1.4.2 744846f84），判据吻合定谳「压=崩 SIGSEGV@0x40」。同窗 v4 压件 65s 存活 → 对照有牙。
+
+## 交付物
+- 双包：packing/pacman/opencode1-compressed-1.18.32-4-aarch64.pkg.tar.gz + packing/dpkg-compressed/opencode1-compressed_1.18.32_aarch64.deb（旧 -3 未动）
+- 沙盒取证残件留 /data/local/tmp/v1c-sandbox/（tui-capture*.txt、serve-*.log、extract-*.so），进程已清
