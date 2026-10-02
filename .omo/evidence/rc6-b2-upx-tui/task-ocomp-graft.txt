@@ -1,0 +1,102 @@
+# task-ocomp-graft: opencode-compressed 2.0.12 TLSDESC graft → oscar 沙盒全链终验
+task: impl-ocomp-graft / 2026-10-02 / 分支 rc6-b2-upx-tui/hist-ocomp（commit hash 见回报）
+基线: task-2-jitfix.txt（TLSDESC shim + 2.0.18 trial 4/4）；f126a18（prep-ocomp 2.0.12-1 双包）
+
+## 结论（一句话）
+
+**graft 修复对 2.0.12 有效：oscar (Android 9) 真 PTY TUI 全渲染 + LLM 往返 + 干净退出
+(rc=0, ts=128867B, crash_kw=0)，对照未 graft 件 TUI 即崩复现（rc=139, ts=1873B）。
+但发现新事实：UPX×graft 组合崩（见下），故 2.0.12-2 双包改载未压 graft runtime
+（包体 94M，tar/gz 压缩后反而小于 UPX 版 101M；代价是装机后磁盘 282M）。**
+
+## graft 落地
+
+- swap_tui.py 对 artifacts/build/2.0.12/opencode-native-revived 换入
+  artifacts/transplant/opentui-bionic-tlsdesc/libopentui.embed.so（5495136B ≤ 槽 6037032B）
+- guard 扫描：clamp=2 / csel_vs=4 ✓（与 2.0.18 graft 一致）
+- readelf 三重断言（解出槽内 .so 复验）：
+  - NEEDED = libm.so/libc.so/libdl.so（bionic，非 glibc）✓
+  - INIT_ARRAYSZ=8 + RELATIVE addend 0x24fcfc → 函数体 = tlsdesc_shim_init
+    （pthread_key_create once-guard），前置 naked stub 0xb0 栈帧恢复尾
+    （msr NZCV / ldp x17,x18…#0xb0）✓
+  - R_AARCH64_TLSDESC 保留 11 条 ✓
+- 产物 sha256：
+  - graft 后未压 runtime opencode-native-revived-tlsdesc = 8eca81f014327016…
+  - UPX(-4) 变体 = ea739df74d3b2125…（已证崩，见下；仅存 forensic）
+
+## 新发现：UPX×graft 不兼容（2.0.12 + bun 1.4.0 base）
+
+本地旗舰与 oscar 均可复现，二分矩阵（rc：139=SEGV，132=SIGILL，0=PASS）：
+
+| 变体 | ctor | UPX | 结果 |
+|---|---|---|---|
+| 未 graft 2.0.12-1 | — | yes | PASS（--version；但 TUI 崩=TLSDESC） |
+| graft pristine | 全量回填 | no | PASS ×3 |
+| graft pristine | 全量回填 | yes | **崩**（oscar 启动即崩 / 本地退出崩） |
+| noctor（INIT_ARRAYSZ=0） | 关 | no | PASS |
+| noctor | 关 | yes | **崩** |
+| v3c（iterate，无回填） | 扫描 | yes | **崩** |
+| v11（仅 key_create） | 半 | yes | **崩** |
+| UPX -1 / --best / -4 | — | yes | 全崩（与压缩级别无关） |
+| 提取文件换回旧 lib 内容（graged-upx 主件） | — | yes | **仍崩**（bun 未重提取，md5 不变） |
+
+要点：崩因与 shim 逻辑无关（noctor 也崩）、与回填无关（v3c/v11 崩）、甚至与提取后
+dlopen 的 .so 内容无关（换回旧 lib 内容仍崩）——崩因跟随「主 ELF 的 UPX 压缩产物」
+本身（graft 只改了载荷里 6MB asset 字节）。CKT 取证（f2/local-ckt-grafted-upx.log）：
+oscar pc=主 ELF 0x1e40294（LLINT 式跳转表取指 x26=0），本地 pc=0x26e9694 +
+exit 路径 NULL 解引用（si_addr=0x11）。根因未钉死（疑似 UPX memfd 布局 × bun 固定
+VA 区预留交互），留待后续专项。
+
+**处置**：2.0.12-2 双包改载未压 graft runtime；oscar 上运行时以普通磁盘 ELF 运行，
+shim ctor 正常回填（python ctypes dlopen 槽检 11/11 已验）。
+
+## oscar 沙盒全链（/data/local/tmp/f2，XDG 五目录全隔离，真 PTY=ssh+script）
+
+沙盒：prefix=解包 2.0.12-2（usr/lib/opencode 结构）；xdg={config,data,state,cache,home,tmp}；
+config/opencode/opencode.json=longcat-2.0-free 三 agent；service.json={"port":49377}；
+auth db=常驻 sqlite backup（ro）；runtime 以 symlink 指 /mnt/sdcard_ext4/f2（/data 100% 满，
+112M 余，UPX 件 104M 挤占；ext4 114G 闲）。
+
+| 运行 | bin | rc | ts_bytes | crash_kw | 判定 |
+|---|---|---|---|---|---|
+| F2 main（三段） | graft 未压 | 0 | 128867 | 0 | PASS |
+| F2 ctrl（对照） | 2.0.12-1 UPX | 139 | 1873 | 2 | 复现 TLSDESC 崩 ✓ |
+
+- main 三段：真 PTY alt-screen 全渲染（truecolor 38;2; 全屏帧 ≥15s×N，帧字节留档
+  f2/f2-main.typescript 129K）→ 开 session 发 "reply with exactly: ok" → LLM 往返
+  （Build · Fledge Alpha Free · 4.2s · 36.2 tok/s，回复 "ok" 渲染上屏，ses_f03f09c59ffexSaElDMX9UtjFO）
+  → Ctrl-C 干净退出（session summary 屏，rc=0）
+- ctrl：TUI 起手即 bun.report SIGSEGV（task-1 同款），1.9KB 即死——判据有牙
+- serve 探活：service.json 端口 49377 由 TUI 会话 server 绑定 LISTEN（curl 401=活，
+  带 password auth）；`opencode serve` 裸命令绑 OS 随机口 4097（不读 service.json，
+  与常驻 2.0.18 行为一致，非本 graft 回归）
+- BUN_PTY_LIB：包内 pty splice 资产被 launcher 自动注入（$PREFIX/lib/opencode/pty/
+  librust_pty_arm64_musl_patched.so），无需外部 ~/ptylib 覆盖
+
+## 常驻零干扰自查
+
+- 常驻 bin/opencode sha256 a45b42e8dad85dde…（原样）；常驻 daemon pid 4698/30415 与
+  49374 LISTEN 原样；opencode-serve（0.0.0.0）服务原样
+- 沙盒孤儿 serve 进程（31488/17511）已 kill；49377 已无监听
+- 沙盒目录 /data/local/tmp/f2 与 /mnt/sdcard_ext4/f2 已删；adb 已 disconnect
+- 本机：常驻进程/数据未动；$PREFIX/tmp 下二分实验件已清（留 forensic 由后续定夺）
+
+## 落货架
+
+- packing/pacman/opencode-compressed-2.0.12-2-aarch64.pkg.tar.gz（94M，sha256
+  67d5352ac78cd6e7…）— 含未压 graft runtime
+- packing/dpkg-compressed/opencode-compressed_2.0.12_aarch64.deb（94M，Version: 2.0.12-2）
+- 双包 guard 全过（regression/launcher/crhandler）；包内 runtime sha = 8eca81f0…
+- 2.0.12-1 pac 件仍在货架（对照基线，未触碰）
+
+## 证据清单
+
+- f2/f2-main.typescript + f2-main.progress.log（PASS 三段全录）
+- f2/f2-ctrl.typescript + f2-ctrl.progress.log（对照崩）
+- f2/serve2.log（49377 归属 + 4097 行为记录）
+- f2/local-ckt-grafted-upx.log（UPX×graft 崩溃 CKT 全 dump）
+- f2-driver.sh（复测驱动，随证据归档）
+
+## F2 判定
+
+F2_VERDICT: PASS（graft 未压 runtime，oscar Android 9 全链可行）
