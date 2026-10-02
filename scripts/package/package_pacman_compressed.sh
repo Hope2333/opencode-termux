@@ -84,6 +84,20 @@ else
 	echo "pty splice assets not found under $PTY_SPLICE_DIR — shipping without (launcher degrades gracefully)"
 fi
 
+# epoll compat shim (OPTIONAL, backward compatible, v1 family ONLY — v2
+# output stays byte-identical): pass the shim path to package() only when it
+# exists; otherwise PKGBUILD ships without and the launcher skips the
+# LD_PRELOAD block. Built by tools/epoll-shim/build-android.sh.
+EPOLL_SHIM="${OPENCODE_EPOLL_SHIM_SO:-$ROOT_DIR/tools/epoll-shim/dist/libepoll-compat.so}"
+if [[ "$FAMILY" == "opencode1" && -f "$EPOLL_SHIM" ]]; then
+	OPENCODE_EPOLL_SHIM_SO="$(readlink -f "$EPOLL_SHIM")"
+	export OPENCODE_EPOLL_SHIM_SO
+	echo "epoll compat shim: shipping from $OPENCODE_EPOLL_SHIM_SO"
+else
+	unset OPENCODE_EPOLL_SHIM_SO || true
+	echo "epoll compat shim not shipped (v2 family or asset missing at $EPOLL_SHIM)"
+fi
+
 
 cd "$ROOT_DIR/packing/pacman"
 rm -rf "$ROOT_DIR/packing/pacman/pkg" "$ROOT_DIR/packing/pacman/src"
@@ -154,4 +168,14 @@ if [[ -n "$BUILT_PKG" ]]; then
         exit 1
     fi
     echo "crhandler guard: OK (shim shipped)"
+fi
+
+# epoll shim guard (conditional, v1 family): asserted only when the shim
+# asset exists at build time (same optional contract the launcher injects by).
+if [[ -n "$BUILT_PKG" && "$FAMILY" == "opencode1" && -f "${OPENCODE_EPOLL_SHIM_SO:-/nonexistent}" ]]; then
+    if ! bsdtar -tf "$BUILT_PKG" | grep -E 'usr/lib/opencode1/libepoll-compat.so' >/dev/null; then
+        echo "FATAL: package does not ship libepoll-compat.so" >&2
+        exit 1
+    fi
+    echo "epoll shim guard: OK (shim shipped)"
 fi

@@ -57,6 +57,18 @@ package() {
             warning "OPENCODE_PTY_SPLICE_DIR set but splice files missing — shipping without"
         fi
     fi
+    # epoll compat shim (OPTIONAL): bionic LD_PRELOAD shim translating
+    # epoll_pwait2(441) -> epoll_pwait for pre-#32490 bun builds. Shipped
+    # when the packaging script exports OPENCODE_EPOLL_SHIM_SO; the launcher
+    # injects LD_PRELOAD only when the file exists (backward compatible).
+    if [[ -n "${OPENCODE_EPOLL_SHIM_SO:-}" ]]; then
+        if [[ -f "$OPENCODE_EPOLL_SHIM_SO" ]]; then
+            install -m755 "$OPENCODE_EPOLL_SHIM_SO" "$pkgdir/usr/lib/opencode1/libepoll-compat.so"
+            msg "epoll compat shim installed under usr/lib/opencode1/"
+        else
+            warning "OPENCODE_EPOLL_SHIM_SO set but shim missing — shipping without"
+        fi
+    fi
 }
 
 post_install() {

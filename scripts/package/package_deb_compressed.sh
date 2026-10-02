@@ -101,8 +101,22 @@ if [[ -f "$PTY_SPLICE_DIR/librust_pty_arm64_musl_patched.so" && -f "$PTY_SPLICE_
 		"$DEB_ROOT$PREFIX/lib/$FAMILY/pty/librust_pty_arm64_musl_patched.so"
 	install -D -m755 "$PTY_SPLICE_DIR/shim.so" "$DEB_ROOT$PREFIX/lib/$FAMILY/pty/shim.so"
 	echo "Packaged pty splice assets (BUN_PTY_LIB) from $PTY_SPLICE_DIR"
+	else
+		echo "pty splice assets not found under $PTY_SPLICE_DIR — shipping without (launcher degrades gracefully)"
+fi
+
+# epoll compat shim (OPTIONAL, backward compatible, v1 family ONLY — the v2
+# family output stays byte-identical): bionic LD_PRELOAD shim translating
+# epoll_pwait2(441) -> epoll_pwait for pre-#32490 bun builds (v1.4.0
+# 34cbb9a40). Fixes the TUI crash on kernels < 5.1 (oscar 3.18.140). Built
+# by tools/epoll-shim/build-android.sh; the launcher injects LD_PRELOAD only
+# when the asset exists.
+EPOLL_SHIM="${OPENCODE_EPOLL_SHIM_SO:-$ROOT_DIR/tools/epoll-shim/dist/libepoll-compat.so}"
+if [[ "$FAMILY" == "opencode1" && -f "$EPOLL_SHIM" ]]; then
+	install -D -m755 "$EPOLL_SHIM" "$DEB_ROOT$PREFIX/lib/$FAMILY/libepoll-compat.so"
+	echo "Packaged epoll compat shim (LD_PRELOAD) from $EPOLL_SHIM"
 else
-	echo "pty splice assets not found under $PTY_SPLICE_DIR — shipping without (launcher degrades gracefully)"
+	echo "epoll compat shim not shipped (v2 family or asset missing at $EPOLL_SHIM)"
 fi
 
 # Field order matters (B1 lesson): Conflicts MUST precede Description or it
@@ -158,11 +172,20 @@ CFG_DIR="$(printf '%s' "${XDG_CONFIG_HOME:-$HOME/.config}/opencode")"
 echo "OpenCode1 compressed variant installed (UPX-packed v1 bionic runtime; coexists with v2 opencode)"
 echo "Run: opencode1 --version"
 echo "Runtime is UPX-packed: invoke via the opencode1 launcher only (direct runtime exec cannot resolve libs under memfd)."
-if [ -e "$CFG_DIR" ] && [ ! -e "${CFG_DIR}1" ] && command -v migrate-to-opencode1.sh >/dev/null 2>&1; then
-  echo "Detected pre-v2-era opencode config; migrating to ${CFG_DIR}1 ..."
-  migrate-to-opencode1.sh isolate >/dev/null 2>&1 && echo "Migrated: v1 config now under *opencode1 dirs." || echo "Migration skipped (already isolated or no v1 data)."
+# Feature detection FIRST (v12.2): `check` prints the detected state and
+# exits 0 when every skip condition is met (already isolated / no v1-era
+# data / plugins clean) — only then does isolate run, and unsilenced so the
+# operator sees detected-state and every action taken. No blind migration.
+if [ -e "$CFG_DIR" ] && command -v migrate-to-opencode1.sh >/dev/null 2>&1; then
+  if migrate-to-opencode1.sh check; then
+    echo "Feature check: nothing to migrate — skipped (already isolated / no v1-era data / plugins clean)."
+  elif migrate-to-opencode1.sh isolate; then
+    echo "Migrated: v1 config now under *opencode1 dirs (see detected-state above)."
+  else
+    echo "Migration not completed (see detected-state above); data left untouched."
+  fi
 else
-  echo "No legacy v1 config found (or already isolated); nothing to migrate."
+  echo "No legacy v1 config found (or migrate helper absent); nothing to migrate."
 fi
 exit 0
 POSTINST
@@ -206,3 +229,13 @@ dpkg-deb -c "$OUT_FILE" | grep -E "bin/${FAMILY}\$" >/dev/null || {
 	exit 1
 }
 echo "launcher guard: OK (bin/$FAMILY shipped)"
+
+# epoll shim guard (conditional, v1 family): asserted only when the shim
+# asset exists at build time (same optional contract the launcher injects by).
+if [[ "$FAMILY" == "opencode1" && -f "$EPOLL_SHIM" ]]; then
+	dpkg-deb -c "$OUT_FILE" | grep "lib/$FAMILY/libepoll-compat.so" >/dev/null || {
+		echo "FATAL: deb does not ship lib/$FAMILY/libepoll-compat.so" >&2
+		exit 1
+	}
+	echo "epoll shim guard: OK (shim shipped)"
+fi
