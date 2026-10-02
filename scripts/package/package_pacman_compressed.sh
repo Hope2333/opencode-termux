@@ -16,8 +16,22 @@ set -euo pipefail
 #
 # Input: the UPX-packed ELF produced by T3
 #   artifacts/transplant/<ver>/opencode-native-revived-upx
+#
+# Family parameter (OCOMP_FAMILY): opencode1 (default, v1 family) or opencode
+# (v2 compressed family). The v2 family renames the identity to
+# opencode-compressed, occupies usr/bin/opencode + usr/lib/opencode, and
+# provides/conflicts the virtual name opencode=<ver> (same v2 slot as the
+# native mainline: mutually exclusive). Family-specific fields are rewritten
+# into the temp PKGBUILD only for the v2 family, so the default (v1) output
+# stays byte-identical (two-family coexistence).
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+FAMILY="${OCOMP_FAMILY:-opencode1}"
+case "$FAMILY" in
+	opencode1 | opencode) ;;
+	*) echo "Error: OCOMP_FAMILY must be 'opencode1' or 'opencode' (got: $FAMILY)" >&2; exit 1 ;;
+esac
+PKG_NAME="${FAMILY}-compressed"
 PACKAGER_NAME="${PACKAGER_NAME:-Hope2333(幽零小喵) <u0catmiao@proton.me>}"
 PKGREL="${PKGREL:-1}"
 TRANSPLANT_ROOT="${TRANSPLANT_ROOT:-$ROOT_DIR/artifacts/transplant}"
@@ -86,6 +100,21 @@ printf "\nPACKAGER=%q\n" "$PACKAGER_NAME" >>"$TMP_MAKEPKG_CONF"
 # Compressed family uses fast gzip wrap because the payload ELF is already UPX-packed.
 printf "\nPKGEXT='.pkg.tar.gz'\n" >>"$TMP_MAKEPKG_CONF"
 cp "$ROOT_DIR/packing/pacman/PKGBUILD.compressed" "$TMP_PKGBUILD"
+# pkgname is family-derived for both families (opencode1-compressed by default).
+sed -i "s/^pkgname=.*/pkgname=$PKG_NAME/" "$TMP_PKGBUILD"
+if [[ "$FAMILY" == "opencode" ]]; then
+	# v2 compressed family identity: provides/conflicts the v2 virtual name,
+	# occupies bin/opencode + lib/opencode, ships the v2 launcher. These seds
+	# are applied ONLY for the v2 family so the v1 template stays untouched.
+	sed -i "s/^provides=.*/provides=(\"opencode=\$pkgver\")/" "$TMP_PKGBUILD"
+	sed -i "s/^conflicts=.*/conflicts=('opencode' 'opencode-wrapper' 'opencode-wrapper-standalone')/" "$TMP_PKGBUILD"
+	sed -i "s/^replaces=.*/replaces=()/" "$TMP_PKGBUILD"
+	sed -i "s|scripts/opencode1-launcher.sh|scripts/opencode-launcher.sh|" "$TMP_PKGBUILD"
+	sed -i "s|usr/lib/opencode1|usr/lib/opencode|g" "$TMP_PKGBUILD"
+	sed -i "s|usr/bin/opencode1|usr/bin/opencode|g" "$TMP_PKGBUILD"
+	sed -i "s/OpenCode1 compressed/OpenCode compressed/g" "$TMP_PKGBUILD"
+	sed -i "s/opencode1 --version/opencode --version/g" "$TMP_PKGBUILD"
+fi
 sed -i "s/^pkgver=.*/pkgver=$VERSION/" "$TMP_PKGBUILD"
 sed -i "s/^pkgrel=.*/pkgrel=$PKGREL/" "$TMP_PKGBUILD"
 
@@ -94,7 +123,7 @@ OPENCODE_COMPRESSED_BIN="$COMPRESSED_BIN" REPO_ROOT="$ROOT_DIR" makepkg --config
 echo "Compressed pacman package created under: $ROOT_DIR/packing/pacman"
 
 # --- Regression guard: reject packages with data/ payload paths (double-prefix bug) ---
-BUILT_PKG=$(ls "$ROOT_DIR/packing/pacman/"opencode1-compressed-"$VERSION"-"$PKGREL"-*.pkg.* 2>/dev/null || true)
+BUILT_PKG=$(ls "$ROOT_DIR/packing/pacman/"$PKG_NAME-"$VERSION"-"$PKGREL"-*.pkg.* 2>/dev/null || true)
 if [[ -n "$BUILT_PKG" ]]; then
     DATA_PAYLOAD=$(bsdtar -tf "$BUILT_PKG" | grep -E '^data/' | head -1 || true)
     if [[ -n "$DATA_PAYLOAD" ]]; then
@@ -111,11 +140,11 @@ fi
 if [[ -n "$BUILT_PKG" ]]; then
     # grep -q would SIGPIPE bsdtar mid-listing under pipefail (race, order
     # dependent) — consume full listing with a redirect instead.
-    if ! bsdtar -tf "$BUILT_PKG" | grep -E 'usr/bin/opencode1$' >/dev/null; then
-        echo "FATAL: package does not ship the usr/bin/opencode1 launcher (launcher-only contract)" >&2
+    if ! bsdtar -tf "$BUILT_PKG" | grep -E "usr/bin/${FAMILY}\$" >/dev/null; then
+        echo "FATAL: package does not ship the usr/bin/$FAMILY launcher (launcher-only contract)" >&2
         exit 1
     fi
-    echo "launcher guard: OK (usr/bin/opencode1 shipped)"
+    echo "launcher guard: OK (usr/bin/$FAMILY shipped)"
 fi
 
 # crhandler guard (unconditional): the package MUST contain the shim.
