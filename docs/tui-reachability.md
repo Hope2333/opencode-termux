@@ -78,3 +78,10 @@ uname 含 `-android` → bun 修复版 uname 禁用启发式在旗舰同样触�
 | H-glibc | 旗舰 TUI 靠 $PREFIX/glibc bridge（libc.so.6+ld-linux）加载 glibc 资产 | **证伪**：旗舰 TUI 活体 maps 三采样零 glibc 映射、零 bridge 参与；bridge 只支持 loader-exec，bionic 进程内 dlopen glibc 件两机同败〔task-flagship-tui.txt §4/§6〕 |
 | H-kernel | 旗舰 6.6 有 pidfd、oscar 3.18 无 → TUI init 崩在 syscall 面 | **假相关**：崩点在 bionic linker 重定位（用户态），与内核无关；旗舰"正常"实为 bionic 新（TLSDESC 支持）〔task-1-jsc.txt §5〕 |
 | H-bunso | bun 对内嵌 .so 的 dlopen 失败路径未兜住 → 优雅报错变 SIGSEGV | **部分成立后收窄**：抽取+dlopen 机制本身健康（maps/strace 双证）；崩溃发生在 dlopen 成功之后——libopentui 的 TLSDESC 重定位未被 bionic 9 填槽〔task-1-jsc.txt §1-3〕 |
+
+## 终局行（2026-10-02 C1 裁决）：v1 TUI on kernel 3.18
+
+- **根因**：v1.18.32 内嵌 effect **4.0.0-beta.83**，startup 同步链纤维在 3.18 永挂（v2.0.12=rc.112 同 bun 1.4.0 34cbb9a4 正常——effect 代差坐实，beta→rc breaking 改名 Schema→schema 遍布闭包图）
+- **backport 不可行**：bundle 字节手术=重编译级风险；v1 源码 catalog bump=mini 大版本迁移
+- **口径**：kernel 3.18 等冻结机型 **v1 切 v2.0.12+**（opencode/opencode-compressed 双族 oscar 实证全过）；中期若必须保 v1 形态，找 1.18.33→v2 间 effect 首次 bump 最小过渡 tag 重建（另立任务）
+- 证据：task-c1-effect-diff.txt + task-unpressed-freeze.txt（四格矩阵）
