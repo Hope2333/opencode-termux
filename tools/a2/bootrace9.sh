@@ -1,9 +1,9 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # bootrace9.sh — 从启动挂 strace 全量跟踪 press3 前 70s, 抓 8KB spinner 后的最后 syscall
-# 用法: bash bootrace9.sh <TAG>
+# 用法: bash bootrace9.sh <TAG> [noplug|mincfg]
 set -u
 BASE=/mnt/sdcard_ext4/apps/a2todo9
-TAG=${1:?TAG}
+TAG=${1:?TAG}; NOPLUG=${2:-}
 CASE=files
 SRCCFG=/data/data/com.termux/$CASE/home/.config/opencode
 SRCOC=/data/data/com.termux/$CASE/home/.opencode
@@ -12,6 +12,7 @@ ST=/data/data/com.termux/files/data/data/com.termux/files/usr/bin/strace
 SLIB=/data/data/com.termux/files/data/data/com.termux/files/usr/lib
 
 W=$BASE/sbx-$TAG
+export W
 rm -rf "$W"
 mkdir -p "$W/home" "$W/tmp" "$W/config/opencode" "$W/data" "$W/state" "$W/cache"
 cp -a "$SRCCFG/." "$W/config/opencode/" 2>/dev/null
@@ -21,6 +22,26 @@ printf '{"port": %d}\n' "$PORT" > "$W/config/opencode/service.json"
 export HOME="$W/home" TMPDIR="$W/tmp" TERM=xterm-256color
 export XDG_CONFIG_HOME="$W/config" XDG_DATA_HOME="$W/data"
 export XDG_STATE_HOME="$W/state" XDG_CACHE_HOME="$W/cache"
+if [ "$NOPLUG" = "noplug" ]; then
+  python3 - <<'PYEOF'
+import json, os
+w = os.environ["W"]
+for f in ["config/opencode/opencode.json", "home/.opencode/opencode.json"]:
+    p = os.path.join(w, f)
+    try: d = json.load(open(p))
+    except Exception: continue
+    n = 0
+    for obj in [d] + [v for v in d.values() if isinstance(v, dict)]:
+        if isinstance(obj, dict) and "plugin" in obj: n += len(obj.pop("plugin"))
+    json.dump(d, open(p, "w"), indent=2)
+    print(f"stripped {n} plugins from {f}")
+PYEOF
+elif [ "$NOPLUG" = "mincfg" ]; then
+  rm -rf "$W/home/.opencode" "$W/home/.config/opencode"/*
+  printf '{}\n' > "$W/config/opencode/opencode.json"
+  mkdir -p "$W/home/.opencode" && printf '{}\n' > "$W/home/.opencode/opencode.json"
+  echo "mincfg: config replaced with {}"
+fi
 
 TS=$BASE/$TAG.typescript
 TRC=$BASE/$TAG.bootrace

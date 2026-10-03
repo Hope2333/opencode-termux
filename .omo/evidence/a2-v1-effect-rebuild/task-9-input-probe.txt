@@ -70,3 +70,23 @@
   以后 trace 快照须在 probe 收尾前另存
 - 复核性实验: press3np/anchornp(剥 plugin 数组 config)双跑进行中 → 剥插件后若恢复渲染
   +回显, 则输入轴真值出炉
+
+## P4 终局对照与裁决（2026-10-03 12:xxZ）
+- **插件假说否证**: press3np(剥 plugin 数组, python 验证 stripped 8+2)仍定格 8192B；
+  press3mb(mincfg, config={} 且 .opencode 清空)仍卡(7890B) —— 卡点与 config 内容无关
+- **决定性对照**: press2ctl = 5c 今日 09:32Z 曾渲染 25334B/ANSI=2 的原版 press2 重跑 →
+  **今日同形定格 8192B**（S0→S4 零增量、零回显）→ 卡点系 **机器环境级变化**(5c 后、
+  容器切换时代)，与二进制版本无关(press2/press3/锚-7 三代全同形)
+- 冻结进程画像(press2ctl pid 1703): 主线程 R 态、utime/stime 持续增长(stime 主导)、
+  strace 6s 窗 334 次 epoll_pwait(阻塞等待型, 均 237ms)——事件循环活着但应用推进停滞;
+  Ctrl-C/TERM 均不可杀(raw 模式无 ISIG + 信号处理停摆), 须 SIGKILL
+- **断层三层的最终结论**:
+  ① 内核/tty 投递层: 未及触及(app 从不 read, pty 本身健康——script 会话正常)
+  ② 应用消费层: **FAIL**——boot ~t+25-30s 后 stdin 零订阅零读取, 输出定格 8192B,
+     编辑器态永不到达；输入判据在此环境下不可测(任何二进制都死)
+  ③ termios 层: PASS(TCSETSW raw 成功 ret=0)
+- **T10 修复靶(修订)**: 首要 = 定位 5c(09:32Z)→今(11:22Z) 的机器环境 delta
+  (容器切换首 suspects: 挂名易位后的路径态/资源态), 恢复 harness 全帧渲染;
+  渲染恢复前, press3 输入轴的任何二进制级修复都无法在 oscar harness 上验收
+- 留机交付: /mnt/sdcard_ext4/apps/a2todo9/{kit(press3 四件 sha 对 MANIFEST),
+  probe9.sh, diag9.sh, bootrace9.sh, 各 run 证据文件} —— 供用户人工终试与 T10 复用
