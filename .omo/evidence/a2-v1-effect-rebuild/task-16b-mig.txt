@@ -1,0 +1,47 @@
+# opencode v1 数据搬迁报告 (a2 task-16b) — 2026-10-04
+主机: oscar (10.254.129.10:8022, u0_a115), kernel 3.18.140-mokee, 已核身
+容器判定: 活跃容器=files (sshd home; files/usr/lib/opencode1/runtime 1.18.32; v2 serve 运行中 pid 27905 未触碰)
+旧容器=files1 (v1 平铺命名 .local/{share,state,cache}/opencode + .config/opencode)
+
+## 勘察清单 (pre, files/files count/bytes)
+SRC files1/home/.local/share/opencode   4 files  2794924  (opencode.db 294912 + wal 2443192 + shm 32768 + log/opencode.log)
+SRC files1/home/.local/state/opencode   1 files  71       (model.json; locks/ 空)
+SRC files1/home/.cache/opencode         1 files  5311759  (models.json; bin/ 空)
+SRC files1/home/.config/opencode     3645 files 54834155  (opencode.jsonc/package.json/node_modules)
+SRC files1/home/.config/opencode1       1 files  16       (opencode/service.json port)
+DST files/home/.local/share/opencode1   5 files  7009850  (nested opencode/ + polluted-20261002 备份)
+DST files/home/.local/state/opencode1   3 files  3203
+DST files/home/.cache/opencode1      20743 files 321329680
+DST files/home/.config/opencode1     3646 files 54834171
+files2/home: 全部 0 文件 (排除)
+布局: v1 runtime 在 XDG_*_HOME=opencode1 下自加 opencode/ 段 (usr/bin/opencode1 launcher v12.1) → 映射 SRC 平铺 opencode/* → DST opencode1/opencode/*
+
+## 备份 (覆盖前, tar czf → /mnt/sdcard_ext4/apps/a2todo16/mig-backup/, TS=20261004-065956)
+share-opencode1-premig-20261004-065956.tar.gz   632K  15 entries
+state-opencode1-premig-20261004-065956.tar.gz   4.0K   6 entries
+cache-opencode1-premig-20261004-065956.tar.gz    67M 23414 entries
+config-opencode1-premig-20261004-065956.tar.gz   11M  3924 entries
+
+## 搬运 (cp -a 合入覆盖, 源全部保留未删未改)
+cp -a files1/home/.local/share/opencode/.  files/home/.local/share/opencode1/opencode/
+cp -a files1/home/.local/state/opencode/.  files/home/.local/state/opencode1/opencode/
+cp -a files1/home/.cache/opencode/.        files/home/.cache/opencode1/opencode/
+cp -a files1/home/.config/opencode/.       files/home/.config/opencode1/opencode/
+migrate-to-opencode1.sh patch → "0 reference(s) in 0 file(s)", verified 0 un-nested refs
+
+## 校验 (post)
+DST files/home/.local/share/opencode1   5 files  9020844 (+2010994 = 旧 db+wal 接管)
+DST files/home/.local/state/opencode1   3 files  3203 (model.json 71B 等内容一致)
+DST files/home/.cache/opencode1      20743 files 321331069 (models.json 被源覆盖 +1389)
+DST files/home/.config/opencode1     3646 files 54834171 (内容与源一致)
+DB: sqlite3 PRAGMA quick_check = ok (python3 sqlite3, 副本上执行)
+DB 基线: 旧库 4 sessions / 8 messages quick_check ok; 活跃嵌套库 pre 3 sessions ok → 合并后 4 sessions / 8 messages ok (覆盖语义, 旧库整体接管)
+
+## 搬后功能验证
+opencode1 --version → 1.18.32
+opencode1 session list → 4 条历史会话全部列出:
+  ses_efebeaa16fferuirgodSScTxso  测试      6:14 PM 10/3/2026
+  ses_efebe9dd4ffewSuEbabdnH63y7  测试      6:13 PM 10/3/2026
+  ses_efebe9e29ffe316hbu37t8kjy7  测试      6:13 PM 10/3/2026
+  ses_efebead57ffeaC3dsm55SEWym0  功能测试   6:13 PM 10/3/2026
+结论: PASS
