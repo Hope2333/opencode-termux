@@ -15,3 +15,58 @@
 - strace: 机上未装（which strace 空；pacman 在位可装）
 - **新发现**: oscar 本机 Termux 有 runsv 托管常驻 opencode（pid 21557, /data/data/com.termux/files/usr/lib/opencode/runtime/opencode）——5c 现场未见此记录，未触碰
 - **判定: files1 挂名 ls 失败 = 容器易位信号，按纪律停手报告，未传 kit、未装 strace、判据外零动作**
+
+## P1 续跑（impl-a2t9b，2026-10-03）
+- 核身 ✓: 3.18.140-mokee / OC105 / Android 9 / uid=10115；host key 已按主代理口径采信新 ED25519
+- **锚两槽探测**: files 槽 = PRESENT 1.18.32 ✓（本轮锚槽）；files1 = absent（切换后旧挂名消失）
+- **strace 落位**: pacman -S strace 报 reinstall，但包系旧 /usr 相对约定 → 实落错位路径
+  /data/data/com.termux/files/data/data/com.termux/files/usr/{bin/strace,lib/}
+  (libdw 0.196 同错位)。直调验证 ✓: strace 7.2 + LD_LIBRARY_PATH=错位 libdir，canary read 抓取正常
+- **press3 传输 ✓**: /mnt/sdcard_ext4/apps/a2todo9/kit/（tar 管道），4 件 sha 全对 MANIFEST:
+  runtime=c77fb43f ✓ pty=1047d3e2 ✓ shim=babfea63 ✓ epoll=a200262e ✓
+- launcher 确认: 自注入 LD_LIBRARY_PATH(pty+epoll)+LD_PRELOAD(epoll-compat)+BUN_PTY_LIB
+- **harness**: tools/a2/probe9.sh（5c 同法 + 修正口径）：S0 定点后 strace attach 窗覆盖注入段，
+  注入序列 z / XYZPROBE9 / \r / 右方向键 / Ctrl-C×2；判据=typescript S0 后区域实读 XYZPROBE9
+  (raw+去ANSI 双口径) + session 存档文件数 + err500 计数；锚槽动态=files（本轮实测）
+- press3 run 已 nohup 发射（pid 24184），press3in 标签
+
+## P2 press3 判据两连跑（press3in / press3st）
+- 两跑一致复现: typescript 在 ~t+30s 写到 8192B 后**全程冻结**（S0→S4 零增量），
+  内容=spinner braille 帧+转义残片，**编辑器全帧从未上屏**；marker 零回显、
+  session 存档 0 文件、err500=0、crash_kw=0；Ctrl-C 不可退（rc=124 仅 timeout 击杀）
+- 首跑 strace 教训①: launcher 模式实际进程是 runtime 名，非 launcher 路径（PAT 需显式传）
+- 首跑 strace 教训②: PAT 全 cmdline 匹配会命中 probe9 自身 bash（argv 含 PAT）——
+  attach 到了 do_wait 的 bash，"零 syscall"系测错对象，作废
+- diag9 v3（arg0 精确匹配）实证: runtime 26661 = 21 线程、utime 增长（+75 ticks/8s）、
+  主线程 SyS_epoll_wait —— **app 未挂死，事件循环活**
+- 15s strace（trace=read,poll,epoll*,ioctl,connect,futex）4947 行全部为
+  epoll_pwait/futex 空转 + 1 次 eventfd write: **零 read()、零 ioctl(TCSETS)、零 connect()**
+- 形态判读: TUI 卡加载态（spinner 止于 8192B），事件循环活着但不产渲染、不碰 stdin。
+  与 5c press2（同沙箱法全帧 36-45KB）对照 = press3 相对 press2 出现新回归轴
+  （prime suspect: todo8 hermetic remap；待锚-7 对照排除环境/config 因素）
+
+## P3 锚-7 同法对照 + bootrace 全量跟踪（断层定位）
+- **锚-7 对照(anchor7) = 同形 RED**: typescript 同样定格 8192B、零回显、无 session、
+  log 止于 "init count=1"；strace 同为纯 epoll 空转零 read —— 排除 press3 回归假设
+- bootrace(启动即挂 strace -f, 71s 全量, 61370 行) press3 时间线:
+  - t+2s TCGETS×N 成功; **t+9s TCSETSW raw 模式设置成功**(c_lflag 无 ICANON/ECHO, ret=0)
+    → **termios 层 PASS(断层③排除)**
+  - t+10-13s DNS(dnsproxyd) → models.dev 443(IPv6 EINPROGRESS+IPv4) TLS 握手→
+    recvfrom 256KB 响应到达 → 网络层正常
+  - t+22-32s **bun install 插件阶段**($bunfs/npmrc、locks/*、opencode-visual-cache、
+    superpowers@git+github 查包)；t+32.1s 后 JS 事件循环**完全静默**(仅 futex/
+    epoll_pwait/statm 残留)至被杀(71s)
+  - 全程 **stdin(pts fd 0/8/9/13/14/15) 零 read** —— TUI 从未订阅/消费 stdin(断层②实锤)
+  - Ctrl-C 无效机理: raw 模式清 ISIG → \x03 需 app 读到才退；app 永不 read → 进程杀不死
+    (timeout TERM 也曾被无视, strace detach 后进程 R 态自旋, 需 SIGKILL)
+- **卡点根因候选(实证)**: 今日沙箱 config 取自 files 槽 = 用户现行容器, 含 7+ 插件
+  (superpowers@git+https/...、opencode-acp、opencode-notify 等)；5c 健康跑(files1 config)
+  **无 plugin 段**。bun install 插件挂死 → TUI 永不完成 boot → 编辑器态不可达 → 输入死
+  = 插件安装挂死(应用级, T10 修复靶), 非 press3/press2 回归, 非输入投递层故障
+- 判据口径注: 今日锚 8192B 与 5c 锚 10876B 同为 spinner 级(锚在 harness 下从未全帧渲染),
+  5c press2 25KB(ANSI=2) 为无插件 config 下的健康参照
+- 证据文件: oscar-frames/t9/{press3in*,press3st,anchor7,press3d3-diag,press3br}.*;
+  press3in2 277 行注入窗 trace 收尾时 gzip 异常丢失(gz 0 字节), fd 快照幸存 —— 教训:
+  以后 trace 快照须在 probe 收尾前另存
+- 复核性实验: press3np/anchornp(剥 plugin 数组 config)双跑进行中 → 剥插件后若恢复渲染
+  +回显, 则输入轴真值出炉
