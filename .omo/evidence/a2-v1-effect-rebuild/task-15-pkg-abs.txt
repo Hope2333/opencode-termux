@@ -1,0 +1,70 @@
+# task-15: A1 pacman 包按 termux-pacman 绝对路径约定重打包
+
+日期: 2026-10-04
+分支: rc6-a2/pkg-abs-repack
+脚本: tools/pkg-abs-repack.sh
+
+## 背景与根因
+
+A1 包（opencode1-compressed-1.18.32-7 等）tar 成员为相对 `usr/...`。
+标准 termux-pacman 机 RootDir=默认 `/`，相对成员解析到 `/usr` → 只读报错
+`Partition / is mounted read only`，事务干净失败。
+
+## 官方包路径格式取证（本机 termux-pacman 7.1.0 缓存包）
+
+ninja-1.13.2-0-aarch64.pkg.tar.xz 成员：
+- `data/` `data/data/` `data/data/com.termux/` `data/data/com.termux/files/` 逐级目录条目
+- `data/data/com.termux/files/usr/bin/ninja` …
+- **无前导 `/`**，即 `data/data/com.termux/files/usr/...` 形式
+- .BUILDINFO/.INSTALL/.MTREE/.PKGINFO 位于包根；.MTREE 本身为 gzip 压缩
+
+`pacman -Ql strace` 同样证实安装路径 /data/data/com.termux/files/usr/...。
+
+## -7 包解包分析（opencode1-compressed-1.18.32-7）
+
+成员 17 个：4 元文件 + `usr/` 相对成员 13 个（usr/bin/migrate-to-opencode1.sh、
+usr/bin/opencode1、usr/lib/opencode1/{libepoll-compat.so,libopencode-crhandler.so,
+pty/librust_pty_arm64_musl_patched.so,pty/shim.so,runtime/opencode}）。
+- .INSTALL 无 usr/ 路径引用（走 $PREFIX / command -v / $HOME）→ 无需改写
+- 脚本内路径均为运行时绝对路径（`P="${PREFIX:-/data/data/com.termux/files/usr}"`）→ 无需改写
+- 仅 tar 成员路径 + .MTREE 需重写
+
+## 重打包脚本要点（tools/pkg-abs-repack.sh）
+
+1. 解包 → .INSTALL 含 usr/ 引用则拒绝（防呆）
+2. .PKGINFO/.BUILDINFO pkgrel +1（-7→-8, -3→-4），保留原 mtime
+3. .MTREE 先 gzip -dc 解压（踩坑：包内 .MTREE 是 gzip 流，直接 sed 二进制无效）→
+   `./usr/...` → `./data/data/com.termux/files/usr/...` →
+   元文件 size/sha256digest 重算 → gzip -n 压回
+4. 物理 mv usr → data/data/com.termux/files/usr，tar 重打包（gzip -n / xz）
+5. 断言：零 `^usr/` 成员；绝对成员存在；.PKGINFO pkgver 往返一致；
+   .MTREE 全文件 size+sha256 逐条对账
+（踩坑 2：grep -q 提前退出使 tar 收 SIGPIPE，pipefail 误判 → 先捕获成员清单再 grep；
+踩坑 3：mtree 元文件行 sed 模式需 `^\./\.PKGINFO ` 双点）
+
+## 独立验证结果
+
+opencode1-compressed-1.18.32-8-aarch64.pkg.tar.gz:
+- relative usr/ members: 0；absolute members: 13
+- pkgver = 1.18.32-8；.MTREE 可 gunzip（#mtree 头）
+- runtime/opencode sha256 = e4fba8d8f74b11fdb386a18768f953969f99c61438150680ce3e60c7bf392610
+  （与原 -7 完全一致，内容零改动）
+
+opencode1-1.18.32-4-aarch64.pkg.tar.xz:
+- relative usr/ members: 0；absolute members: 10
+- pkgver = 1.18.32-4；.MTREE 可 gunzip
+- runtime/opencode sha256 = e5885da6a46b36833045a81ab4ebb620c89f496dc140dcf3c637f9006736f2d1
+  （与原 -3 完全一致）
+
+## 产物
+
+- tools/pkg-abs-repack.sh（入库）
+- packing/pacman/opencode1-compressed-1.18.32-8-aarch64.pkg.tar.gz（gitignore 生成物）
+- packing/pacman/opencode1-1.18.32-4-aarch64.pkg.tar.xz（gitignore 生成物）
+
+## 边界
+
+本机仅验证 tar 结构 + .PKGINFO 完整性 + .MTREE 对账；真机装机验证
+（标准 termux-pacman 机 / oscar）留给用户。happy/failure 取证：
+happy = 上述两包断言全绿；failure = 脚本对含 usr/ 引用 .INSTALL 会 FATAL 拒绝
+（设计防呆，未触发样本）。
