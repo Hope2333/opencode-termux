@@ -1,0 +1,76 @@
+# task-8-hermetic-home — v1 编译产物烤入绝对 home 路径修复（rc6-a2/todo8）
+
+日期: 2026-10-03　分支: rc6-a2/todo8-hermetic-home
+
+## 1. 分类（46 处 → 来源 → 处置）
+
+基线 beta83 与 beta103-bump 均 46 处 `data/data/com.termux/files/home`；
+beta103-grafted 46 处（内容来自换入的 tlsdesc embed）。
+
+| 组 | 计数 | 来源 | 机制 | 处置 |
+|---|---|---|---|---|
+| OpenTUI vendor 源路径 | 46 | 内嵌 libopentui.so `.rodata`（0x7c5e960–0x7c61d9c 区） | OpenTUI w7b bionic 构建：vendored C（libwebp/lcms2/stb/miniaudio/yoga）的 `assert()`/`__FILE__` 表把 build 机绝对路径烤入。**纯断言消息字符串，非数据/缓存/会话路径解析** | hermetic-home-patch.py 原位重映射 → `/opentui-vendor-src/` |
+| bun bundler `var __dirname` 字面量 | 8 | JS bundle（pino/thread-stream/typescript×2/write-file-atomic 等 worker 模块） | bun --compile 对 node_modules CJS 的 `__dirname` 替换为 build 机 `$TMPDIR/a2-src/...` 字面量。路径在 `files/usr`（Termux 标准前缀），**不在 $HOME 下**；TUI 锚点运行时不触达 | 残留 benign 归档（源码不可修：bun bundler 行为） |
+| resolv.conf 常量 | 1 | JS bundle（bun runtime DNS fallback） | bun 内嵌默认路径常量 | 残留 benign |
+
+关键否定性证据：**JS bundle 中 `files/home` 烤入 = 0**（baseline 与 bump 双验，`grep -o "data/data/com.termux/files/home"` 排除 OpenTUI 后为空）。v1 的 data/cache/会话路径解析走 XDG env / `$HOME` 读后计算，未烤入。
+
+## 2. 修复机制
+
+- **主修复（产物层）**：`tools/a2/hermetic-home-patch.py` — 对 77 字节前缀
+  `/data/data/com.termux/files/home/develop/OpenTUI-w7b-native/packages/native/`
+  做同长度原位重映射为 `/opentui-vendor-src/` + NUL 填充。硬断言：尺寸不变、
+  变更字节全部落在替换区间、`files/home` 残留=0、幂等。46 处重映射共 3404B 变更。
+- **源码级重建（已备未启用）**：`patches/opentui/file-prefix-map.patch` +
+  `OPENTUI_C_REMAP` env 机制（build.zig `remapFlags` helper，全部 C/CXX/translate-c
+  编译集注入 `-ffile-prefix-map`）。**未启用原因**：w7b 前置目录
+  `$TMPDIR/w7b-hdrfix`、`w7b-hdrfix-merge`、`w7b-bionic-lib` 已随 TMPDIR 清理丢失，
+  无生成脚本（当年手工手术，见 .omo/evidence/task-w7b-build.log），重建路线不可复现。
+  待 hdrfix 目录脚本化后可切换。
+- **链路**：`tools/a2/press-v3.sh`（press-v2 同系 + hermetic 步骤 [1/6]）：
+  beta103-grafted（既有 graft 中间件，只读）→ hermetic remap → UPX -4 → press3 kit。
+
+## 3. 断言与验证
+
+- hermetic assert: home-path gate=0, slot@0x7c1e8c6 5495136B, guard=OK
+  (clamp=2 csel_vs=4), INIT_ARRAY=2, TLSDESC=11 preserved
+- upx: 136312480 → 47320568 (34.71%), upx -t OK
+- --version: launcher / pressed 双验 = 1.18.32
+- pty probe: 8/8 symbols + shim canary fired
+- TUI smoke ×3: 见下
+- fakehome: 见下
+
+## 4. 冒烟与 fakehome 结果
+
+press-v3 全链（task-8-press3.log）：
+- hermetic assert: home-path gate=0, slot@0x7c1e8c6 5495136B, guard=OK
+  (clamp=2 csel_vs=4), INIT_ARRAY=2, TLSDESC=11 preserved
+- upx -4: 136312480 → 47320568B (34.71%), upx -t OK
+  pressed sha256=c77fb43f4f470d98968175e1a610998e29d7b2fe7d6ab87c092892136835b650
+- --version: launcher / pressed 双验 = 1.18.32
+- pty probe: 8/8 symbols + shim canary fired
+- TUI smoke ×3（task-3-smoke.sh 同判据）: run1/run2/run3 全 GREEN
+  （total 44566/45630/36126B, ANSI≥1, 无崩溃关键词, 键入窗 DELTA>0）
+
+fakehome 验证（press3 launcher，HOME=$TMPDIR/a2t8-fakehome/home、无 XDG 覆盖、pty 32s + Ctrl-C）：
+- `~/.local/share/opencode/{log,repos}`、`~/.local/state/opencode/locks`、
+  `~/.cache/opencode/{bin,packages}`、`~/.npm` 全部落于 fake HOME 下
+- = 数据/缓存/状态目录在运行时真跟 `$HOME` 走（XDG 读后计算），与「JS bundle 零
+  home 烤入」互证；TUI 渲染 36123B 正常
+
+## 5. 产物与交付
+
+- artifacts/build/1.18.32/opencode-v1-1.18.32-beta103-hermetic-grafted（未压，sha 8c42d3fd…）
+- artifacts/build/1.18.32/beta103-press3/（kit：runtime/ + pty/ + epoll/ + launcher + MANIFEST.txt）
+- tools/a2/hermetic-home-patch.py、tools/a2/press-v3.sh、patches/opentui/file-prefix-map.patch
+- 注：upx 压后 .rodata 已压缩，strings 门禁以未压 hermetic 中间件为准（gate=0 已断言）；
+  press3 kit 的 TUI 槽内容与 hermetic 中间件逐字节一致（upx 只压不改语义）。
+
+## 6. 遗留与裁决点
+
+1. 源码级重建路线（-ffile-prefix-map）需先脚本化复现 w7b-hdrfix 三目录；
+   补丁与 OPENTUI_C_REMAP 机制已备好，切换成本低。
+2. 8 处 bun `__dirname`（$TMPDIR build 路径）+ 1 处 resolv.conf 残留：不在 $HOME 下、
+   TUI 锚点不触达，判 benign 归档；若未来做全路径中性化需动 bun bundler 或产物
+   JS blob 手术，另立任务。
+3. oscar 真机输入轴验证由用户执行（本任务禁上 oscar）。
