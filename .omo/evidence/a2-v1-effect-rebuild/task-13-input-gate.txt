@@ -1,0 +1,61 @@
+# task-13-input-gate — TUI 输入管线「fd0 零注册」静默失败 gate 定位
+日期: 2026-10-04　分支: rc6-a2/todo13-input-gate（impl-a2t13b）
+状态: **gate 层面锁定（Bun TTY stdin 重开 /dev/pts/N 策略），远程定点验证被设备不可达阻断**
+
+## S0 前提修正（重要，推翻原判据语义）
+- 原判据「fd0 从未 EPOLL_CTL_ADD、全程零 read(0)」被默认为故障征兆。
+- 本轮本机（6.6 旗舰同环境）strace 基准实测：**这恰是 Bun 的正常形态**。
+  Bun 读 TTY stdin 根本不读 fd0：
+  1. `ioctl(0, TIOCGPTN)` 探测（本机 EACCES 失败，正常）
+  2. fallback → `readlink /proc/self/fd/0` 解析 pts 编号
+  3. **`openat("/dev/pts/15", O_RDONLY|O_NOCTTY|O_NONBLOCK|O_CLOEXEC) = 11`**
+     （重开一份 nonblocking pts fd，绕开 fd0）
+  4. `epoll_ctl(4, EPOLL_CTL_ADD, 11, EPOLLIN|EPOLLHUP|EPOLLONESHOT)` → `read(11, "hello\n")`
+  - 基准证据: oscar-frames/t13/local-bun-stdin-baseline.trace（GOT:hello 成功）
+    / local-bun-stdin-baseline2-opendup.trace（含 openat/dup 定位 fd11 来源）
+  - 结论: **fd0 不注册不是故障；故障在 oscar 上「第 2/3 步重开 pts」静默失败**
+    ——失败后 Bun 不报错、不回退读 fd0，stdin 流永远不启动（真正的静默 gate）。
+    oscar t13-full.trace 中 fd 11/13/14/15 注册内容需要重读：若其中之一是
+    openat(/dev/pts/N) 产物但 read 恒空/ENOENT→ 见 Gate A/B/C。
+
+## S1 JS 侧接线审计（v1.18.32 全链，零环境 gate）
+- 链路: tui.ts handler → 主线程 run()（packages/tui/src/app.tsx:194）
+  → createCliRenderer（@opentui/core 0.4.5 chunk-bun-tkm837n2.js:6884）
+  → new CliRenderer(stdin=process.stdin) → 构造器**无条件**调 setupInput()（行 7333）
+- setupInput（行 8860-8884）= setRawMode(true) → stdin.on("data", stdinListener)
+  → stdin.resume()；失败会 destroy+rethrow —— **TUI 渲染正常 ⇒ setupInput 全部执行成功**
+  （termios 6×TCSETS 成功亦证 setRawMode 过了）
+- 逐 gate 排除:
+  - 无 isTTY/TERM/env gate 会静默跳过 setupInput（terminal-win32 仅 win32 生效）
+  - tui.ts:60 `Bun.stdin.text()` 仅非 TTY 分支，TTY 下跳过 ✓
+  - renderer 在主线程（Worker 仅后端 RPC），无 Bun worker-stdin 限制 ✓
+  - stdinParser/handler 链均为 data 到达后的下游，非订阅 gate
+- **判定: JS 侧接线在 oscar 上健康；gate 在 Bun 层 stdin 流启动（native）**
+
+## S2 Bun 层机制反推（bun 1.4.0 Rust 线，epoll-compat 注释佐证 svc#0 发 441）
+- 正常形态见 S0；Bun 对「重开 pts 失败」的处置 = 静默（stream start 无 JS 回调、无日志）
+- 21 线程 futex 观察（T10）与该模型自洽：无 stdin reader 线程存活需要
+
+## S3 锁定的 gate 候选（按优先级）
+- **Gate B（首选）: openat("/dev/pts/N", O_NONBLOCK) 在 oscar 失败**
+  （Android 9 / 3.18 容器内 /dev/pts 权限·SELinux·ENOENT；重开失败→流永不启动）
+- **Gate A: readlink /proc/self/fd/0 解析异常**（容器挂名效应，与 T11 挂名主题同源）
+- **Gate C: 重开的 pts 与内核投递数据的 pts 不一致**（mount ns 错位，read 恒空）
+- 判据: oscar t13-full.trace grep `TIOCGPTN|/dev/pts|/proc/self/fd/0|openat.*pts`
+  —— 有 openat /dev/pts/N = ENOENT/EACCES 即 Gate B 实锤
+
+## S4 远程定点验证方案（设备不可达，未执行）
+- 网络停手记录: ssh 8022 timeout → ping 100% loss → adb 5555 timeout（3 策略级失败，
+  /proc/net/arp 无可视）→ 按纪律停手。设备疑关机/IP 变更（reference 记忆有 IP 抢占先例）
+- 恢复后三步（exp 脚本可即用）:
+  1. `readlink /proc/self/fd/0; ls -la /dev/pts/`（ssh 会话内，直验 Gate A/B 环境）
+  2. 找回 t13-full.trace（a2todo9/13），grep S3 判据四式
+  3. 机上最小探针：本机 `bun build --compile` 10 行 stdin 探针（process.stdin.on("data")
+     + fs.writeSync(2,...)）经 script -qec + strace(trace=openat,readlink,epoll_ctl,read,ioctl)
+     复刻 S0 序列 → 看卡在哪一 syscall
+- 修复方向预判: Gate B → LD_PRELOAD 拦 openat 或 TIOCGPTN shim（可并入 epoll-compat）；
+  Gate A → 容器挂名侧恢复。均需重编/重打包者只出方案待用户决策。
+
+## 交付物
+- 本文件 + oscar-frames/t13/ 两份本机基准 trace（GOT:hello 成功序列）
+- 远程零动作（设备不可达，判据外零实验、零容器触碰）
