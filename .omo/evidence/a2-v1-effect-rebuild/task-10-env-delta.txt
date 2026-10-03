@@ -1,0 +1,94 @@
+# task-10-env-delta — 5c→now oscar 环境 delta 定位 + harness 全帧恢复 + press3 验收
+日期: 2026-10-03　分支: rc6-a2/todo9-input-probe (753ab30)
+
+## S1 现场快照（2026-10-03 ~21:0x +0800, 核身 ✓ 3.18.140-mokee/OC105/uid=10115; 槽 files=PRESENT files1=absent）
+- pid 21557 = runsv supervisor 本体（不是 opencode）; ppid 21553 (runsvdir)
+- service dir: /data/data/com.termux/files/usr/var/service/opencode-serve/（run 脚本 Jun 28 在位, supervise/ Oct 3 18:23 更新）
+- **pid 21558 = /data/data/com.termux/files/usr/lib/opencode/runtime/opencode serve --hostname 0.0.0.0**
+  - 启动: 2026-10-03 18:23:29 +0800 = **10:23:29Z** —— 落在 5c(09:32Z 健康)→冻结(11:0xZ) 窗口内
+  - HOME=/data/data/com.termux/files/home（真身 HOME）; cwd=home
+  - **监听 0.0.0.0:4096**（tcp inode 622981 实证; opencode serve 默认端口 4096）
+  - run 脚本: DELAY=30s 后 exec opencode serve；每次重启顺带清 $PREFIX/tmp 下 >60min 的 .*.so/opentui* 残留
+- T9 遗留卡死进程仍在: 30751 (bash probe9.sh anchornp) → 32239 script → 32241 timeout → **32245 opencode1 runtime 卡死**
+- 真身 HOME/.local/share/opencode: opencode.db(56MB)+shm+wal 由 serve 持有(wal mtime Oct 3 05:29, db 18:25)
+- $PREFIX/tmp: oh-my-opencode.log 18MB、opencode/ 目录(18:25)、opencode1-compressed 包
+- 监听端口全景: 1716(kdeconnect), 4096(serve), 5037(adb), 5555, 8022(sshd)
+- runsv 管理面无 sv 二进制（which sv 空）→ 停启用 supervise/control 管道: echo d=down, echo u=up, echo x=停 runsv
+
+## S2 关键发现：日志定位卡点（13:0x-13:1xZ）
+- **实验 a（停 runsv serve）→ press2a 重跑 = 仍冻结 8192B**（progress 全程 8192，spinner；13:02:25Z 发射）
+  → serve 进程本身排除为根因（但它 10:23Z 启动的时间相关性仍待解释）
+- **press2a 自身日志（sandbox data/opencode/log/opencode.log）末行 = "booting location services" 后永久沉默**：
+  13:02:50.994Z "booting location services" → 无后续（对照 5c 健康 log 同行后 7ms 即 WARN 继续，且 5c 有
+  "fetching index http://127.0.0.1:37606/index.json" + init count=24；press2a 无 fetching index、init count=1）
+- **runsv 的 2.0.12 serve 也卡**：10:25:43Z "cli starting" 后 log 永久沉默（但端口 4096 已 bind——listen 层活着）
+- strace 卡死标本（press2a pid 4566，20 线程）：全 futex_wait + 2×epoll_pwait（1s 定时心跳），
+  **fd 表零 socket 零 pipe**——TUI 从未 spawn/连接 server；卡在纯 JS await（worker 不归）
+- **serve 模式对照实验（beta103 runtime, sandbox, strace 下）= "opencode server listening on http://127.0.0.1:41234" 成功**
+  → server boot 在当前环境可完成！冻结是 TUI 特有路径（"booting location services" 之后的某 await）
+- 磁盘/inode/内存均正常（/data 2.3G free, MemAvailable 814MB）；设备无重启（uptime 覆盖 5c）
+
+## S3 事故记录（诚实披露，2026-10-03T13:16:34Z）
+- E1 实验（裸 runtime TUI）脚本收尾清理行写成 `kill -9 $(cat /proc/*/stat ...)` —— 展开成对 uid 10115
+  可见全部进程的 SIGKILL：oscar 上 sshd、runsvdir、用户会话、T9 遗留卡死进程（32245 等）全灭，ssh 断连
+- 恢复（13:17-13:21Z）：本机 adb connect 10.254.129.10:5555 → wake+unlock → am start TermuxActivity →
+  用户启动脚本自动拉起 runsvdir → sshd/opencode-serve 全部 respawn
+- 13:21:26Z 复核：ssh ✓，opencode-serve=run（新 pid 6557，2.0.12 同前），sshd=run；ssh-agent=down
+  （事故前状态未记录，无法确证是否变化，低影响待用户复核）
+- 附带"收益"：T9 遗留卡死进程树（30751/32239/32241/32245，含 104% CPU 自旋 27min 的 32245）已清
+- E1 数据作废（boot 后 8s 即被误杀）；press2a metrics 未写盘但 progress/typescript/log 已证冻结 8192B
+- 教训：清理只准按记录的 pid 精确 kill，禁止任何 /proc/*/stat 展开式 kill
+
+## S4 重复实验与定位深化（13:16-13:35Z）
+- **E1r（裸 runtime、无 launcher、无 preload、空 config、cwd=5c 同目录 = 5c 逐字节同法）= 仍冻结 4096B spinner**，
+  log 末行同 "booting location services" → 环境级 delta 实锤，与 launcher/preload/config 无关
+- bootrace2（110s 全程 strace，trace=clone/socket/connect/openat…）:
+  - Max processes 13281（非资源限制）
+  - **clone 全部是 CLONE_THREAD（零子进程 fork）；TUI 从不 spawn server 子进程**
+  - 网络段: dnsproxyd→fwmarkd→models.dev(Cloudflare 104.20.32.17/172.66.173.149)→**20.205.243.168(github.com)**
+  - **t+100s 时仍在 .npm/_cacache 活动（npm 安装阶段未结束）**——typescript 8KB 冻结≠进程静止，
+    而是 boot 的插件/npm 安装阶段在后台长期空转（openat/write 不在早前 strace 集内，被误读为"完全静默"）
+- 连通性直测: api.github.com 200/1.7s ✓; registry.npmjs.org 404/1.3s（host 通）; models.dev 200/**17.5s（显著变慢）**
+- **窗口差异发现**: 5c harness 全程 615s（5c 自身 boot 至渲染 ~250s 后才出编辑器帧），probe9 timeout=400s ——
+  今日 boot 阶段显著变慢时 400s 窗口可能一律"来不及渲染"→ "8192B 冻结"部分可能是窗口伪影
+- 15min soak 实验（裸 runtime, 空config, 无 timeout 提前杀, 采样15s）进行中 → 判定"硬冻结"vs"慢 boot"
+
+## S5 根因锁定与恢复路径（13:40-13:59Z）
+- **15min soak（空config 裸runtime）= 硬冻结表象、内部慢安装**：typescript 4096B 自 t+30s 不再增长、
+  log 止于 "booting location services"，但 sandbox .npm/_cacache 持续增长至 97MB（140 files 在 t+9min 后仍新增）
+  → boot 的安装阶段（registry.npmjs.org 依赖树 zod/yaml/ws/web-tree-sitter/uuid…22+ 包，系 runtime 自带
+  依赖而非 config 插件）在 ~24KB/s 网速下远超任何探测窗口
+- 吞吐直测: GitHub tarball 641KB/27.1s = **23.6KB/s**; models.dev 200/17.5-22.5s（5c 时段同一链路快速）
+- E2（real-cache 符号链接 $HOME/.npm + $XDG_CACHE/opencode/packages）: 符号链接生效（real cache 新增 48 files）
+  但依赖树未集齐，113s 窗内仍冻结
+- E3（显式 "plugin": [] config）: 仍冻结 → 安装阶段不受 config 插件列表控制（runtime 自身依赖自举）
+- **根因结论**: ~10:23Z 容器切换后 oscar 网络吞吐塌方（GitHub/npm ≈24KB/s，models.dev 17-22s）。
+  opencode TUI/CLI boot 在"依赖自举安装"阶段同步阻塞（不 spawn server、不产首帧、不读 stdin），
+  5c(09:32Z) 时该阶段数分钟内完成，今日 >15min 仍不完 → 所有 press/anchor 跑全部定格 8192B/4096B spinner。
+  runsv serve 的 "cli starting" 停滞同因。serve 进程本身非根因（实验 a 已证）
+- **恢复路径**: 合并 soak 97MB cache 入 real .npm（cp -rn, cache-only 附加写入）→ 长跑 warmup
+  （sandbox 符号链接 real cache，最长 50min，渲染 >15KB 即判完成）→ 完成后 fresh warm sandbox 跑 press3/锚-7 验收
+
+## S6 终局裁决（14:20Z）
+- **E4 全量 strace（45s full trace, 129588 行）**: 无 seccomp 级静默失败（仅 madvise/rt_sigaction/memfd MFD_EXEC
+  EINVAL 等良性项，无 pidfd/rseq/io_uring 故障）；trace 窗内 boot 仍活跃（models.dev connect t+28s），
+  hang 过渡发生在窗口之后。首次尝试被 SIGKILL 于 UPX 解包期（疑似 LMKD 内存尖峰，MemAvailable 恢复 2.3GB 后重试成功）
+- **warmup（warm cache 短路安装后）依然 hang** → **hang 与网络/安装无关，是容器切换引入的确定性 boot 死锁**；
+  网络塌方（24KB/s）只是让 12min+ 的依赖自举掩盖了它
+- hang 解剖学: 21 线程全 futex 空闲；主循环 0.4-1.4s 周期轮唤 7 个 worker（seq+4 空转）+128ms/1s 定时器；
+  零 fork、零 socket、零文件 IO —— JS await 等一个永不到来的 worker 结果
+- 卡点代码定位（2.0.12 bundle 未压缩段）: Effect-TS 分层服务 "@opencode/example/LocationServiceMap"，
+  boot 流程 log "booting location services" 后逐 location contextEffect（concurrency unbounded），
+  完成后才 log "location services booted"——今日该 await 永不完成
+- **排除清单（实验证据链）**: runsv serve 进程（实验a 停服重跑仍冻结）/ config 与插件列表（E3 显式空数组、
+  T9 noplug/mb）/ 二进制代次（press2+press3+anchor 三代同形）/ 磁盘·inode·内存·进程上限·设备重启 /
+  sqlite-on-sdcard（python3 实测 0.07s）/ 主机连通性（github/npm/models curl 200）/ seccomp 系统调用失败（E4）
+- **结论**: ~10:23Z 容器切换（files1 槽消失、runsv serve 启动）后的 oscar 容器态使 opencode boot 在
+  LocationService 阶段确定性死锁（TUI 与 serve 同病），属容器级环境故障，非二进制/config/插件问题；
+  **T10 无法在 oscar harness 上恢复全帧渲染，press3 输入轴验收因此 BLOCKED**（任何二进制级修复都无法
+  在此环境验证——需容器侧恢复（files1 槽回归或容器重建回 5c 态）或 fork 源码级排查 LocationService 依赖的
+  环境 factor）
+- **现场状态（终）**: opencode-serve=run（6557）、sshd=run、ssh-agent=down（事故后即此态，事故前未记录）；
+  T9 遗留卡死进程树已清；无 t10 残留进程；实验沙箱留在 /mnt/sdcard_ext4/apps/a2todo9/sbx-t10*（可删）
+- 本机留档: t10*.sh 各实验脚本、t10e4.strace.full(9.3MB)、t10warm/t10soak/t10e1r/t10e2/t10e3/t10br2 各
+  progress/metrics/mark
