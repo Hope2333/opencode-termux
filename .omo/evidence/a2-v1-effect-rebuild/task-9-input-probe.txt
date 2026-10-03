@@ -1,0 +1,17 @@
+# task-9-input-probe — press3 oscar TUI 输入判据（typescript 实读口径）+ strace 断层定位
+日期: 2026-10-03　分支: rc6-a2/todo9-input-probe
+
+## 0. 背景与口径修正
+- task-5c: DELTA 字节数判据量错轴（帧落定后增量≠输入活性）；用户实测 RC5 至今输入全通道失灵、TUI 渲染正常。
+- 本轮判据: 真 PTY (script -qec) 注入键入 → typescript 实读回显字符（编辑器占位符消失/字符上屏=输入活；仍占位符=死）。
+- strace 断层: 内核/tty 不投递(read 无数据) vs 字节到达应用不消费(opentui/JS 层) vs termios 失败(tcsetattr 报错)。
+
+## P0 核身与现场甄别（2026-10-03，停手报告前置记录）
+- SSH: u0_a450@10.254.129.10:8022 密码认证；实落 uid=10115(u0_a115)（与 5c P1 一致）
+- 核身 ✓: uname -r=3.18.140-mokee-g3592dbe76eff, model=OC105, aarch64, Android 9
+- **异常①host key 变化**: 旧 ECDSA known_hosts:76 失配，新 ED25519 指纹 OseOLU5fSruLyJAQTCee3+BeMuMSQg/7PtgpriMw7FM（已 ssh-keygen -R 后 accept-new）
+- **异常②files1 缺失**: /mnt/sdcard_ext4/apps/ 下仅 a2todo5 a2todo5b a2todo5b-kit.tgz v1env v1rgfix v1unpressed；files1 目录不存在，find 全盘(maxdepth3)无 files1/opencode1 → 锚-7 runtime(…/files1/usr/lib/opencode1/runtime/opencode)不可达
+- a2todo5b 5c 前轮现场完整（r1/r2 metrics+typescript 在位）→ 数据盘未清，但挂名目录消失
+- strace: 机上未装（which strace 空；pacman 在位可装）
+- **新发现**: oscar 本机 Termux 有 runsv 托管常驻 opencode（pid 21557, /data/data/com.termux/files/usr/lib/opencode/runtime/opencode）——5c 现场未见此记录，未触碰
+- **判定: files1 挂名 ls 失败 = 容器易位信号，按纪律停手报告，未传 kit、未装 strace、判据外零动作**
