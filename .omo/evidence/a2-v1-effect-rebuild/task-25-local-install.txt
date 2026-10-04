@@ -1,0 +1,141 @@
+# task-25 本机叠影归位 + 装 v1/v2 — S0 现场基线证据
+
+日期: 2026-10-05
+机器: 本机（开发旗舰 / 日常驱动机,非 oscar）
+执行者: impl-local-install
+状态: **S0 完成 → 因阻断项停在 S5 之前,等待 team-lead 裁决**
+
+---
+
+## S0 基线（实测,原始输出）
+
+### 磁盘
+```
+$ df -h /data
+Filesystem      Size Used Avail Use% Mounted on
+/dev/block/dm-77 936G 898G   37G  97% /data/user/0
+```
+→ 37G 可用（任务书预估 23G,更宽裕;tar 3.0G 叠影无压力）
+
+### pacman RootDir
+```
+$ pacman-conf RootDir
+/data/data/com.termux/files
+```
+→ 非标活动态,S1 前提成立
+
+### 现装 opencode 系
+```
+$ pacman -Q | grep -i opencode
+opencode 2.0.18-4
+opencode1-compressed 1.18.32-7
+
+$ pacman -Qq | grep -i opencode
+opencode
+opencode1-compressed
+```
+
+### 全库一致性
+```
+$ pacman -Qkk | grep -c altered   → 544
+$ pacman -Qkk | grep -c missing   → 0
+```
+
+### 叠影目录
+```
+$ du -sh /data/data/com.termux/files/data        → 3.0G
+$ find … -type f | wc -l                          → 42291
+$ find … -type l | wc -l                          → 8204
+```
+
+### 环境健全基线（S3 复核基准）
+```
+GNU bash, version 5.3.15(1)-release (aarch64-unknown-linux-android)
+Python 3.14.6
+git version 2.55.0
+v26.4.0        (node)
+1.3.14         (bun)
+SHELL=/data/data/com.termux/files/usr/bin/zsh
+```
+
+---
+
+## 阻断项
+
+### 阻断项 1（严重）:v2 是跨包名冲突 + 降级,非升级
+
+| 项 | 现场 | 任务书目标 |
+|---|---|---|
+| 包名 | `opencode` | `opencode-compressed` |
+| 版本 | **2.0.18-4** | **2.0.12-3**（更低） |
+
+目标包 payload 路径为**相对成员** `data/data/com.termux/files/usr/…`,现装包 db 记录为**绝对路径** `/data/data/com.termux/files/usr/…`;RootDir=/ 归位后两者指向同一 5 条路径:
+
+```
+/usr/bin/opencode
+/usr/lib/opencode/runtime/opencode
+/usr/lib/opencode/libopencode-crhandler.so
+/usr/lib/opencode/pty/librust_pty_arm64_musl_patched.so
+/usr/lib/opencode/pty/shim.so
+```
+
+后果: pacman 视作**新增包**（非 upgrade）→ 无主文件冲突 + 2.0.18→2.0.12 降级 + 两包同时声称拥有同一文件,db 持续 inconsistent。
+
+### 阻断项 2:serve pid 与现场不符,v2 serve 不存在
+任务书给的 7084 / 12612 **均已不存在**。现场唯一 opencode serve:
+```
+pid 12681  /data/data/com.termux/files/usr/lib/opencode1/runtime/opencode serve --hostname 0.0.0.0 --port 4096
+父 12672   runsv opencode-serve
+uptime     01:43:31
+```
+无任何 v2 serve 在跑。→ S3/S6「两个 serve pid 仍在」门禁无法按字面满足,降级为「v1 serve 12681 不重启」。
+
+### 阻断项 3:v1 目标 ELF 正被运行中 serve 占用
+1.18.32-9 要覆盖 `/usr/lib/opencode1/runtime/opencode`,即 pid 12681 的 `/proc/12681/exe`。禁重启 → serve 继续跑旧 inode,`--version` 显示新版本但 serve 内存是旧代码。
+
+---
+
+## 已完成的只读验证（未做任何修改）
+
+### 归位审计自检（SHADOW_AUDIT_ONLY=1,脚本内在 [1] 之前 exit）
+```
+叠影顶层: /data/data/com.termux/files/data
+叠影规模: 文件 42291 / 软链 8204
+受影响包: 146
+审计: OK=27494 RESTORABLE=22999 STALE=0 ABSENT=0
+      RESTORABLE 中软链 7641
+```
+→ 与上一轮 dry-run 完全一致,STALE=0/ABSENT=0 → 归位只需 rename,零事务零网络。
+
+### 叠影不含 opencode（关键安全结论）
+```
+$ ls …/files/data/data/com.termux/files/usr/lib/opencode1   → 不存在
+$ ls …/files/data/data/com.termux/files/usr/lib/opencode    → 不存在
+$ find 叠影 -maxdepth 3 -name 'opencode*'                   → 无结果
+```
+→ **叠影归位不波及任何 opencode 文件**,v1/v2 安装与归位互不干扰。
+
+### 零运行期依赖
+```
+遍历 /proc/[0-9]* 检查 exe+cwd 指向叠影 → 引用进程数: 0
+$ echo $PATH | grep 'files/data' → 无叠影条目
+```
+→ 归位 rename 不可能打断任何在跑进程。
+
+### v1 ELF 只存在于真实路径
+```
+$ ls -la /usr/lib/opencode1/runtime/opencode                    → 61M 存在
+$ ls -la 叠影 …/usr/lib/opencode1/runtime/opencode              → 不存在
+$ readlink /proc/12681/exe → /data/data/com.termux/files/usr/lib/opencode1/runtime/opencode
+```
+
+---
+
+## 待装包
+```
+opencode1-compressed-1.18.32-9-aarch64.pkg.tar.gz   46M  (pkgname=opencode1-compressed, 1.18.32-9, 同包名真升级 7→9)
+opencode-compressed-2.0.12-3-aarch64.pkg.tar.gz     94M  (pkgname=opencode-compressed, 2.0.12-3, 跨包名冲突+降级 ← 阻断)
+```
+
+## 回滚材料（尚未产生）
+S1/S2 未动手,现场未改。动手后回滚材料 = pacman.conf.bak<ts> + 叠影 tar/mv 归档。
