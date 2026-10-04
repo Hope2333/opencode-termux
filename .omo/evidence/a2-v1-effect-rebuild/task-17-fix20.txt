@@ -1,0 +1,73 @@
+task-17 fix20 全案证据（impl-fix20，2026-10-04）
+
+## 1. 交付物
+- packing/init-pacmanV00fix20.sh（fix19 迭代，18→20 步）
+  - [17] 叠影定位动态化：叠影顶层 = <原 RootDir>/data，双候选
+    （$PREFIX/../data = /data/data/com.termux/files/data 受影响机实证路径；
+    $PREFIX/data fix19 原检查点）+ 原 RootDir 兜底；判定须含
+    data/com.termux/files/usr 完整结构。fix19 只查 $PREFIX/data/data 的盲区已补。
+  - [17] 受影响包反查：叠影文件三种键形（k1 原样全路径=旧双叠 db 直录 /
+    k2 剥 RootDir 补 / =新绝对约定 / k3 剥 RootDir 不补 / =相对成员约定）
+    与 pacman -Ql 求交。
+  - [18] 已装包归位：pacman -S --noconfirm --overwrite '*' <affected>；
+    双断言 = 叠影文件数不增长（旧约定包重装仍写叠影 → 红字提示等 repack 版）
+    + pacman -Qk 逐包校验；任一失败 RELOCATE_OK=0。
+  - [19] 叠影清理：仅 RELOCATE_OK=1 且顶层下除 data/ 无其他条目时；
+    交互 tty 询问 [y/N] 默认不删；非交互只报告。
+  - [20] 哨兵双点：$PREFIX/../data 与 $PREFIX/data。
+  - bash -n SYNTAX-OK。
+- hope2333.github.io（本仓 commit d890bb0）
+  - site.yml .INSTALL v10.2：post_install/post_upgrade 追加 _check_pacshadow
+    （静默检测 RootDir 非 / 或叠影目录 → 打印 fix20 一键命令；健康机零输出）。
+  - NOTICE.md 置站点根（CI Assemble _site 步自动带到 _site/）；
+    CI PKGBUILD 增 usr/share/hope2333-mirrorlist/NOTICE 装入。
+- 发布文案草稿：.omo/evidence/a2-v1-effect-rebuild/task-17-fix20-release-notes.md
+  （Release note 版 A + 站点公告版 B，中文各 ≤10 行）。
+
+## 2. mirrorlist 包重打（本机 makepkg，无 docker）
+- 版本 1.0.20261004-1（日期递增 > 线上 1.0.20261002-1；pkgrel=1 规范）。
+- 产物：~/workspace/hope2333.github.io/build/mirrorlist-local/
+  hope2333-mirrorlist-1.0.20261004-1-any.pkg.tar.xz（7.3k）
+- .INSTALL 直接从 site.yml heredoc 提取（与 CI 产出逐字一致）。
+- Termux makepkg 会无条件在 pkgdir 建空 terdir（makepkg:849），已按 CI
+  （archlinux 无 terdir）剥除并按 makepkg 原配方（list_package_files + bsdtar
+  mtree options）重生成 .MTREE 后重打包；最终 tar 列表零 data/ 条目。
+- 包内容验证：.INSTALL 含 _check_pacshadow/EarlyEmergencyRelease0 URL；
+  usr/share/hope2333-mirrorlist/{NOTICE,mirrorlist.conf} +
+  usr/etc/pacman.d/hope2333-mirrorlist.conf 齐。
+
+## 3. hook 行为测试矩阵（mock PREFIX 沙盒）
+- case1 健康：exit 0、零输出、Include 接线 ✓
+- case2 幂等重跑：零输出、Include 不重复（count=1）✓
+- case3 RootDir 病灶：红字 2 行，含「检测到 pacman 叠影病灶（RootDir = …）」
+  + fix20 一键命令 ✓
+- case4 双候选叠影目录：检出 $P/../data 与 $P/data 双路径 + fix20 命令 ✓
+
+## 4. 本机真机活体验证（本开发机即受影响机：RootDir 活动态 + 叠影存在）
+- shadow_tops 检出 /data/data/com.termux/files/data（42291 文件）✓
+- 反查受影响包 146 个（bash/glibc/rust/codegraph/codebuff 等，
+  清单存 ~/tmp/affected.txt）✓ —— 反查管线实证有效。
+- 归位/清理未在本机执行（真机修复留用户；本机 146 包重装属大事务）。
+
+## 5. 统一 db 重建（照 site.yml repo-add 流程，本机 repo-add）
+- 取 Pages 线上 hope2333.db.tar.gz（11 entries）→ repo-add 新 pkg 顶替同名条目
+- 产物：build/mirrorlist-local/hope2333.db + hope2333.db.tar.gz（两名字均物化）
+- 验证：干净 conf（DBPath 指向测试库 + [hope2333] 节）pacman -Sl 列 11 包、
+  -Si hope2333-mirrorlist = 1.0.20261004-1 ✓
+
+## 6. 待办（发布动作，本任务不执行——不 push / 不上传）
+- gh release upload EarlyEmergencyRelease0 -R Hope2333/opencode-termux
+  packing/init-pacmanV00fix20.sh --clobber（fix19 同窗口）
+- gh release upload mirrorlist -R Hope2333/hope2333.github.io
+  build/mirrorlist-local/hope2333-mirrorlist-1.0.20261004-1-any.pkg.tar.xz
+  （+ -latest-1-any 别名）--clobber；db 五 CDN 同步走 maintain.sh sync-db 逻辑
+  （或等 site.yml CI 重建，注意 CI 用日期版本 1.0.20261004 与本地构建同名）
+- git push 两仓；真机（oscar / 标准机 / 平板5pro）跑 fix20 终验
+
+## 7. hashes
+- hope2333.github.io commit: d890bb0
+- opencode-termux branch: rc6-a2/fix20-mirrorlist（见本仓 commit 记录）
+- pkg sha256: 见下（sha256sum 输出附录）
+958584cbc6097c1544d0a4ce02846b60b6c694404f5c1742af35632c11c8cc73  hope2333-mirrorlist-1.0.20261004-1-any.pkg.tar.xz
+86de3b4b0c92d419791c47c9381d98f3afbc5faf6f9c72d15c4df479a2cbc2bd  hope2333.db
+ac8ba829016ee5f525c03dbdb19192202e14f69d9006db05e17cbd0c4a43f92e  hope2333.db.tar.gz
