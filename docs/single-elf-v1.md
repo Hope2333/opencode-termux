@@ -14,6 +14,8 @@
 | 单一 ELF 可行性 | **可行（方案 A）**，但**不能只做打包层**——必须在源码侧单点固化命名，否则裸 ELF 落进无命名空间的 `~/.local/share/opencode`，与 v2 直接撞库。 |
 | 关键障碍 | ① 命名需编译期固化（唯一注入点 `global.ts:10-15`）② `~/.opencode` 是**跨代共享**的 project scope，XDG re-root 覆盖不到（既有缺口，非本次引入）③ wrapper 的 `service.json` 端口 bootstrap 与 `BUN_PTY_LIB`/`LD_PRELOAD` 两个可选 shim 对 v1 **已是死代码** |
 | 原型验证 | 裸静态 ELF + 仅四个 XDG env（**零** LD_LIBRARY_PATH / 零 shim）→ `serve` 起 HTTP 200，布局与现役嵌套完全一致 |
+| **env 免疫边界** | ❌ **不成立**。固化命名只固定**后缀**，不固定**根**；`xdg-basedir@5.1.0` 无条件读 env，诱饵 `XDG_*` 照样 re-root。详见 **§9**。但这是 **parity 而非回归** —— 现役 wrapper 用同样的 `${XDG_*:-$HOME/…}` 形式，实测落点逐字节相同。 |
+| **tmp 根会变** | ⚠️ 固化 `app` 顺带把 `tmp` 也 namespaces 化：`$TMPDIR/opencode` → `$TMPDIR/opencode1/opencode`。与现役**不等价**，详见 **§5.1**。 |
 
 ---
 
@@ -123,7 +125,16 @@ wrapper 方案的路径 = `join(XDG_DATA_HOME, "opencode")` where `XDG_DATA_HOME
 编译期固化方案的路径 = `join(xdgData, "opencode1/opencode")` where `xdgData = $HOME/.local/share`
 ⇒ `$HOME/.local/share/opencode1/opencode`
 
-**逐字节相同**（`path.join` 规范化）。四个根 + tmp 全部成立，唯一差别是固化方案下**用户预先 export 的 `XDG_*` 依然生效**（因为 `xdg-basedir` 仍读 env），这比 wrapper 的 `${XDG_DATA_HOME:-…}/opencode1` **更宽容**（wrapper 会把 opencode1 再套一层）。
+**四个根（data/config/state/cache）逐字节相同**（`path.join` 规范化）。
+
+**⚠️ tmp 根不等价** —— `global.ts:15` 的 `tmp = path.join(os.tmpdir(), app)` 同样 join 了 `app`，
+所以固化会把 tmp 一并 namespaces 化：`$TMPDIR/opencode` → `$TMPDIR/opencode1/opencode`。
+详见 §5.1。
+
+**⚠️ 「用户预先 export 的 `XDG_*` 依然生效」不是优势，是 parity**。实测（§9）表明现役 wrapper
+用 `${XDG_DATA_HOME:-$HOME/.local/share}/opencode1` 形式，**同样尊重**外部预置的 `XDG_*`，
+两者在诱饵 env 下落到**同一路径**。所以固化方案相对 wrapper 的真实增益只有一条：
+**绕不过去**（§6.1，没有第二个可执行可直调），而**不是** env 免疫。
 
 ---
 
@@ -150,14 +161,35 @@ wrapper 方案的路径 = `join(XDG_DATA_HOME, "opencode")` where `XDG_DATA_HOME
 |---|---|---|---|
 | A1 | 全仓 `packages/*/src` 无 `opencode1` 残留命名硬编码 | `grep -rn opencode1 packages/*/src/` | 固化后应**有且仅有** global.ts 命中 |
 | A2 | 裸 ELF 落嵌套命名空间 | 假 HOME 跑 `debug paths`，`data` 含 `/opencode1/opencode` | **核心断言** |
-| A3 | 四个根全部嵌套 | `debug paths` 的 data/config/state/cache/tmp 五行 | tmp 断言 `…/opencode1/opencode` 或确认 tmp 共用（见 §6） |
-| A4 | 零 env 依赖 | `env -i` 跑通 `debug config`（仅 HOME/PATH/TERM） | 证明无 `OPENCODE1_*` 残留 |
+| A3 | 四个根全部嵌套 | `debug paths` 的 data/config/state/cache/tmp 五行 | **tmp 必须变**成 `…/opencode1/opencode`，见 §5.1 |
+| A4 | 零 env 依赖（仅指命名） | `env -i` 跑通 `debug config`（仅 HOME/PATH/TERM） | 证明无 `OPENCODE1_*` 残留；**不代表 XDG 免疫**，见 A11 |
 | A5 | 零动态依赖 | `readelf -l` 无 `PT_INTERP` / `readelf -d` 空 | 证明 `LD_LIBRARY_PATH` 可删 |
 | A6 | 不读 v2 数据 | 假 HOME 跑完后 `find $FAKEHOME -path '*opencode1*'` 全部命中，**零**裸 `opencode/` 根 | 防回归到撞库 |
 | A7 | 服务端口不被固定占用 | `serve` 起后随机端口可 curl 200 | 确认 v1 无需 49376 |
 | A8 | 双线共存 | 假 HOME 隔离跑 v1 + 真机 v2 并存，检查 v2 目录 mtime 不变 | 需在 oscar 复核 |
 | A9 | 迁移脚本仍可用 | `migrate-to-opencode1.sh check` 在新包下退出码语义不变 | 布局未变，应天然通过 |
 | A10 | 无 bash 依赖 | `ldd`/`readelf` 无关；实测 `bin/opencode1` 是 ELF 且 `head -c4` = `\x7fELF` | 防误装 shell 脚本 |
+| **A11** | **诱饵 XDG 下写入不外逸** | 假 HOME + `XDG_{DATA,CONFIG,STATE,CACHE}_HOME=<sandbox>/decoy-*` 跑 `debug paths` | **默认模式预期失败**（落 decoy，见 §9）；`--ignore-xdg` 模式预期落 `$HOME/.local/share/opencode1/opencode`。判据随模式而定，见 §9.3 |
+
+### 5.1 ⚠️ tmp 根会随固化改变（与现役不等价）
+
+`global.ts:15` 的 `tmp = path.join(os.tmpdir(), app)` 也 join 了 `app`。固化 `app` 顺带把 tmp
+namespaces 化：
+
+| 场景 | tmp 落点 | 与 v2 共用？ |
+|---|---|---|
+| 现役 wrapper（`app="opencode"`） | `$TMPDIR/opencode` | **是**（§6.3-2 的既有共享面） |
+| 固化后 ELF（`app="opencode1/opencode"`） | `$TMPDIR/opencode1/opencode` | 否 |
+| v2（`app="opencode"`） | `$TMPDIR/opencode` | — |
+
+方向上是**修复**（顺带关掉 §6.3-2 记录的跨代 tmp 共用），但它是**行为变更**，不能默认
+「与 wrapper 逐字节相同」。消费方：`plugin/agent.ts:101`、`tool/shell/prompt.ts:280`、
+`agent/agent.ts:110`（含 permission 白名单 `path.join(Global.Path.tmp, "*")`）—— 语义不变，
+但断言与文档需跟上。
+
+**⚠️ 既有测试会红**：`packages/core/test/global.test.ts:9`
+`expect(Global.Path.tmp).toBe(path.join(os.tmpdir(), "opencode"))` —— 固化后必然失败。
+**重建前必须改这条测试**，否则回归门会被它挡住。
 
 ---
 
@@ -190,6 +222,7 @@ wrapper 提供、A 方案必须重新保证的不变量：
    → 记忆索引 `project_opencode_isolation_traps.md` 里的「`~/.opencode` 属 project scope 复制无法驱逐」在此得到源码级确认。
    → **A 方案不修它**（不修才能保持行为等价）。若要修，需给 `paths.ts` 加同样的 namespace 参数 —— 那是**独立的行为变更**，应单独立项。
 2. **`$TMPDIR/opencode` 共用**。`global.ts:15` 用 `os.tmpdir()`，`launcher` 并未 export `TMPDIR`（注释与实现不符）。bunfs 提取落此处。→ 保持现状。
+   → **但方案 A 会顺带修掉它**：固化 `app` 后 tmp 变 `$TMPDIR/opencode1/opencode`，不再与 v2 共用。方向是好的，但它同时构成一处**行为变更**，见 §5.1（含会让 `global.test.ts:9` 变红）。
 
 ### 6.4 回退
 
@@ -201,12 +234,14 @@ wrapper 提供、A 方案必须重新保证的不变量：
 
 ## 七、迁移步骤
 
-1. **改源码**：`packages/core/src/global.ts` 的 `app` 文本替换为 `opencode1/opencode`（或用 store patch 脚本，见 `tools/a2/pty-embed-store-patch.sh` 同款幂等写法）。
-2. **重建**：走 press5 管线（`tools/a2/press-v5.sh` + `build-v1.sh`）产出静态 ELF。
-3. **验断言**：§5 的 A1–A10，**A2/A5/A6 为阻断门**。
-4. **改打包**：`packing/pacman/PKGBUILD.native`（及 compressed 线）把 `install -D … runtime/opencode` 改为 `install -D -m755 "$OPENCODE_NATIVE_BIN" …/bin/$OPENCODE_BIN_NAME`，删掉 `opencode1-launcher.sh` 的 install 行。
-5. **改 `.install` 模板**：`packing/pacman/opencode1-compressed.install` 里那句「invoke via the opencode1 launcher only」不再成立，需改写。
-6. **不迁数据**：布局未变，`migrate-to-opencode1.sh` 继续随包提供（hook 继续调 `check`/`isolate`）。
+1. **改源码**：`packages/core/src/global.ts` 的 `app` 文本替换为 `opencode1/opencode`。用
+   `tools/a2/single-elf-namespace-patch.sh`（默认模式；`--ignore-xdg` 变体见 §9.4，**默认不启用**）。
+2. **改测试**：`packages/core/test/global.test.ts:9` 的 tmp 断言需随 §5.1 更新，否则回归门被挡。
+3. **重建**：走 press5 管线（`tools/a2/press-v5.sh` + `build-v1.sh`）产出静态 ELF。
+4. **验断言**：§5 的 A1–A11，**A2/A5/A6 为阻断门**，A11 判据随模式而定（§9.3）。
+5. **改打包**：`packing/pacman/PKGBUILD.native`（及 compressed 线）把 `install -D … runtime/opencode` 改为 `install -D -m755 "$OPENCODE_NATIVE_BIN" …/bin/$OPENCODE_BIN_NAME`，删掉 `opencode1-launcher.sh` 的 install 行。
+6. **改 `.install` 模板**：`packing/pacman/opencode1-compressed.install` 里那句「invoke via the opencode1 launcher only」不再成立，需改写。
+7. **不迁数据**：布局未变，`migrate-to-opencode1.sh` 继续随包提供（hook 继续调 `check`/`isolate`）。
 
 ---
 
@@ -215,6 +250,148 @@ wrapper 提供、A 方案必须重新保证的不变量：
 | 文件 | 性质 | 说明 |
 |---|---|---|
 | `docs/single-elf-v1.md` | 本文档 | 设计 + 证据 |
-| `tools/a2/single-elf-namespace-patch.sh` | 幂等 store patch | 把 `global.ts` 的 `app` 固化为 `opencode1/opencode`；未注入时跳过；带备份与 verify |
+| `tools/a2/single-elf-namespace-patch.sh` | 幂等 store patch | 默认模式：把 `app` 固化为 `opencode1/opencode`；`--ignore-xdg`：额外派生 `home` 并移除 `xdg-basedir`（§9.4）。两者均带 `.bak` + post-verify + marker 行 |
 
 **未做**（按任务边界）：不出包、不装机、不发布、不改 PKGBUILD、不动 oscar。
+
+---
+
+## 九、env 免疫边界（task-26 实测）
+
+> 原始输出：`.omo/evidence/a2-v1-effect-rebuild/task-26-xdg-boundary.txt`
+> 沙箱：`$TMPDIR/a2-xdgprobe/sandbox`（全程 `env -i` + 假 HOME + 沙箱 TMPDIR）
+
+### 9.1 判据 A 成立：诱饵 `XDG_*` 确实被消费
+
+被测对象 = press5 裸静态 ELF（`statically linked, no section header`，2 个 LOAD，
+零 `PT_INTERP` / 零 `PT_DYNAMIC`）。**基线（零 XDG）**：
+
+```
+data   $SB/home/.local/share/opencode          ← 未固化命名，故无 opencode1 段
+config $SB/home/.config/opencode
+tmp    $SB/tmp/opencode
+```
+
+**诱饵（四个 `XDG_*` 全部指向 `$SB/decoy-*`，全新空 fake HOME）**：
+
+```
+data   $SB/decoy-data/opencode                 ← ★ decoy
+bin    $SB/decoy-cache/opencode/bin            ← ★ decoy
+log    $SB/decoy-data/opencode/log             ← ★ decoy
+repos  $SB/decoy-data/opencode/repos           ← ★ decoy
+cache  $SB/decoy-cache/opencode                ← ★ decoy
+config $SB/decoy-config/opencode               ← ★ decoy
+state  $SB/decoy-state/opencode                ← ★ decoy
+tmp    $SB/tmp/opencode                        ← tmp 走 os.tmpdir()，与 XDG 无关
+
+$ ls -1 $SB/decoy-*
+decoy-cache: opencode    decoy-config: opencode
+decoy-data:  opencode    decoy-state:  opencode      ← 四根被真实创建
+
+$ find $SB/home -mindepth 1 | wc -l
+0                                                  ← 假 HOME 零写入，re-root 彻底
+```
+
+**固化命名后（`app="opencode1/opencode"`）是否免疫？—— 用真实 `xdg-basedir@5.1.0`
+模块 + 逐行照抄 `global.ts:11-15` 的派生式实测**（把 `app` 取值换成固化后的值）：
+
+```
+[UNPATCHED_app_opencode]  app="opencode"
+  data   = $SB/decoy-data/opencode
+  => data root sits under DECOY? YES (HIJACKED)
+
+[PATCHED_app_opencode1]  app="opencode1/opencode"
+  data   = $SB/decoy-data/opencode1/opencode       ← ★ 仍在 decoy 下
+  => data root sits under DECOY? YES (HIJACKED)
+```
+
+**判定：判据 A 对固化后的变体同样成立。** 固化改变的是**后缀**，不是**根** ——
+`xdg-basedir@5.1.0/index.js:7-16` 在 import 时就无条件读 env，`app` 与之正交。
+
+> **判据 B 不成立。** 「xdg-basedir 在无 wrapper 场景不消费外部 `XDG_*`」是**错的** ——
+> 实测恰恰相反：裸 ELF（无 wrapper）**正是消费得最彻底**的那个。诱饵不被消费只在
+> 一个条件下成立：调用方**没有** export `XDG_*`。
+
+### 9.2 但这是 parity，不是回归
+
+现役 wrapper（`scripts/opencode1-launcher.sh:17-20`）用的是**同样**的
+`${XDG_*:-$HOME/…}` 形式 —— **它也尊重外部预置的 `XDG_*`**。真 wrapper 端到端
+（`$PREFIX` 只读 + 假 HOME + 诱饵）：
+
+```
+data   $SB/decoy-data/opencode1/opencode      ← 与固化 ELF 同一路径
+config $SB/decoy-config/opencode1/opencode
+tmp    $SB/tmp/opencode                       ← wrapper 下 tmp 不带命名空间（§5.1）
+
+wrapper   : $SB/decoy-data/opencode1/opencode
+singleELF : $SB/decoy-data/opencode1/opencode
+=> MATCH: patch is PARITY with wrapper even under adversarial XDG
+```
+
+**所以方案 A 不引入新的 env 暴露面。** A 相对 wrapper 的真实增益只有「绕不过去」
+（§6.1），**不是** env 免疫。§3.5 原先「比 wrapper 更宽容」的表述据此修正。
+
+### 9.3 两模式行为对照表
+
+| 维度 | 默认（namespace only） | `--ignore-xdg`（A+ 草案） |
+|---|---|---|
+| `app` 常量 | `opencode1/opencode` | `opencode1/opencode`（相同） |
+| XDG 根来源 | `xdg-basedir`（**读 env**） | `process.env.HOME ?? os.homedir()`（**不读 XDG_***） |
+| 诱饵 XDG 下 data 落点 | `$DECOY/opencode1/opencode`（**被劫持**） | `$HOME/.local/share/opencode1/opencode`（**免疫**，实测 IGNORED） |
+| 与现役 wrapper 关系 | **parity**（诱饵下逐字节相同） | **strictly stronger**（wrapper 会被劫持，A+ 不会） |
+| `XDG_*` 支持 | 尊重（用户可重定向） | **不再尊重**（能力回退） |
+| 零 XDG 时布局 | `$HOME/…/opencode1/opencode` | 同左（**逐字节相同**） |
+| tmp | `$TMPDIR/opencode1/opencode` | 同左 |
+| 适用场景 | 与现役**行为等价**，迁移零风险；保留用户用 `XDG_*` 重定向 v1 数据的能力（如外置盘/加密卷） | 要「产物即隔离、env 绕不过去」的**强保证**；或审计要求拒绝一切外部 env 输入 |
+| 代价 | 无（现状等价） | 用户若依赖 `XDG_*` 重定向 v1 数据 → **配置失效**；`TMPDIR` **不**在 neutralize 范围（`os.tmpdir()` 仍生效），刻意保留 |
+
+**建议：默认模式随单 ELF 一起发布**（等价、零风险）；`--ignore-xdg` **留作可选项**，
+仅在「必须拒绝外部 env」的场景显式启用。这是发布决策，不是构建决策。
+
+### 9.4 `--ignore-xdg` 变体（草案，**未启用**）
+
+```bash
+tools/a2/single-elf-namespace-patch.sh --ignore-xdg   # 默认不加此参数
+```
+
+`global.ts` 改动（6 行；实测产出，L3 承接原 import 槽位，ESM import 提升使其合法）：
+
+```ts
+const home = process.env.HOME ?? os.homedir()                    // 替换 xdg-basedir import
+// single-elf-patch: namespace=opencode1 ignore-xdg=1
+const app = "opencode1/opencode"
+const data   = path.join(home, '.local', 'share', app)
+const cache  = path.join(home, '.cache', app)
+const config = path.join(home, '.config', app)
+const state  = path.join(home, '.local', 'state', app)
+const tmp    = path.join(os.tmpdir(), app)                      ← 刻意不动
+```
+
+补丁脚本已实现并验证：默认/`--ignore-xdg` 双模式幂等、`.bak` 保留、`post-verify`
+逐条校验、`marker` 行自我标记、上游漂移时 fail-fast、`--ignore-xdg` 下断言
+`xdg-basedir` import 已消失。**未接入任何打包脚本**，`--ignore-xdg` **默认关闭**。
+
+**运行时验证**（bun 执行与 patch 产出逐行同构的派生区，诱饵 XDG 下）：
+
+```
+XDG_DATA_HOME = $SB/decoy-data
+data   = $SB/home/.local/share/opencode1/opencode
+=> IGNORED decoy XDG_* (GOOD)
+```
+
+### 9.5 等价性说明（为何用未固化 ELF 做实测）
+
+任务允许在构建成本过高时改用现有裸静态 ELF。此处**两条链互补**，须合并阅读：
+
+1. **实测链（真 ELF 端到端）**：press5 未固化 ELF 的 `debug paths` 证明
+   **XDG_* 确实被消费**（§9.1）。此结论**与 app 命名无关** —— `xdg-basedir` 的读 env
+   行为发生在 `global.ts:11-15` 派生之前，与 `app` 取值正交。
+2. **推导链（模块级）**：真实 `xdg-basedir` 模块 + 照抄派生式，把 `app` 换成固化后的值，
+   **直接计算**固化变体的落点（§9.1 第二段）。
+
+**差异必须写明**：实测链用的是**未固化** ELF，故落在 `$SB/decoy-*/opencode`（无
+`opencode1` 段）；固化后落在 `$SB/decoy-*/opencode1/opencode`（多一层）。**前缀差一层，
+XDG 消费行为完全相同。** §9.2 用真 wrapper 补上了这一层对照，证明「加不加这层，
+wrapper 与 ELF 都同样被 decoy 劫持」。
+
+**未做**：press5 全管线重建（磁盘 99% / 余 18G）。留待发布决策后按 §七 执行。

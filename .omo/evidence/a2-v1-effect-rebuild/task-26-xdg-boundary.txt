@@ -1,0 +1,365 @@
+================================================================================
+task-26 — XDG_* 劫持边界实测 + A+ (--ignore-xdg) 补丁草案
+日期: 2026-10-05   分支: rc6-a2/single-elf   基线 commit: 042782d (+8f811aa)
+沙箱: /data/data/com.termux/files/usr/tmp/a2-xdgprobe/sandbox   (全程假 HOME)
+================================================================================
+
+## 0. 结论摘要（TL;DR）
+
+判据 = A（写入落 decoy）。**「env 免疫」不成立** —— 编译期固化命名只固化了
+`app` 后缀，**不固化 XDG 根**。xdg-basedir@5.1.0 无条件读 env，固化后的 ELF
+在诱饵 XDG_* 下同样被 re-root。
+
+但**这不是回归**：现役 bash wrapper 用 `${XDG_DATA_HOME:-…}/opencode1`，同样
+尊重外部 XDG_*。实测两者在诱饵下**逐字节相同** ⇒ 方案 A 与现役是**等价( parity)**
+而非更强。文档原 §3.5 「比 wrapper 更宽容」的表述方向正确但结论需修正：
+不是「A 更安全」，而是「A 与 wrapper 同样可被 env 覆盖」。
+
+诱饵不被消费只在**一个**条件下成立：调用方不 export XDG_*（即 wrapper 场景）。
+「xdg-basedir 在无 wrapper 场景不消费外部 XDG_*」——**此判据 B 不成立**。
+
+副产物（重要）：发现 **tmp 根与现役不等价**，见 §5。
+
+--------------------------------------------------------------------------------
+## 1. 被测对象
+--------------------------------------------------------------------------------
+
+未打补丁的裸静态 ELF（等价实测，理由见 §6）：
+
+  artifacts/build/1.18.32/beta103-press5/runtime/opencode-v1-1.18.32-beta103-press5
+
+  $ file ...
+  ELF 64-bit LSB pie executable, ARM aarch64, version 1 (SYSV), for Android 28,
+  built by NDK r27c (12479018), BuildID[sha1]=69943ba2fedf06be7f2fa76deaa37675cb49e64d,
+  statically linked, no section header
+
+  $ readelf -l ... | grep -E 'INTERP|DYNAMIC|LOAD'
+  LOAD  0x000000 0x0000000000000000 ... 0x001000 0x80d0000 RW  0x10000
+  LOAD  0x000000 0x00000000080d0000 ... 0x2cfa71f 0x2cfa71f R E 0x10000
+  → 2 LOAD，零 PT_INTERP、零 PT_DYNAMIC ⇒ 裸跑可用（A5 前提成立）
+
+对照组 —— **现役已安装的 wrapper**（$PREFIX 只读，未改动）：
+
+  $ head -c 60 $PREFIX/bin/opencode1
+  #!/data/data/com.termux/files/usr/bin/bash
+  # opencode1 launc...
+
+源码事实复核：
+
+  $ grep -n 'const app' $V1_SRC/packages/core/src/global.ts
+  10:  const app = "opencode"          ← 未打补丁
+
+  $ cat $V1_SRC/node_modules/.bun/xdg-basedir@5.1.0/node_modules/xdg-basedir/index.js
+  4:  const homeDirectory = os.homedir();
+  5:  const {env} = process;
+  7:  export const xdgData   = env.XDG_DATA_HOME   || (homeDirectory ? path.join(homeDirectory, '.local', 'share') : undefined);
+  10: export const xdgConfig = env.XDG_CONFIG_HOME || (homeDirectory ? path.join(homeDirectory, '.config') : undefined);
+  13: export const xdgState  = env.XDG_STATE_HOME  || (homeDirectory ? path.join(homeDirectory, '.local', 'state') : undefined);
+  16: export const xdgCache  = env.XDG_CACHE_HOME  || (homeDirectory ? path.join(homeDirectory, '.cache') : undefined);
+
+  ⇒ env 读取是**无条件**的，没有任何「仅在缺失时回退」的额外条件。
+
+--------------------------------------------------------------------------------
+## 2. 实测 A — 裸静态 ELF + 诱饵 XDG_*（决定性）
+--------------------------------------------------------------------------------
+
+### 2.1 基线（零 XDG，假 HOME）
+
+  $ env -i HOME=$SB/home PATH=... TMPDIR=$SB/tmp TERM=xterm $ELF debug paths
+  home       $SB/home
+  data       $SB/home/.local/share/opencode          ← 无命名空间（未打补丁）
+  bin        $SB/home/.cache/opencode/bin
+  log        $SB/home/.local/share/opencode/log
+  repos      $SB/home/.local/share/opencode/repos
+  cache      $SB/home/.cache/opencode
+  config     $SB/home/.config/opencode
+  state      $SB/home/.local/state/opencode
+  tmp        $SB/tmp/opencode
+
+### 2.2 诱饵（四个 XDG_* 全部指向 sandbox/decoy-*），全新空 fake HOME
+
+  $ rm -rf $SB/home && mkdir -p $SB/home
+  $ env -i HOME=$SB/home PATH=... TMPDIR=$SB/tmp TERM=xterm \
+      XDG_DATA_HOME=$SB/decoy-data \
+      XDG_CONFIG_HOME=$SB/decoy-config \
+      XDG_STATE_HOME=$SB/decoy-state \
+      XDG_CACHE_HOME=$SB/decoy-cache \
+      $ELF debug paths
+  home       $SB/home
+  data       $SB/decoy-data/opencode                 ← ★ decoy
+  bin        $SB/decoy-cache/opencode/bin            ← ★ decoy
+  log        $SB/decoy-data/opencode/log             ← ★ decoy
+  repos      $SB/decoy-data/opencode/repos           ← ★ decoy
+  cache      $SB/decoy-cache/opencode                ← ★ decoy
+  config     $SB/decoy-config/opencode               ← ★ decoy
+  state      $SB/decoy-state/opencode                ← ★ decoy
+  tmp        $SB/tmp/opencode                        ← tmp 走 os.tmpdir()，与 XDG 无关
+
+文件系统侧证（诱饵目录被真实创建）：
+
+  $ ls -1 $SB/decoy-*
+  decoy-cache:   opencode
+  decoy-config:  opencode
+  decoy-data:    opencode
+  decoy-state:   opencode
+
+假 HOME 侧证（诱饵场景下**零**写入，证明 re-root 彻底）：
+
+  $ find $SB/home -mindepth 1 | wc -l
+  0
+
+**判定：判据 A 成立。** 未打补丁的裸 ELF 被外部 XDG_* 完全劫持。
+
+--------------------------------------------------------------------------------
+## 3. 实测 B — 固化命名后（app="opencode1/opencode"）是否仍被劫持
+--------------------------------------------------------------------------------
+
+重建整个 press5 管线成本过高（磁盘 99%，仅剩 18G）。改为**模块级等价实测**：
+用**真实的** xdg-basedir@5.1.0 模块 + **逐行照抄** global.ts L10-15 的派生表达式，
+同时计算 UNPATCHED / PATCHED 两个变体。这直接覆盖「`app` 取值是否会改变
+XDG 根的消费方式」这一唯一待证命题。
+
+  $ cat $SB/probe.mjs   # 关键片段
+  import path from "path"; import os from "os"
+  import { xdgData, xdgCache, xdgConfig, xdgState } from "file://$V1_SRC/node_modules/.bun/xdg-basedir@5.1.0/.../index.js"
+  const variants = {
+    UNPATCHED_app_opencode: "opencode",              // global.ts:10 上游原值
+    PATCHED_app_opencode1:  "opencode1/opencode",   // 固化后的值
+  }
+  // 逐行照抄 global.ts L11-15
+  data = path.join(xdgData, app); cache = path.join(xdgCache, app); ...
+
+### 3.1 RUN A — 诱饵 XDG_*
+
+  HOME                = $SB/home
+  XDG_DATA_HOME       = $SB/decoy-data
+  XDG_CONFIG_HOME     = $SB/decoy-config
+  XDG_STATE_HOME      = $SB/decoy-state
+  XDG_CACHE_HOME      = $SB/decoy-cache
+
+  [UNPATCHED_app_opencode]  app="opencode"
+    data   = $SB/decoy-data/opencode
+    cache  = $SB/decoy-cache/opencode
+    config = $SB/decoy-config/opencode
+    state  = $SB/decoy-state/opencode
+    tmp    = $SB/tmp/opencode
+    => data root sits under DECOY? YES (HIJACKED)
+
+  [PATCHED_app_opencode1]  app="opencode1/opencode"
+    data   = $SB/decoy-data/opencode1/opencode       ← ★ 仍在 decoy 下
+    cache  = $SB/decoy-cache/opencode1/opencode
+    config = $SB/decoy-config/opencode1/opencode
+    state  = $SB/decoy-state/opencode1/opencode
+    tmp    = $SB/tmp/opencode1/opencode
+    => data root sits under DECOY? YES (HIJACKED)
+
+### 3.2 RUN B — 零 XDG（对照）
+
+  XDG_* 全部 (unset)
+  [UNPATCHED] data = $SB/home/.local/share/opencode
+  [PATCHED]  data = $SB/home/.local/share/opencode1/opencode    ← 无诱饵时的目标布局
+             tmp  = $SB/tmp/opencode1/opencode                   ← ★ 见 §5
+
+**判定：固化命名后仍然被劫持（判据 A 对 PATCHED 变体同样成立）。**
+固化改变的是**后缀**，不是**根**；`xdg-basedir` 在 import 时就无条件读 env，
+`app` 的取值与之正交。
+
+--------------------------------------------------------------------------------
+## 4. 关键对照 — 这不是回归，是等价（parity）
+--------------------------------------------------------------------------------
+
+现役 wrapper 的 export 算术（scripts/opencode1-launcher.sh:17-20）：
+
+  export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}/opencode1"
+  export XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}/opencode1"
+  export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.cache}/opencode1"
+  export XDG_STATE_HOME="${XDG_STATE_HOME:-$HOME/.local/state}/opencode1"
+
+⇒ wrapper 同样用 `${XDG_*:-$HOME/…}` 形式，**同样尊重外部预置 XDG_***。
+
+### 4.1 现役 wrapper 端到端（$PREFIX 只读，假 HOME + 诱饵）
+
+  $ head -c 60 $PREFIX/bin/opencode1   → #!/…/bash   (确为 wrapper)
+  $ env -i HOME=$SB/home TMPDIR=$SB/tmp … XDG_*=decoy-* \
+      $PREFIX/bin/opencode1 debug paths
+  home       $SB/home
+  data       $SB/decoy-data/opencode1/opencode      ← ★ decoy
+  bin        $SB/decoy-cache/opencode1/opencode/bin
+  log        $SB/decoy-data/opencode1/opencode/log
+  repos      $SB/decoy-data/opencode1/opencode/repos
+  cache      $SB/decoy-cache/opencode1/opencode
+  config     $SB/decoy-config/opencode1/opencode
+  state      $SB/decoy-state/opencode1/opencode
+  tmp        $SB/tmp/opencode                       ← wrapper 下 tmp 不带命名空间
+
+### 4.2 逐字节比较
+
+  wrapper   : $SB/decoy-data/opencode1/opencode
+  singleELF : $SB/decoy-data/opencode1/opencode
+  => MATCH: patch is PARITY with wrapper even under adversarial XDG
+
+**结论：方案 A 不引入新的 env 暴露面。** 现役包在诱饵 XDG 下与固化后的 ELF
+落到同一路径。A 相对 wrapper 的真实增益是「绕不过去」（§6.1：没有第二个可执行
+可直调），**不是**「env 免疫」。
+
+--------------------------------------------------------------------------------
+## 5. 副产物 — tmp 根与现役【不等价】（文档 §3.5 需修正）
+
+§3.5 声称「四个根 + tmp 全部成立」。实测**tmp 不成立**：
+
+  场景                                 tmp 路径
+  ------------------------------------ ------------------------------------
+  现役 wrapper（app="opencode"）        $TMPDIR/opencode            ← 与 v2 共用
+  固化后 ELF（app="opencode1/opencode"）$TMPDIR/opencode1/opencode  ← 不再共用
+  v2（app="opencode"）                 $TMPDIR/opencode
+
+原因：global.ts:15 的 `tmp = path.join(os.tmpdir(), app)` **同样 join 了 app**。
+固化 app 顺带把 tmp 也 namespaces 化了。
+
+影响评估：
+- 方向上是**修复**而非回归 —— 它顺带关掉了 §6.3-2 记录的「$TMPDIR/opencode 跨代共用」
+  这个既有共享面。
+- 但它**改变了 tmp 落点**，属于行为变更，必须在 §5 断言清单里显式覆盖，不能默认
+  「与 wrapper 逐字节相同」。
+- 相关代码：`plugin/agent.ts:101`、`tool/shell/prompt.ts:280`、`agent/agent.ts:110`
+  都用 `Global.Path.tmp`（含 permission 白名单 `path.join(Global.Path.tmp, "*")`）。
+  路径整体下移一层，语义不变（仍是同一 app 的私有 tmp），但断言/文档需跟上。
+- ⚠️ **既有测试会红**：`packages/core/test/global.test.ts:9`
+  `expect(Global.Path.tmp).toBe(path.join(os.tmpdir(), "opencode"))`
+  固化后此断言必然失败。重建前必须改测试，否则回归门会被这条挡住。
+
+--------------------------------------------------------------------------------
+## 6. 等价性说明（为什么用未打补丁的 ELF + 模块级派生，而不是重建产物）
+--------------------------------------------------------------------------------
+
+用户任务允许在构建成本过高时改用现有裸静态 ELF 做等价实测。此处**两条证据链
+互补**，须合并阅读，不可只看其一：
+
+1. **实测链（真 ELF 端到端）**：用 press5 未打补丁的裸静态 ELF 跑 `debug paths`，
+   证明 **XDG_* 确实被消费**（§2）。此结论**与 app 命名无关** —— 它只观测
+   `xdg-basedir` 是否读 env，而 `xdg-basedir` 的读 env 行为发生在
+   `global.ts:11-15` 之前、与 `app` 取值正交。
+2. **推导链（模块级）**：用真实 xdg-basedir 模块 + 照抄的派生式，把 `app` 取值
+   换成固化后的值，**直接计算** PATCHED 变体的落点（§3.1）。这回答了
+   「命名固化后 XDG 是否仍被消费」——仍是 YES。
+
+**差异必须写明**：实测链用的是**未固化命名**的 ELF，所以它落在
+   `$SB/decoy-*/opencode`（无 opencode1 段）；固化后的 ELF 会落在
+   `$SB/decoy-*/opencode1/opencode`（多一层）。**前缀差一层，XDG 消费行为完全相同。**
+本文件 §4.2 用真 wrapper 补上了这一层的对照，证明「加不加这层，wrapper 与 ELF
+都同样被 decoy 劫持」。
+
+未做：press5 全管线重建（磁盘 99% / 余 18G，且源码树 global.ts 未打补丁，
+重建需先跑 patch 脚本 + 完整 bun 编译 + UPX）。留待发布决策后按 §7 迁移步骤执行。
+
+--------------------------------------------------------------------------------
+## 7. 安全纪律自证
+--------------------------------------------------------------------------------
+
+- 全程 `env -i` + 假 HOME（$SB/home）+ 沙箱 TMPDIR；**未读取也未写入**任何真实
+  opencode 数据目录内容。
+- 真实验 HOME 四个根的 mtime 在全部实验前后一致：
+
+    $HOME/.local/share/opencode : 2026-10-05 06:52:31.312001025 +0800  (前后同)
+    $HOME/.config/opencode     : 2026-09-26 17:19:13.687669964 +0800  (前后同)
+    $HOME/.local/state/opencode : 2026-10-02 04:22:38.716504230 +0800  (前后同)
+    $HOME/.cache/opencode      : 2026-10-04 05:12:38.932514709 +0800  (前后同)
+
+- `$PREFIX` 只读：仅 `head -c 60` 读 wrapper 头部 + 通过它执行 `debug paths`
+  （该命令只 mkdir/打印，不触碰真实数据根，因 HOME/XDG/TMPDIR 全部重定向）。
+- 未 push、未装机、未改 PKGBUILD、未动 oscar。
+- 沙箱残留：`/data/data/com.termux/files/usr/tmp/a2-xdgprobe/`（可随时 rm）。
+
+================================================================================
+
+================================================================================
+附录 A — A+ (`--ignore-xdg`) 补丁脚本验证记录
+================================================================================
+
+脚本: tools/a2/single-elf-namespace-patch.sh
+测法: 在**副本**上跑（$SB/src-copy、$SB/src-drift、$SB/src-final），
+      **未改动真实构建树** $V1_SRC/packages/core/src/global.ts。
+
+## A.1 默认模式（namespace only）
+
+  $ V1_SRC=$SB/src-final bash tools/a2/single-elf-namespace-patch.sh
+  patched 1 lines
+  OK: namespace 'opencode1' baked into packages/core/src/global.ts (backup: global.ts.single-elf.bak)
+
+  产出 L1-16:
+    3:  import { xdgData, xdgCache, xdgConfig, xdgState } from "xdg-basedir"
+    10: // single-elf-patch: namespace=opencode1 ignore-xdg=0
+    11: const app = "opencode1/opencode"
+    12: const data = path.join(xdgData!, app)
+    13: const cache = path.join(xdgCache!, app)
+    14: const config = path.join(xdgConfig!, app)
+    15: const state = path.join(xdgState!, app)
+    16: const tmp = path.join(os.tmpdir(), app)
+
+  幂等: 第二次运行 → `OK (already patched): mode=default namespace='opencode1'`  exit=0
+
+## A.2 --ignore-xdg 模式
+
+  $ V1_SRC=$SB/src-final bash tools/a2/single-elf-namespace-patch.sh --ignore-xdg
+  patched 6 lines
+  OK: namespace 'opencode1' baked into packages/core/src/global.ts (backup: global.ts.single-elf.bak)
+  OK: --ignore-xdg applied — roots derive from $HOME only, XDG_*_HOME no longer consumed
+
+  产出 L1-16:
+    3:  const home = process.env.HOME ?? os.homedir()        ← 承接原 import 槽位
+    10: // single-elf-patch: namespace=opencode1 ignore-xdg=1
+    11: const app = "opencode1/opencode"
+    12: const data = path.join(home, '.local', 'share', app)
+    13: const cache = path.join(home, '.cache', app)
+    14: const config = path.join(home, '.config', app)
+    15: const state = path.join(home, '.local', 'state', app)
+    16: const tmp = path.join(os.tmpdir(), app)               ← 刻意不动
+
+  xdg-basedir 残留计数: 0   (`grep -c 'xdg-basedir' global.ts` → 0)
+  幂等: 第二次运行 → `OK (already patched): mode=--ignore-xdg`  exit=0
+  .bak  pristine: `grep -n 'const app' global.ts.single-elf.bak` → `10:const app = "opencode"`
+
+  注: L3 在 L4 `import os` 之前 —— ESM import 提升使其合法，已用 bun 实际执行验证（见 A.3）。
+
+## A.3 运行时验证（bun 执行与 patch 产出逐行同构的派生区，诱饵 XDG 下）
+
+  $ env -i HOME=$SB/home TMPDIR=$SB/tmp XDG_DATA_HOME=$SB/decoy-data \
+      XDG_CONFIG_HOME=$SB/decoy-config XDG_STATE_HOME=$SB/decoy-state \
+      XDG_CACHE_HOME=$SB/decoy-cache bun run $SB/ignore-xdg-check.ts
+  HOME            = $SB/home
+  XDG_DATA_HOME   = $SB/decoy-data
+  data   = $SB/home/.local/share/opencode1/opencode
+  cache  = $SB/home/.cache/opencode1/opencode
+  config = $SB/home/.config/opencode1/opencode
+  state  = $SB/home/.local/state/opencode1/opencode
+  tmp    = $SB/tmp/opencode1/opencode
+  => IGNORED decoy XDG_* (GOOD)
+
+  对照（默认 xdg-basedir 派生，同一诱饵 env）:
+  [PATCHED_app_opencode1]  data = $SB/decoy-data/opencode1/opencode
+  => data root sits under DECOY? YES (HIJACKED)
+
+  ⇒ 默认模式被劫持 / A+ 免疫，同一 env 下并排对照成立。
+
+  ⚠️ 过程中我自己写的判定行有过一次双重否定 bug
+     (`escaped = ![...].some(...)` = `!false` = true，导致误报 ESCAPED)，
+     已修正为 `anyDecoy = [...].some(...)` 后复测。**记录在此以免误读上面的输出**：
+     路径打印值一直是正确的（均在 $SB/home 下），错的只是那行标签。
+
+## A.4 负路径（fail-fast）
+
+  NEG1 未知参数:      `bash script --bogus`        → exit=2, "unknown argument '--bogus'"
+  NEG2 上游漂移:      把 `const app = "opencode"` 改成 `"opencode-v2"` 后
+                       默认模式   → exit=1 "does not carry the expected line"
+                       --ignore-xdg → exit=1 同上
+  NEG3 源缺失:        V1_SRC=/nonexistent          → exit=1 "missing — set V1_SRC"
+  bash -n             → SYNTAX OK
+
+## A.5 顺带发现的回归风险（已写入 docs §5.1）
+
+  packages/core/test/global.test.ts:9
+    expect(Global.Path.tmp).toBe(path.join(os.tmpdir(), "opencode"))
+  固化 app 后此断言**必然失败**（tmp 变 $TMPDIR/opencode1/opencode）。
+  重建前必须改，否则回归门被挡。
+
+================================================================================
