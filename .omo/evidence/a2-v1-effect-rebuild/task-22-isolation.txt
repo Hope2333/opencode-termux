@@ -1,0 +1,332 @@
+task-22: v1(opencode1 1.18.32-9) / v2(opencode-compressed 2.0.12-3) 数据路径隔离诊断
+日期: 2026-10-04 22:48-22:58 CST
+主机: oscar 10.254.129.10:8022 (u0_a450 -> u0_a115)，核身 3.18.140-mokee-g3592dbe76eff aarch64
+性质: 只读取证，未做任何数据改动。步骤 1-2 完成，停下等批准。
+
+================================================================
+0. 核身与进程基线
+================================================================
+$ uname -a
+Linux localhost 3.18.140-mokee-g3592dbe76eff #1 SMP PREEMPT ... aarch64 Android
+
+活跃 opencode 进程（诊断开始时 / 结束时一致，未被打断）：
+  16901 .../apps/a2todo16/press5/runtime/opencode-v1-1.18.32-beta103-press5   (无关第三方)
+  18706 .../usr/lib/opencode/runtime/opencode                                   (v2 父)
+  18724 .../usr/lib/opencode/runtime/opencode serve --service                   (v2 常驻服务)
+  22666 .../usr/lib/opencode1/runtime/opencode                                  (v1 交互实例)
+  27900 runsv opencode-serve
+  27905 .../usr/lib/opencode/runtime/opencode serve --hostname 0.0.0.0          (v2 常驻服务)
+
+================================================================
+1. v1 完整路径集合（strace 实测，非推断）
+================================================================
+方法（只读，真实业务操作而非 --version）：
+  strace -f -qq -e trace=openat,openat2,stat,lstat,mkdir,mkdirat,rename,renameat,\
+       unlink,unlinkat,statx,access -s 200 \
+       /data/data/com.termux/files/usr/bin/opencode1 session list
+  trace 落盘 $PREFIX/tmp/v1trace/strace.txt (356 行)，exit=0
+
+操作结果（4 会话在，隔离后功能正常）：
+  ses_efebeaa16fferuirgodSScTxso  测试        6:14 PM 10/3/2026
+  ses_efebe9dd4ffewSuEbabdnH63y7  测试        6:13 PM 10/3/2026
+  ses_efebe9e29ffe316hbu37t8kjy7  测试        6:13 PM 10/3/2026
+  ses_efebead57ffeaC3dsm55SEWym0  功能测试    6:13 PM 10/3/2026
+
+--- 1.1 v1 命中的全部数据/配置路径（去重） ---
+  数据 (XDG_DATA_HOME=~/.local/share/opencode1)
+    ~/.local/share/opencode1/opencode/opencode.db         <- v1 数据库（独立）
+    ~/.local/share/opencode1/opencode/opencode.db-wal
+    ~/.local/share/opencode1/opencode/opencode.db-shm
+    ~/.local/share/opencode1/opencode/log/opencode.log
+    ~/.local/share/opencode1/opencode/repos/
+    ~/.local/share/opencode1/opencode/shell/7fc025facb5a13ae0f3529454f122c018c8d16d9
+    ~/.local/share/opencode1/opentui/                     <- opentui 运行时目录
+  配置 (XDG_CONFIG_HOME=~/.config/opencode1)
+    ~/.config/opencode1/opencode/opencode.jsonc           <- 全局配置(仅 $schema)
+    ~/.config/opencode1/opencode/service.json             <- {"port": 49376} 代际端口分离
+    ~/.config/opencode1/opencode/package.json             <- @opencode-ai/plugin 1.18.32
+    ~/.config/opencode1/opencode/package-lock.json
+    ~/.config/opencode1/opencode/.gitignore
+    ~/.config/opencode1/opencode/node_modules/            <- 27 项，1.18.32
+  缓存 (XDG_CACHE_HOME=~/.cache/opencode1)
+    ~/.cache/opencode1/opencode/bin/
+    ~/.cache/opencode1/opencode/models.json
+    ~/.cache/opencode1/opencode/npm/
+    ~/.cache/opencode1/opencode/packages/gstack@latest/node_modules/gstack/index.js
+    ~/.cache/opencode1/opencode/packages/superpowers-zh@latest/node_modules/superpowers-zh/
+    ~/.cache/opencode1/bun/@t@/d533b085af425053.pile    <- bun 编译缓存
+  状态 (XDG_STATE_HOME=~/.local/state/opencode1)
+    ~/.local/state/opencode1/opencode/plugin-meta.json
+    ~/.local/state/opencode1/opencode/prompt-history.jsonl
+    ~/.local/state/opencode1/opencode/model.json
+    ~/.local/state/opencode1/opencode/locks/42a6f995...lock/heartbeat
+    ~/.local/state/opencode1/opencode/locks/42a6f995...lock/meta.json
+  库路径 (只读，共用属正常)
+    /usr/lib/opencode1/runtime/opencode
+    /usr/lib/opencode1/{libc,libc++,libm,libdl,libnetd_client,libpcre2-8,libandroid-support}.so
+
+--- 1.2 v1 的写面（O_WRONLY|O_RDWR|O_CREAT 全集）---
+  ~/.local/share/opencode1/opencode/log/opencode.log                    O_WRONLY|O_CREAT|O_APPEND
+  ~/.local/share/opencode1/opencode/opencode.db                         O_RDWR|O_CREAT
+  ~/.local/share/opencode1/opencode/opencode.db-shm                      O_RDWR|O_CREAT
+  ~/.local/share/opencode1/opencode/opencode.db-wal                      O_RDWR|O_CREAT
+  ~/.local/state/opencode1/opencode/locks/42a6f995.../heartbeat          O_WRONLY|O_CREAT|O_EXCL
+  ~/.local/state/opencode1/opencode/locks/42a6f995.../meta.json          O_WRONLY|O_CREAT|O_EXCL
+  /dev/null, /dev/tty, /sys/kernel/debug/tracing/trace_marker            (非数据)
+
+  => v1 的全部写操作 100% 落在 opencode1/ 前缀内。写面零越界。
+
+================================================================
+2. v2 占用路径集合
+================================================================
+--- 2.1 常驻服务活 fd（/proc/<pid>/fd，非推断）---
+  18724 与 27905 完全相同，均只持有：
+    ~/.local/share/opencode/opencode.log
+    ~/.local/share/opencode/opencode.db
+    ~/.local/share/opencode/opencode.db-shm
+    ~/.local/share/opencode/opencode.db-wal
+  cwd 均为 /data/data/com.termux/files/home
+
+--- 2.2 v2 CLI strace（$PREFIX/bin/opencode session list，107 行）---
+  ~/.cache/opencode/bin
+  ~/.config/opencode/service.json
+  ~/.local/share/opencode{,/log/opencode.log,/log/opencode.log.trim,/repos}
+  ~/.local/state/opencode{,/service.json,/service.json.pty-handoff}
+  /usr/lib/opencode/{libc,libc++,libopencode-crhandler,...}.so
+  /usr/lib/opencode/package.json
+  /usr/lib/opencode/runtime/opencode
+  /usr/tmp/opencode
+  注：v2 无 XDG re-root（其 wrapper 注释明示：XDG 隔离只是跨代措施，v2 自身用平铺根）
+
+--- 2.3 v2 `debug config` 合并文档清单 ---
+  ~/.config/opencode
+  ~/.config/opencode/opencode.json        (含 8 个 plugins + deepseek provider)
+  ~/.opencode                            <- 注意：项目级，无代际前缀
+  ~/.opencode/opencode.json
+
+================================================================
+3. 重叠清单（关键结论）
+================================================================
+【重叠 R1】~/.opencode/  —— 项目级作用域，XDG re-root 管不到
+  现状：v1 与 v2 都读它。实测证据：
+    v1 strace 26215-26256 连续 10 次 openat 命中：
+      ~/.opencode/opencode.json      = 18   (成功读取)
+      ~/.opencode/package.json       = 17   (成功读取)
+      ~/.opencode/package-lock.json  = 17   (成功读取)
+      ~/.opencode/{command,commands,agent,agents,mode,modes,plugin,plugins} 全部 ENOENT
+    v2 `debug config` 文档清单含 ~/.opencode 与 ~/.opencode/opencode.json
+  内容物（mtime 全部停在 2026-06-27/28，v2 迁期前遗留）：
+    opencode.json      {"plugin": ["superpowers-zh", "gstack"]}
+    package.json       @opencode-ai/plugin 1.17.9
+    node_modules/      27 项（含 @msgpackr-extract，v1 侧没有）
+    tui.json / .gitignore / package-lock.json
+  风险：这是 v1 当前唯一仍在读写的"平铺 opencode 名"路径。v1 的
+  `debug config` 明确把 superpowers-zh / gstack 两个 plugin 的 origin 记为
+  ~/.opencode/opencode.json（scope=local），并据此去 opencode1 的 cache 里
+  拉包 —— 也就是说 v1 的插件链路由一份 v2 时代的共享文件驱动。
+  当前 v1 只读不写此目录（唯一 mkdirat 得 EEXIST），故尚未污染。
+
+【重叠 R2】$PREFIX/tmp/opencode  —— 共享临时目录
+  v1: mkdirat(/usr/tmp/opencode, 0777) = EEXIST
+  v2: 同样 mkdirat 同一路径
+  现状为空目录（ls 为空）。低风险，仅命名撞名。
+
+【重叠 R3】/usr/lib/opencode/  —— 库与 runtime 探测
+  v1 wrapper 的 LD_LIBRARY_PATH 与 runtime 探测顺序把 /usr/lib/opencode
+  列为候选（注释说明是为兼容另一种包布局）。实测 v1 strace 确实打开了
+  /usr/lib/opencode/libc.so 等 7 个 .so —— 但那是 libc/loader 层面，
+  不是用户数据。若 opencode1/runtime 缺失，v1 会 exec v2 的 runtime
+  二进制（当前 opencode1/runtime 存在，探测命中前者，未发生）。
+
+【已隔离，无缺口】
+  数据库    v1 opencode1/opencode/opencode.db (294912B, quick_check ok,
+            session 表 4 行) vs v2 opencode/opencode.db (56MB)  完全分离
+  auth.json  两边都不存在（v1 strace 命中 opencode1/.../auth.json = ENOENT）。
+            故不存在"v1 读 v2 凭据"的问题；v1 目前无持久化登录态，
+            这是功能缺口而非隔离缺口。
+  storage/  v2 有（agent-usage-reminder/migration/oh-my-openagent/plugin/
+            session_diff），v1 无 storage 目录 —— v1 不用它，无冲突。
+  tool-output/  v2 有（0 文件），v1 无 —— 无冲突。
+  service 端口  v1 config service.json {"port":49376} vs v2 state
+            service.json（含 password）—— 已按代际分离，不撞 49374。
+  日志      v1 opencode1/opencode/log/ vs v2 opencode/log/ —— 分离。
+  state     v1 opencode1/opencode/{plugin-meta,prompt-history,model,locks}
+            vs v2 opencode/ 同名 4 项 —— 分离。
+  插件包    v1 cache/opencode1/opencode/packages/{gstack,superpowers-zh,
+            oh-my-openagent}@latest vs v2 cache/opencode/packages/  —— 分离。
+  体积佐证  share/opencode 65M vs share/opencode1 6.4M
+            config/opencode 62M vs config/opencode1 63M
+            cache/opencode 2.6G vs cache/opencode1 372M
+            ~/.opencode 62M（共享，v2 迁期前遗留）
+
+================================================================
+4. 隔离缺口判定
+================================================================
+用户告警"数据库/插件等配套设施仍指向 opencode 旧名"—— 逐项核对后：
+  数据库      已隔离，不在缺口内。
+  插件 cache  已隔离（packages 各自落在 opencode1 cache）。
+  插件配置源  **仍在缺口内** —— ~/.opencode/opencode.json 是唯一平铺名
+              路径，且它是 v1 插件链的驱动源（origin 实证）。
+  auth 凭据   两边皆无，不构成混用；但 v1 无登录态（功能缺口）。
+  tmp 命名    $PREFIX/tmp/opencode 共用一空目录（可忽略或顺手隔离）。
+  runtime 探测 opencode1/runtime 已存在，当前未误用 v2 二进制。
+
+结论：**真实缺口只有 R1（~/.opencode/ 项目级配置+插件源+plugin SDK 1.17.9）**
+和 R2（tmp 命名）。R1 是需要修的，R2 可选。
+
+================================================================
+5. 修复方案（待 team-lead / 用户批准；本轮未执行）
+================================================================
+总原则：只复制不移动（v2 仍在跑且要继续用），只动 v1 侧或新增 v1 私有副本；
+绝不 unlink/rm 任何 v2 名下文件；不重启/不打断 pid 18724 / 27905。
+
+before/after 逐路径表：
+
+| # | 路径 | 现状 | 动作 | after | 影响 v2 serve？ |
+|---|------|------|------|-------|----------------|
+| A1 | ~/.opencode/opencode.json | v1+v2 共享读，v2 迁期前遗留（plugin: superpowers-zh, gstack） | **复制**为 ~/.config/opencode1/opencode/opencode.json，并把 plugin 列表按 v1 实际需要裁剪（v1 现役插件以 opencode1 cache 里已有包为准） | v1 从 opencode1 config 读，不再依赖共享文件 | 否（v2 若也在读该文件，复制不改原件；实测 v2 debug config 列出它但 v2 serve 未持有该 fd） |
+| A2 | ~/.opencode/package.json + package-lock.json | 共享，@opencode-ai/plugin **1.17.9**（v1 需要 1.18.32） | **不复制**。v1 已有 ~/.config/opencode1/opencode/package.json (1.18.32) + node_modules，SDK 已就位；共享副本保持原样 | v1 用 opencode1 下的 1.18.32 | 否 |
+| A3 | ~/.opencode/node_modules/ | 共享，27 项 1.17.9 SDK | **不动**。v1 已有 opencode1/config/node_modules 1.18.32 | 无变化 | 否 |
+| A4 | ~/.opencode/{tui.json,.gitignore} | 共享 v2 遗留 | **不动**（v1 strace 未读 tui.json） | 无变化 | 否 |
+| A5 | $PREFIX/tmp/opencode | v1/v2 共用空目录 | 可选：v1 wrapper 内 export TMPDIR 指向 opencode1 私有 tmp（仅改 v1 wrapper 一行） | v1 tmp 私有 | 否 |
+| A6 | auth.json | 两边皆无 | 不动作。若后续 v1 需登录，v1 会自建于 opencode1/ 下（strace 证实路径正确），无需预先复制 | — | 否 |
+| A7 | v1 wrapper $PREFIX/bin/opencode1 | runtime 探测把 v2 目录列在候选首位靠后 | 建议：把 /usr/lib/opencode 从 LD_LIBRARY_PATH 与探测顺序中移除（保留会误用 v2 二进制的隐患） | v1 只认 opencode1 | 否（纯 v1 侧脚本） |
+
+A1 是唯一必需项。执行步骤（批准后）：
+  1. tar 备份到 /mnt/sdcard_ext4/apps/a2iso/backup-TS/：
+     ~/.opencode/ 整目录 + ~/.config/opencode1/opencode/ 整目录 + ~/.local/state/opencode1/ 整目录
+  2. 读 ~/.config/opencode1/opencode/ 与 opencode1 cache/packages 清单，
+     据此写 A1 的 opencode.json（plugin 列表只列 opencode1 下真实存在的包）
+  3. 双线验证：
+     v1: opencode1 session list 仍 4 会话；opencode1 debug config 的
+         plugin_origins 全部指向 opencode1（或 config/opencode1），不再出现 ~/.opencode
+     v2: pid 18724 / 27905 存活不变；4096 端口在听；
+         opencode session list 正常；~/.local/share/opencode/opencode.db mtime 不异动
+  4. 若 v1 仍需 ~/.opencode 里的 plugin（superpowers-zh/gstack 已在 opencode1
+     cache 中，strace 实证 v1 确实从 opencode1 cache 加载二者）—— 则 A1 可只做
+     "复制一份给 v1"，共享原件保留给 v2，零风险。
+
+风险评级：A1/A4/A6 零风险（只增副本或不动）；A7 低风险（改 v1 wrapper，需重跑一次
+  opencode1 验证）；A5 低风险。全程不需要重启 v2 serve。
+
+================================================================
+6. 未做的事（纪律边界）
+================================================================
+  - 未执行任何数据改动（A1-A7 全部待批）
+  - 未删除任何文件
+  - 未触碰 files1（旧容器），全程只读
+  - 未打断 v2 serve：18724 / 27905 诊断前后 pid 与 cmdline 一致
+  - 未重启任何服务
+  - strace 只附加在短命 CLI 子进程上，未 attach 常驻服务
+================================================================
+
+================================================================
+7. 执行记录：A1 已落地 / A5+A7 未执行（验证不过，按令停手）
+================================================================
+批准范围：A1 + A5 + A7 搭车；A2/A3/A4 不动；A6 不预复制。
+执行序：tar 备份 -> A1 -> 双线验证。任一验证不过立即停手。
+
+--- 7.1 备份（成功）---
+  $B=/mnt/sdcard_ext4/apps/a2iso/backup-TS
+  $ tar czf $B/task22-pre-20261004-225639.tar.gz -C $HOME \
+        .opencode .config/opencode1 .local/state/opencode1 .local/share/opencode1
+  产物: task22-pre-20261004-225639.tar.gz  21850642 bytes  7626 entries
+  覆盖：~/.opencode（共享项目级）、~/.config/opencode1、~/.local/state/opencode1、
+        ~/.local/share/opencode1（含 opencode.db）
+  路径记录于 oscar $PREFIX/tmp/task22-backup-path.txt
+
+--- 7.2 A1 落地（写入成功，但目标未达成）---
+  写入 ~/.config/opencode1/opencode/opencode.json（105 bytes, mode 600）：
+    {
+      "$schema": "https://opencode.ai/config.json",
+      "plugin": ["superpowers-zh", "gstack"]
+    }
+  plugin 列表裁剪依据（实测，非照抄）：
+    - v1 当前生效插件 = superpowers-zh + gstack（debug config 实测）
+    - 二者在 opencode1 cache 中确实存在：
+        ~/.cache/opencode1/opencode/packages/superpowers-zh@latest/node_modules/superpowers-zh
+        ~/.cache/opencode1/opencode/packages/gstack@latest/node_modules/gstack
+    - v1 cache 中另有 5 个包（oh-my-openagent / opencode-throughput /
+      opencode-working-memory / opencode-subagent-magazine / opencode-visual-cache），
+      对应 plugin-meta.json 里 5 条注册记录，但当前配置未引用 —— 判定为
+      旧配置遗留，**未纳入** plugin 列表，避免擅自扩权启用。
+    - v1 debug config 确认 skills 路径已正确指向
+      ~/.cache/opencode1/opencode/packages/superpowers-zh@latest/.../skills
+
+--- 7.3 验证结果：A1 未达成目标（FAIL）---
+  判据：debug config 的 plugin_origins 不再出现 ~/.opencode
+  实测（A1 写入后）：
+    plugin: ['superpowers-zh', 'gstack']        <- 列表正确
+    origin: superpowers-zh <- $HOME/.opencode/opencode.json  scope=local   <- 仍指向共享文件
+    origin: gstack         <- $HOME/.opencode/opencode.json  scope=local   <- 仍指向共享文件
+  => FAIL。origin 未从 ~/.opencode 迁到 opencode1。
+
+  根因（strace 实测定位，非猜测）：
+    strace 显示 opencode.json 的读取顺序为
+      27868 ~/.opencode/opencode.json            = 14   (成功读，**最先**)
+      27869 ~/.config/opencode1/opencode/opencode.json = 14 (成功读，A1 新文件)
+      27868 ~/.config/opencode1/opencode/opencode.jsonc = 14
+      27870 ~/.opencode/opencode.jsonc           = ENOENT
+    $HOME/.opencode/ 是**项目级作用域**（因 cwd = $HOME），opencode 的配置
+    合并规则里 project scope 优先于 global scope。A1 写的是 global 层，
+    因此被 project 层压过 —— 复制动作在架构上无法驱逐 project scope。
+    这解释了为何"复制而非移动"在全局层有效、在项目层无效。
+
+  补充证据：v1 二进制内无任何可禁用 project scope 的开关
+    strings 扫出 OPENCODE_* 仅：DISABL/EX/FAK/LOG/PHOT/PLUG/PURE/
+      REPO_CLON/SERV/WEBSEARCH_PROVI/ZED_DB（均为压缩截断片段）
+    搜 no.?project / project.?scope / OPENCODE_(PROJECT|CONFIG|IGNORE) -> 0 命中
+    wrapper 注释亦已自证："OPENCODE_CONFIG_DIR and friends are enumerated
+    but NOT consumed"
+    => v1 无环境变量可屏蔽 project scope。XDG re-root 只能覆盖 global 层。
+
+--- 7.4 A1 无害性核验（PASS）---
+  A1 是惰性写入，未改变任何生效行为：
+    debug config 合并结果与 A1 前逐字相同
+      plugin: ['superpowers-zh','gstack'] / agent: {} / mode: {} / command: {}
+    v1 session list  仍 4 会话
+    v1 db quick_check ok，session 表 4 行
+    v1 models 可列（opencode/big-pickle 等 5+ 个）
+  保留该文件无害；若决定改走其它方案，可直接删除或留作 global 层兜底。
+
+--- 7.5 双线验证：v2 侧（PASS）---
+  pid 18724 serve --service            存活，cmdline 未变
+  pid 27905 serve --hostname 0.0.0.0   存活，cmdline 未变
+  4096 在听：/proc/net/tcp 00000000:1000
+  v2 opencode session list 正常（2 会话列出）
+  v2 debug config 文档清单不变（仍含 .config/opencode 与 .opencode）
+  v2 db mtime 22:51:14 —— 早于 A1 写入时刻 22:58，是本次诊断自身
+    （22:51 跑的 v2 CLI 查询）所致，非 A1 影响；size 56393728 未变
+  => A1 对 v2 常驻 serve 零影响，符合方案预期。
+
+--- 7.6 A5 / A7 未执行 ---
+  按 team-lead 指令"任何验证不过立即停手回报，不扩大动作"，
+  A1 验证 FAIL 后未继续 A5（TMPDIR 私有化）与 A7（移除 usr/lib/opencode 候选）。
+  二者均为纯 v1 wrapper 改动、与 A1 无依赖，可在 A1 方案确定后独立放行。
+
+--- 7.7 修复方案修订建议（待 team-lead / 用户决策）---
+  A1 路线（写 global config）**不可行**，已证伪。可选替代：
+
+  方案 B（推荐，零 v2 影响）：接受现状，明确 ~/.opencode/ 为**共享只读契约**
+    - 现状实际风险极低：v1 对该目录全程只读（唯一 mkdirat 得 EEXIST），
+      实测无任何 O_WRONLY/O_RDWR 命中；且两代读到的 plugin 列表一致
+      （v2 config 自带 8 个 plugin，v1 用其中 2 个的同名包）。
+    - 做法：不动数据。把 ~/.opencode/ 登记为"两代共享只读插件清单"，
+      在 v1 wrapper 加注释说明依赖关系；后续若 v2 改该文件，v1 插件集随之变。
+    - 优点：零风险、零 v2 影响、不新增分叉维护。
+
+  方案 C（彻底隔离，需 v2 短暂停顿）：把 project scope 也代际化
+    - 前提：v1 无 env 可屏蔽 project scope，故只能靠 **cwd**——
+      让 v1 不在 $HOME 下启动即不会命中 ~/.opencode/。
+    - 做法：v1 wrapper 内 `cd` 到一个 v1 私有空目录再 exec。
+    - 代价：改变 v1 启动 cwd（影响相对路径解析、git 上下文、项目级
+      配置发现），属行为变更，风险中等；且 v2 若也在 $HOME 跑则不受影响。
+    - 仅在用户明确要求"v1 绝不读任何 v2 名下文件"时才考虑。
+
+  方案 D（结构性，需用户拍板）：把两代彻底分家
+    - v2 迁到自己的 $HOME 下项目目录（如 ~/.opencode-v2/），或接受
+      ~/.opencode/ 永久为 v2 专属、v1 通过方案 C 回避。
+    - 超出本次诊断范围，涉及 v2 常驻服务重启，不建议在当前窗口做。
+
+  建议：走方案 B（登记为共享只读契约），A5/A7 可独立放行。
+================================================================
