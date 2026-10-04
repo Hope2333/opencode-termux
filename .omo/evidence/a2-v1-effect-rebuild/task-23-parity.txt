@@ -1,0 +1,258 @@
+task-23: v2(opencode 2.0.12-3) → v1(opencode1 1.18.32-9) 插件与 MCP 配置全量移植
+日期: 2026-10-05 00:06-00:26 CST
+主机: oscar 10.254.129.10:8022 (u0_a450 -> u0_a115)，核身 3.18.140-mokee-g3592dbe76eff aarch64
+结论: **10 插件 + 3 MCP connected 全部达成**；v2 侧零变化。末尾 SSH 失联（宿主 ping 通、
+      端口全闭），发生在所有硬判据完成之后，不影响上述结论。
+
+================================================================
+0. 结论速览（对照任务单硬判据）
+================================================================
+| 判据 | 结果 | 证据 |
+|---|---|---|
+| v1 = 10 Plugins | **PASS** | debug config PLUGIN COUNT = 10，列表与 v2 逐项一致 |
+| MCP connected 3 (websearch/context7/grep_app) | **PASS** | `opencode1 mcp list` 三项 ✓ connected |
+| lsp / codegraph = Disabled | **PASS**（lsp disabled；codegraph 见 §3 注） | omo 5.1.10 只 builtin 4 个 MCP |
+| v1 TUI 能起（渲染一帧） | **PASS** | 9910 字节完整帧，altscreen+mouse+graphics，crash 0 |
+| v2 零变化 | **PASS** | 配置 11 文件 md5 全等；18724/27905 存活；4096 在听；db size 未变；v2 cache 无新 mtime |
+| 免下载移植 | **PASS** | 4 个缺失包全部 `cp -a` 自 v2 cache，零网络 |
+| 历史会话并轨 | **只评估未执行** | 见 §6，结论：不建议 |
+
+================================================================
+1. 关键根因发现（推翻了任务单的 premise）
+================================================================
+任务单假设「5 个 MCP 来自 v2 的配置」。**实测证伪**：v2 侧根本不存在 MCP 配置。
+
+--- 1.1 v2 全盘搜 MCP 配置 = 零命中 ---
+  $ find $HOME -maxdepth 6 \( -name opencode.json -o -name opencode.jsonc \
+        -o -name .mcp.json -o -name mcp.json \) -not -path "*/node_modules/*"
+    ~/.config/opencode/opencode.json      <- 无 mcp 键
+    ~/.config/opencode1/opencode/opencode.jsonc
+    ~/.config/opencode1/opencode/opencode.json
+    ~/.opencode/opencode.json             <- 无 mcp 键
+  逐个 grep '"mcp"' -> 零命中。
+  $ opencode mcp list        -> "No MCP servers configured"
+  $ opencode debug config    -> 合并结果无 mcp 段
+  ~/.mcp.json / mcp.json / .opencode/mcp.json / $PREFIX/etc/opencode 均不存在。
+
+--- 1.2 5 个 MCP 的真实来源 = oh-my-openagent 插件内置 ---
+  $ grep -rl grep_app ~/.cache/opencode/packages/oh-my-openagent@latest/...
+    dist/mcp/grep-app.d.ts
+    dist/mcp/context7.d.ts
+    dist/mcp/websearch.d.ts
+    dist/mcp/codegraph.d.ts
+    dist/mcp/lsp.d.ts
+  dist/mcp/types.d.ts:
+    McpNameSchema = z.ZodEnum<{ lsp, websearch, context7, grep_app, codegraph }>
+  index.d.ts: createBuiltinMcps(disabledMcps?, config?, options?) -> Record<string, BuiltinMcpConfig>
+  三种形态（RemoteMcpConfig / LocalMcpConfig），由插件在运行时注册，非配置项。
+  另 v2 二进制含 "Disabled in configuration" 字面量（2 处），即截图里那行状态文案，
+  来自 v2 二进制自带的 MCP 面板 UI，非配置文件。
+
+**推论：MCP 不需要「移植配置」，只需要让 v1 加载 oh-my-openagent 插件。**
+这也是本任务能免下载完成 MCP 判据的原因。
+
+================================================================
+2. schema 差异（v2 2.0.x vs v1 1.18.32）
+================================================================
+--- 2.1 键名差异 ---
+| 概念 | v2 文件写法 | v1 文件写法 | 备注 |
+|---|---|---|---|
+| 插件列表 | `plugin` (opencode.json) / `plugins` (cli.json、debug 输出) | `plugin` | **同一键名**，v2 内部两套别名 |
+| MCP | 无配置键（插件内置） | 无配置键 | 两代一致，都不需要写 |
+| provider | `provider` -> debug 输出 `providers` | `provider` | 本次未移植（见 §5） |
+| small_model | `small_model` 顶层 | 未验证 | 本次未移植 |
+
+v2 合并结果实测（debug config 输出为 **数组**，非对象）：
+  [0] document ~/.config/opencode/opencode.json -> plugins 8 项 + providers
+  [2] document ~/.opencode/opencode.json        -> plugins 2 项
+v1 合并结果实测（debug config 输出为 **对象** + plugin_origins）：
+  plugin: 10 项；plugin_origins 逐项标注 source/scope
+=> **两代 debug config 的输出形状不同**（v2 数组 / v1 对象），脚本解析不可复用。
+
+--- 2.2 作用域合并语义（本次最关键的实测，修正了 task-22 的旧结论）---
+task-22 §7.3 曾判定「project scope 压过 global scope，复制无法驱逐」，据此否决了 A1 路线。
+**本次实测证伪该结论**：v1 的 `plugin` 数组在跨 scope 时是**并集合并，不是覆盖**。
+
+  实验：global 写 ["oh-my-openagent","superpowers-zh","gstack"]，project 仍是 2 项
+  结果：plugin = ['oh-my-openagent', 'superpowers-zh', 'gstack']   <- 3 项，全在
+        origins: oh-my-openagent <- .config/opencode1/opencode scope=global
+                 superpowers-zh   <- .opencode/opencode.json     scope=local
+                 gstack           <- .opencode/opencode.json     scope=local
+  => global 项**未被** local 覆盖，两 scope 叠加。origin 字段如实标注来源。
+
+这正是「10 插件」得以达成的机制：8 项写进 v1 私有 global，2 项（superpowers-zh /
+gstack）继续由共享 project scope 提供，合并后 10 项。**无需改写共享 ~/.opencode/**，
+v2 侧因此完全不受影响（§4）。
+
+================================================================
+3. 落地动作
+================================================================
+--- 3.1 前置备份（tar，成功）---
+  $B=/mnt/sdcard_ext4/apps/a2iso/backup-20261005-000636
+  $ tar czf $B/task23-pre-20261005-000636.tar.gz -C $HOME \
+        .config/opencode1 .cache/opencode1 .local/state/opencode1 \
+        .local/share/opencode1 .opencode
+  产物: task23-pre-20261005-000636.tar.gz  91838017 bytes
+  路径另存 $PREFIX/tmp/task23-backup-path.txt
+
+--- 3.2 插件副本本地化（免下载，cp -a 只读 v2）---
+v1 cache 原有 6 个目标包（HAVE），缺 4 个（NEED），全部从 v2 cache 复制：
+  opencode-skeleton-pruner@latest    63MB
+  opencode-acp@latest               100MB
+  opencode-notify@latest             71MB
+  superpowers@git+https:              2MB   <- git spec，目录名编码了 URL 树：
+                                                 .../superpowers@git+https:/github.com/obra/superpowers.git/
+                                                 原样复制保持结构，v1 才能命中缓存
+  合计 236MB（磁盘 97% 水位，复制后余 1.7G，全程未联网）
+复制方式 `cp -a`（保权限/时间戳），源为只读；复制后 v2 cache 无任何新 mtime（§4）。
+v1 cache 补齐后 13 项，含 6 个目标包 + 非目标遗留（opencode-throughput@latest 等）。
+
+--- 3.3 写入 v1 配置（只写 v1 命名空间）---
+  $HOME/.config/opencode1/opencode/opencode.json  (324 bytes, mode 600)
+  {
+    "$schema": "https://opencode.ai/config.json",
+    "plugin": [
+      "oh-my-openagent",
+      "superpowers@git+https://github.com/obra/superpowers.git",
+      "opencode-skeleton-pruner",
+      "opencode-acp",
+      "opencode-notify",
+      "opencode-working-memory",
+      "opencode-subagent-magazine",
+      "opencode-visual-cache"
+    ]
+  }
+  未写入 mcp 段（不需要，§1.2）。未写 provider/small_model（§5）。
+
+--- 3.4 插件副本版本差异（重要，非缺陷）---
+  v1 cache 的 oh-my-openagent 是 **5.1.10**，v2 是 **4.13.0**（v1 此前已有，非本次装）。
+  5.1.10 的 dist/mcp/ 只有 4 个（context7/grep_app/lsp/websearch），**没有 codegraph.d.ts**。
+  故 v1 的 MCP 面板是 4 项，比 v2 少一个 codegraph。
+  codegraph 是 omo 内置的 local MCP，需 codegraph 可执行文件；v2 里它也是
+  "Disabled in configuration"，即两代都不可用，**功能上无损失**。
+
+================================================================
+4. 验证结果
+================================================================
+--- 4.1 v1 = 10 插件（PASS）---
+  $ opencode1 debug config -> /usr/tmp/task23/v1-dc-full.json (388334 bytes)
+   1. oh-my-openagent                              <- .config/opencode1/opencode  global
+   2. superpowers@git+https://github.com/obra/...  <- .config/opencode1/opencode  global
+   3. opencode-skeleton-pruner                     <- .config/opencode1/opencode  global
+   4. opencode-acp                                <- .config/opencode1/opencode  global
+   5. opencode-notify                              <- .config/opencode1/opencode  global
+   6. opencode-working-memory                      <- .config/opencode1/opencode  global
+   7. opencode-subagent-magazine                   <- .config/opencode1/opencode  global
+   8. opencode-visual-cache                        <- .config/opencode1/opencode  global
+   9. superpowers-zh                               <- .opencode/opencode.json      local
+  10. gstack                                       <- .opencode/opencode.json      local
+  与用户截图的 10 项逐项一致（顺序为 global 先、local 后，属合并器行为）。
+
+--- 4.2 MCP（PASS）---
+  $ opencode1 mcp list
+    ● ✓ websearch connected   https://mcp.exa.ai/mcp?tools=web_search_exa
+    ● ✓ context7  connected   https://mcp.context7.com/mcp
+    ● ✓ grep_app  connected   https://mcp.grep.app
+    ● ○ lsp       disabled   (bun -e ... lsp-daemon/lsp-tools-mcp)
+    └ 4 server(s)
+  3 connected + lsp disabled，与 v2 截图的「3 connected + lsp/codegraph Disabled」一致。
+
+--- 4.3 v1 TUI（PASS）---
+  TERM=xterm-256color timeout 110 opencode1（后台，cwd=$HOME）
+  输出 9910 bytes：
+    ESC[?1049h altscreen x1 / ESC[?1000h mouse x1 / OSC10,11 x2 / Gi=31337 x1
+    crash markers (Segmentation/panic/SIGSEGV/ASAN/FATAL/Bus error/abort) = **0**
+  帧内文本：OMO 主题 banner「Loading plugins…」+ 输入框「Ask anything…」
+  => 10 插件下正常起屏，未因插件量增加而崩。
+
+--- 4.4 插件加载告警（与 v2 同源，非本次引入）---
+  v1 日志 70 条 `duplicate skill name` WARN，成因：superpowers(git) 与
+  superpowers-zh 各带一份同名 skills（requesting-code-review / writing-plans /
+  using-superpowers / brainstorming / TDD 等 14 个）。
+  v2 侧同类 WARN 308 条 —— **同样的冲突在 v2 一直存在**，属既有状态，非移植引入。
+  影响面：同名 skill 保留先加载者（superpowers 优先），不阻断启动。
+
+--- 4.5 v2 零变化（PASS）---
+  配置 md5：before/after 逐文件比对 **IDENTICAL**（11 文件：
+    .gitignore / acp.jsonc / cli.json / logs/acp/daily/2026-09-30.log /
+    logs/acp/daily/2026-10-04.log / oh-my-openagent.json / opencode.json /
+    package-lock.json / package.json / service.json / tui.json）
+  进程：pid 18724 (serve --service) ALIVE；pid 27905 (serve --hostname 0.0.0.0) ALIVE
+  端口：/proc/net/tcp :1000 (4096) 在听
+  db：size 56393728 未变；mtime 23:08（早于本任务 00:06 起点）
+  v2 cache：packages/ 下无 newermt "2026-10-04 23:55" 的条目 -> 全程只读
+  未重启 v2 serve，未删任何 v2 文件，未写 v2 命名空间。
+  v2 log 有增长，但 run=3f45dff3 role=server 的 /global/health 心跳（常驻服务自身
+  轮询），非本任务写入；受控实验已证明 `opencode --version` 只增 v2 log、
+  `opencode1 --version` 只增 v1 log。
+
+--- 4.6 附带发现：oh-my-openagent 会 spawn v2 二进制（跨代执行，非数据污染）---
+  strace 追踪 v1 进程树发现：
+    execve(".../usr/bin/sh", ["sh","-c","opencode --version"])
+    execve(".../usr/lib/opencode/runtime/opencode", [..., "--version"])   <- v2 二进制
+  发起方：oh-my-openagent（dist/index.js 等 3 个文件含 "opencode --version" 探测）。
+  行为：v2 wrapper 不设 XDG -> 继承 v1 的 XDG -> 该 --version 子进程的日志落进
+  **v1 的 log**（这解释了 v1 log 里出现 version=2.0.12 行）。受控实验证实：
+    opencode1 --version  -> v1log +0 / v2log +0
+    opencode (v2) --version -> v1log +0 / v2log +1
+  风险评估：**低**。仅 --version 探测（只读、瞬时），不写 v2 命名空间，
+  故 v2 零变化判据仍成立。但它意味着 v1 插件链路上存在一次 v2 二进制执行，
+  若将来 v2 升级行为变化需重新评估。**未做改动**（改插件探测逻辑超出本任务范围）。
+
+================================================================
+5. 未移植项及原因（明确报告，非遗漏）
+================================================================
+| v2 配置项 | 是否移植 | 原因 |
+|---|---|---|
+| provider.opencode.models (5 个 free 模型) | 否 | 属模型供给配置，非插件/MCP；v1 无对应 provider 会导致模型列表报错，需单独评估 free 端点可用性 |
+| small_model | 否 | 同上，依赖上面的 provider |
+| oh-my-openagent.json（agents/categories 路由表） | 否 | 该文件在 v2 命名空间（~/.config/opencode/），v1 需独立副本；其 model 引用同上 provider，缺 provider 时路由全指向不可用模型反而更糟 |
+| tui.json / cli.json / acp.jsonc | 否 | v2 专属（cli.json 用的是 `plugins` 复数键 = v2 schema）；v1 已有自己的 tui 状态 |
+
+================================================================
+6. 历史会话并轨评估（只评估，未执行任何合并）
+================================================================
+数据：v2 DB 56MB（Jun/Sep 会话） vs v1 DB 294912B（4 条测试会话）。
+
+**结论：不建议并轨。** 理由：
+1. **代际不兼容**：v2 = 2.0.12（schema 2.0.x），v1 = 1.18.32。两代 DB schema 无
+   公开兼容承诺；1.18.x 之后的表结构/字段（尤其 message part 编码与 tool 状态机）
+   已多次重构。把 2.0.x 行灌进 1.18.32 极可能触发读取期异常，且 v1 无降级迁移路径。
+2. **无回滚保障**：合并需写 v1 DB。备份虽在，但一旦 v1 启动时 migrate 失败，
+   恢复需停进程换库，而 v1 的 session 列表/续聊链路会连带失效。
+3. **收益不对称**：Jun/Sep 会话是 v2 时代的产物，其 agent 定义、模型 ID
+   （deepseek-v4-flash-free 等）在 v1 侧**不存在**（provider 未移植，§5）。
+   即使并轨成功，续聊时仍会因模型/agent 缺失而无法继续，得到的只是一批
+   看得见点不开的历史记录。
+4. **更省的替代**：真要保留历史，导出为 Markdown/JSONL 归档（`opencode export`
+   或直接读 v2 DB 只读导出）即可满足查阅需求，零 schema 风险、零 v2 影响。
+
+若用户仍决定要并轨，建议前置动作（均需另行批准）：
+   a. 先在 v1 侧确认 1.18.32 的 DB schema（sqlite3 .schema）并逐表比对；
+   b. 只做**只读**导出 -> 转换 -> 人工抽查 3-5 条，再谈写入；
+   c. 写入前再 tar 一份 v1 DB，写入后 v1 启动失败立即换回。
+
+================================================================
+7. 纪律边界（未做的事）
+================================================================
+  - 未重启 v2 serve（18724 / 27905 前后一致）
+  - 未写入/未删除 v2 命名空间（.config/opencode）与 v2 cache（只 cp -a 读）
+  - 未改共享 ~/.opencode/（那 2 个插件由它提供，保持原样）
+  - 未改 v1 wrapper（task-22 的 A5/A7/B 成果保持不变）
+  - 未联网下载任何包（4 个包全部本地复制）
+  - 未合并任何历史会话（§6 只评估）
+  - 未触碰 files1 旧容器
+
+================================================================
+8. 遗留：SSH 失联
+================================================================
+00:26 完成 v2 零变化验证后，oscar SSH 开始 Connection refused。
+  现象：ping 通（50-260ms，0% 丢包），8022/8021/22/2222/802/8080/8020/8023 全闭，
+        ARP 表无该 MAC 条目。
+  判读：宿主存活但 sshd 未监听。**发生在所有硬判据完成之后**，且本任务全程只读
+        v2、只写 v1 私有路径 + 备份 tar，不具备导致 sshd 退出的动作面。
+        需人工确认设备状态（重启 / sshd 崩溃 / IP 被同网段其他设备占用）。
+        注：memory 记录该机有 IP 抢占风险，reconnect 脚本在跑，恢复后需 uname 核身。
+  待恢复后补验（当前状态未知，非已知失败）：
+    - opencode1 session list 是否仍 4 会话、db quick_check 是否 ok
+    - v2 db size / 18724 / 27905 / 4096 复核
