@@ -166,11 +166,14 @@ $ pacman -Q | wc -l  → 544                   ← 包仍可列
 
 按「优先 mv 归档而非 tar」指示（同盘，3.0G，零拷贝）:
 ```
-$ mv /data/data/com.termux/files/data \
-     /data/data/com.termux/files/shadow-archive-20261005-065301/data
+$ ARC=/data/data/com.termux/files/../shadow-archive-20261005-065301   # 归一化后 = /data/data/com.termux/shadow-archive-…
+$ mv /data/data/com.termux/files/data  "$ARC/data"
 real 0m0.008s          ← 原子 rename
 归档后: 3.0G / 42291 文件 / 8204 软链   ← 完整保留
 原位: No such file or directory          ← 已移出
+
+$ find /data/data/com.termux/shadow-archive-20261005-065301/data -name 'opencode*'   → 空
+  （归档内确无 opencode 文件，与「叠影不波及 opencode」一致）
 ```
 
 **注**: fix20 的归位段（rename 22999 条）**尚未执行** —— 叠影已移至归档路径，
@@ -196,7 +199,8 @@ S0 时 01:43:31 → S3 时 01:51:58  连续递增 = 未重启
 
 ## 回滚材料
 1. `pacman.conf.bak.20261005-065301` — 取消注释第 12 行即还原 RootDir
-2. `mv /data/data/com.termux/files/shadow-archive-20261005-065301/data /data/data/com.termux/files/data` — 叠影原位还原
+2. 叠影原位还原（注意路径已归一化，`files/..` = `/data/data/com.termux`）：
+   `mv /data/data/com.termux/shadow-archive-20261005-065301/data /data/data/com.termux/files/data`
 
 ---
 
