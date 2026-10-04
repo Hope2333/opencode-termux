@@ -1,0 +1,180 @@
+task-18 — v1 press5 正式 pacman 包 → oscar 安装 → 叠影归位 → 装机核验
+日期: 2026-10-04  执行: impl-oscar-dep  分支: native-android
+目标机: oscar 10.254.129.10:8022 (u0_a450 → uid 10115 u0_a115)
+        Linux localhost 3.18.140-mokee-g3592dbe76eff aarch64 Android
+仓库提交: 2c6b5f4  feat(pacman-compressed): OCOMP_SHIMS knob
+
+════════════════════════════════════════════════════════════════════
+1. 出包 — opencode1-compressed-1.18.32-9-aarch64.pkg.tar.gz
+════════════════════════════════════════════════════════════════════
+命令:
+  make pacman-compressed VER=1.18.32 PKGREL=9 OCOMP_SHIMS=none \
+    OPENCODE_COMPRESSED_BIN=$PWD/artifacts/build/1.18.32/beta103-press5/runtime/opencode-v1-1.18.32-beta103-press5
+
+包 sha256: ef9b28eba51752a4075b04148f0c3bb8b4a99eefa5262502d637865ad6c4f6c7
+           45824958 bytes
+           (oscar 侧 scp 后复算 sha256 一致)
+
+格式决定: .pkg.tar.gz（用户裁决）。生成器硬编码 PKGEXT='.pkg.tar.gz'，
+         -8 参考包同为 .gz，注释理由「payload 已 UPX 压过，gzip 足够」。
+
+包成员（13 条，零相对 usr/）:
+  .BUILDINFO  .INSTALL  .MTREE  .PKGINFO
+  data/data/com.termux/files/usr/bin/migrate-to-opencode1.sh
+  data/data/com.termux/files/usr/bin/opencode1            ← launcher
+  data/data/com.termux/files/usr/lib/opencode1/runtime/opencode  ← payload
+  (+ 各级目录条目)
+
+断言（独立复算，非仅信生成器自报）:
+  断言1 零相对 usr/ 成员         count(^usr/)            = 0        PASS
+  断言2 绝对成员齐全              count(^data/data/.../)  = 8        PASS
+  断言3 payload sha == press5     33e982f4…826ff          = 33e982f4…826ff  PASS
+        （press5 MANIFEST 记载 pressed_sha256 一致）
+  断言4 launcher 在位            bin/opencode1            PASS
+  断言5 零外部 .so               count(\.so$)             = 0        PASS
+  断言6 .MTREE 逐条目校验        6 条目 size+sha256       FAIL=0    PASS
+  断言7 repack 幂等              SKIP（已绝对约定）        PASS
+  .PKGINFO: pkgname=opencode1-compressed  pkgver=1.18.32-9  arch=aarch64
+
+生成器改动（入仓 2c6b5f4）:
+  - OCOMP_SHIMS = "crhandler pty epoll" 子集或 "none"，驱动三个 SHIP_*
+    开关并烘进 PKGBUILD 副本（配方自描述，不依赖 makepkg 构建 env）。
+    默认未设 = 全嵌入 = 历史契约不变。
+  - 守卫随开关走: SHIP_CR_HANDLER=1 断言 shim 出包; OCOMP_SHIMS=none
+    反转为「零外部 .so」断言（此时漏出 .so 是打包 bug）。
+    另补 pty splice 守卫。
+  - 新增 payload 身份守卫: 包内 runtime sha256 必须等于输入二进制，
+    杜绝「按路径捡到陈旧产物」。
+  - 修 Makefile 既有 bug: repack 兜底循环 glob 的是
+    *-compressed-$(VER)-*.pkg.*，会命中 packing/pacman/ 里全部历史包，
+    而 pkg-abs-repack.sh 会 bump pkgrel 并删输入 → 一次
+    `make pacman-compressed` 会把整排历史包重新编号。已收窄到刚构建的
+    精确 pkgver。（phase0 b123ba9 引入）
+
+回归（默认路径未回退）: OCOMP_SHIMS 未设 + 供 -8 的 crhandler 重打，
+  产出成员与 -8 同构（4 个 .so + launcher），crhandler/pty/epoll 三个
+  守卫全 OK。
+
+════════════════════════════════════════════════════════════════════
+2. 传输 + 安装
+════════════════════════════════════════════════════════════════════
+scp → /mnt/sdcard_ext4/apps/，oscar 侧 sha256 复核 = ef9b28eb…  一致
+
+  pacman -U --noconfirm --overwrite '*' <pkg>      PACMAN_RC=0
+
+装机前: opencode1-compressed 1.18.32-7（相对 usr/ 约定 + 4 shim）
+装机后: opencode1-compressed 1.18.32-9（绝对 data/data/… 约定 + 零外部 .so）
+旁系:   opencode-compressed 2.0.12-2（v2 线，未触碰；bin/opencode
+        与 lib/opencode 均在）
+
+落盘验证:
+  db files 记录 data/data/com.termux/files/usr/...（绝对约定，RootDir=/
+  下正好落对）
+  $PREFIX/lib/opencode1/runtime/opencode sha = 33e982f4…826ff  = press5
+  叠影目录文件数装机前后均 22209（本次安装零新增，正确）
+
+安装期发现并处置（详见 §3 归位）:
+  -7 的 4 个 shim 残留成「无主孤儿」——pacman 卸载 -7 时按其相对 db
+  路径（usr/…）stat 失败，文件没删掉（安装日志里 13 条
+  "could not get file information for usr/…" 即此）。
+  这 4 个文件被 launcher 的 feature-detect 命中，会往 press5 注入:
+    BUN_PTY_LIB=…/pty/librust_pty_arm64_musl_patched.so  ← musl pty
+    LD_PRELOAD=…/libopencode-compat.so                    ← epoll shim
+  即 press5「零外部 .so」设计要消除的两条注入路径，被旧包残骸重新接上
+  （musl pty lib 强塞进 bionic 进程正是当初要规避的错库风险）。
+  处置: 判 pacman -Qo 四者皆 "No package owns" → 先 tar 备份
+  /mnt/sdcard_ext4/apps/a2todo16/orphan-shim-backup-20261004-174852/
+  （含各文件 sha256），再删；复查 launcher 不再注入任何变量。
+
+════════════════════════════════════════════════════════════════════
+3. 叠影归位
+════════════════════════════════════════════════════════════════════
+现状: pacman.conf RootDir 已注释回落 /（前轮手修，fix19-min）。
+      叠影顶层 = <原 RootDir>/data = /data/data/com.termux/files/data
+      规模 1.2G / 22209 文件 / 1429 目录。
+
+未跑 fix20 原脚本的原因（重要）:
+  fix20 [12/20] 是 `pacman -Syyu` 全量系统升级，会在这台 3.18 内核机上
+  重装 glibc / bash / openssh / python —— 而 ssh 通道正跑在这套包上。
+  受影响集合实测含 openssh/bash/zsh/git/python/glibc/bash-completion 等
+  50 包，触发全量升级风险远大于本任务归位目标。
+  改为「先审计、再按内容归位」，全程零包管理事务、零网络升级。
+
+审计（shadow-audit.sh，对 50 个受影响包逐条比对 db mtree）:
+  OK=11154  RESTORABLE=2909  STALE=0  ABSENT=2
+  - RESTORABLE = 正确路径缺失 + 叠影副本存在 + sha256 与 db mtree 逐条
+    相符 → 纯 mv 即可还原，内容与包管理器期望完全一致。
+  - STALE=0 是关键：无一例内容漂移，说明叠影副本就是包管理器装的原件。
+  - ABSENT=2 是解析器对含空格文件名的假阳性
+    （termux-licenses 的 "Public Domain.txt"/"VIM License.txt"），
+    已单独核实两文件在正确路径均在。
+
+归位（shadow-relocate.sh，rename 而非重装）:
+  第一轮 moved=2909 skipped=0 failed=0        （正则文件）
+  复检: Qk_PASS=39 Qk_FAIL=11
+  第二轮 moved=980  skipped=0 failed=0        （补符号链接）
+  复检: Qk_PASS=50 Qk_FAIL=0                  ✅
+
+  第一轮漏符号链接的根因: db mtree 里 symlink 记为 type=link link=…
+  且无 sha256digest，按 sha256 过滤会静默丢掉全部软链（htop/share/doc/
+  copyright、git/libexec/git-core/*、libmd 全部 man/*）。审计脚本已改为
+  同时处理两类条目，软链按 db 记录的目标重建（ln -sfn）。
+
+清理前安全门（全量实测，非抽样）:
+  剩余叠影文件 19300
+  其中在正确路径无对应者（孤儿）= 0     → 全为冗余副本
+  备份: /mnt/sdcard_ext4/apps/a2todo16/ghost-backup-20261004-180132/ghost.tar
+        1148579840 bytes / tar -tf 计 30796 条（22209 文件 + 目录）
+        删除前复验 tar -tf 可读 = BACKUP_TAR_OK
+  用户交互确认后执行 rm -rf /data/data/com.termux/files/data  RC=0
+
+清理后复检:
+  SHADOW_REMOVED（该路径不存在）
+  PREFIX_DATA_ABSENT（fix19 关注的 B 类候选 $PREFIX/data 也不存在）
+  全局 pacman -Qkk: TOTAL_MISSING_FILES=0
+    （altered=214 为既有配置漂移，如用户自改的 etc/zshrc，与本次归位无关）
+  files1 旧容器: files1_INTACT（全程未碰）
+
+════════════════════════════════════════════════════════════════════
+4. 装机后功能核验（四项）
+════════════════════════════════════════════════════════════════════
+① opencode1 --version = 1.18.32                    rc=0   PASS
+   （入口为 $PREFIX/bin/opencode1 launcher）
+
+② opencode1 session list —— 迁移后 4 条历史会话仍在        PASS
+   ses_efebeaa16fferuirgodSScTxso  测试        6:14 PM · 10/3/2026
+   ses_efebe9dd4ffewSuEbabdnH63y7  测试        6:13 PM · 10/3/2026
+   ses_efebe9e29ffe316hbu37t8kjy7  测试        6:13 PM · 10/3/2026
+   ses_efebead57ffeaC3dsm55SEWym0  功能测试    6:13 PM · 10/3/2026
+
+③ TUI 冒烟（真 PTY，判据 = 渲染帧 + 键入回显 DELTA>0）        PASS
+   tui_smoke_press.py（本次专用；仓库既有 tools/transplant/tui_smoke.py
+   断言的是 $TMPDIR/.bun-*.so 抽取 + swap_tui FFI guard，那是 todo16
+   之前的设计——press5 的 pty 在 bun store chunk 内且零外部 .so，用
+   「有没有 .bun-*.so」判会对健康运行时误报 FAIL，故按本任务判据另写）
+     render: bytes=9020 frames=1 glyphs=163 sgr=True  → YES
+     echo:   keys_sent=5 out_delta=175                → YES
+     exit=0  panic=no
+   原始帧去 ANSI 后可读内容（自证是真实 TUI 而非杂散输出）:
+     "⠋ Loading plugins… ⠙" + ASCII logo + "Ask anything…" +
+     "1.18.32" + "Build · Big Pickle OpenCode Zen" + 末尾回显的 "hello"
+
+④ payload 与树状态                                                PASS
+   runtime sha256 = 33e982f4…826ff = press5（与包内一致）
+   lib/opencode1/ 仅剩 runtime/（孤儿 shim 已清，launcher 零注入）
+   叠影两类顶层均不存在；files1 完好；v2 线未动
+
+════════════════════════════════════════════════════════════════════
+5. 装机前后对比小结
+════════════════════════════════════════════════════════════════════
+  包版本        1.18.32-7  →  1.18.32-9
+  路径约定      相对 usr/  →  绝对 data/data/com.termux/files/usr/
+  外部 .so      4 个（crhandler+pty×2+epoll） → 0 个
+  launcher      有        →  有
+  受影响包归位  —         →  50 包 / 3889 文件（2909 正则 + 980 软链）
+  pacman -Qk    50 包 FAIL  →  50 包 PASS
+  全局缺失文件  2909      →  0
+  叠影占用      1.2G      →  0（已备份至 sdcard）
+  v1 会话       4 条      →  4 条（无损）
+
+未 push（发布序列归 Phase 2）。oscar 上 v2 serve 未触碰。
