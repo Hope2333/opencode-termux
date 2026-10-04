@@ -1,0 +1,116 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# opencode1 launcher — dual-generation data isolation (v12.1, task-22 hardened).
+#
+# Why: the v1 runtime hardcodes the plain `opencode/` roots (live-fd verified;
+# OPENCODE_CONFIG_DIR and friends are enumerated but NOT consumed). The four
+# XDG_*_HOME exports re-root every path under an `opencode1/` isolation prefix;
+# the runtime then appends its own `opencode/` suffix, landing in the NESTED
+# layout migrate-to-opencode1.sh isolate maintains: <root>/opencode1/opencode/.
+# v2 keeps the plain roots untouched — the two generations never share a dir.
+#
+# task-22 strace audit (oscar, 2026-10-04) confirmed this: every write-mode
+# open (O_RDWR|O_CREAT) v1 performs lands under an opencode1/ prefix; the DB,
+# logs, state, locks and plugin cache are all generation-private.
+set -euo pipefail
+P="${PREFIX:-/data/data/com.termux/files/usr}"
+
+# ---------------------------------------------------------------- task-22 A5
+# Private TMPDIR. Previously v1 inherited $PREFIX/tmp and its runtime created
+# $PREFIX/tmp/opencode/ — the SAME directory v2 uses (strace: both generations
+# mkdirat "$PREFIX/tmp/opencode", v1 got EEXIST). A generation-private tmp
+# removes the last shared *writable* path. Created here (not at exec time)
+# because the runtime assumes TMPDIR already exists. Best-effort: on failure we
+# fall back to the inherited TMPDIR rather than aborting the launch.
+_TMP1="${TMPDIR:-$P/tmp}/opencode1"
+if mkdir -p "$_TMP1" 2>/dev/null; then
+	export TMPDIR="$_TMP1"
+else
+	echo "opencode1: WARN cannot create private TMPDIR $_TMP1, using inherited" >&2
+fi
+
+export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}/opencode1"
+export XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}/opencode1"
+export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.cache}/opencode1"
+export XDG_STATE_HOME="${XDG_STATE_HOME:-$HOME/.local/state}/opencode1"
+
+# ---------------------------------------------------------------- task-22 A7
+# LD_LIBRARY_PATH: v1 generation only. The former entry "$P/lib/opencode" (the
+# v2 root) was removed — with it gone, v1 can no longer dlopen v2's
+# libopencode-crhandler.so or v2's pty/*.so. Verified safe on oscar: with
+# lib/opencode stripped, `session list` output is byte-identical (4 sessions)
+# and the TUI renders a full frame with zero crash markers. lib/opencode1/ is
+# kept even though only runtime/ exists under it today: it is this generation's
+# own root and the pty/ + shim assets land there in the layered package layout.
+export LD_LIBRARY_PATH="$P/lib/opencode1:$P/lib/opencode1/pty${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+
+# ------------------------------------------------------------------ task-22 B
+# SHARED READ-ONLY CONTRACT: $HOME/.opencode/ (project scope).
+# This directory has NO generation prefix and XDG re-rooting cannot reach it
+# (it is resolved from cwd; with cwd=$HOME it becomes the "project" config).
+# opencode merges project scope with higher precedence than global scope, so v1
+# still reads $HOME/.opencode/opencode.json for its plugin list and that cannot
+# be displaced by any config copy under XDG_CONFIG_HOME. Accepted deliberately:
+#   - v1 only ever READS it. The audit found zero write-mode opens; the single
+#     mkdirat returned EEXIST. v1 cannot pollute v2's copy.
+#   - Both generations name the same two plugins (superpowers-zh, gstack), and
+#     each resolves them from its OWN cache under its own prefix
+#     (~/.cache/opencode1/opencode/packages/... for v1).
+#   - v1 has no env knob to disable project scope (no OPENCODE_*PROJECT/CONFIG/
+#     IGNORE in the binary; OPENCODE_CONFIG_DIR is enumerated but not consumed).
+# Consequence to remember: editing $HOME/.opencode/opencode.json changes v1's
+# plugin set too. Keep that file generation-agnostic.
+
+# service-port split (readiness fix, evidence: tools/opencode-readiness-fix/):
+# both v2 generations default the managed service port to 0xc0de=49374, but the
+# XDG isolation keeps their registration files apart — a plain-generation daemon
+# squatting 49374 is invisible to this generation's discovery, so every
+# `serve --service` contender dies of EADDRINUSE and the TUI handshake stalls
+# until ensure()'s 120s deadline ("Timed out waiting for the background
+# service"). Bootstrap a per-generation port (49376) in this generation's
+# service config: absent file -> write one; existing file without a "port" key
+# -> inject one (opencode writes pretty JSON whose first line is always "{").
+# Best-effort: any failure falls back to the stock default port.
+CFG_DIR="${XDG_CONFIG_HOME}/opencode"
+CFG_FILE="${CFG_DIR}/service.json"
+if [ ! -f "$CFG_FILE" ]; then
+	mkdir -p "$CFG_DIR" 2>/dev/null || true
+	printf '{"port": 49376}\n' > "$CFG_FILE" 2>/dev/null || true
+elif ! grep -q '"port"' "$CFG_FILE" 2>/dev/null; then
+	sed -i '1s/^{$/{\n  "port": 49376,/' "$CFG_FILE" 2>/dev/null || true
+fi
+
+# pty splice (optional asset, backward compatible): when the compressed package
+# ships the patched musl librust_pty (bun-pty 0.4.11 splice — see
+# tools/bun-pty-splice/ and docs/compressed-line.md), point bun-pty's
+# BUN_PTY_LIB probe at it so the runtime dlopens the bionic-compatible build
+# instead of failing on the inlined asset. Its DT_NEEDED shim.so resolves via
+# the pty dir added to LD_LIBRARY_PATH above. Old packages without the asset
+# are unaffected (no export).
+if [ -f "$P/lib/opencode1/pty/librust_pty_arm64_musl_patched.so" ]; then
+	export BUN_PTY_LIB="$P/lib/opencode1/pty/librust_pty_arm64_musl_patched.so"
+fi
+
+# epoll compat shim (optional asset, backward compatible): pre-#32490 bun
+# builds (v1.4.0 34cbb9a40, as shipped in 1.18.32-4) call epoll_pwait2
+# (syscall 441, kernel >= 5.1) via libc::syscall and crash on older kernels
+# (oscar 3.18.140: TUI SIGSEGV ~4.4s, see task-v1rebuild.txt). The shim
+# translates 441 -> epoll_pwait with a timespec->ms conversion. Injected via
+# LD_PRELOAD ONLY when the package shipped the asset; packages built before
+# the asset are unaffected (no export).
+if [ -f "$P/lib/opencode1/libepoll-compat.so" ]; then
+	export LD_PRELOAD="$P/lib/opencode1/libepoll-compat.so${LD_PRELOAD:+:$LD_PRELOAD}"
+fi
+
+# runtime probe order (task-22 A7): v1 generation only. The former fallback
+# "$P/lib/opencode/runtime/opencode" (the v2 binary) was removed — if this
+# generation's own runtime were ever missing, the old order would silently
+# exec v2's runtime under v1's XDG roots, writing v2's code into v1's
+# namespace. Failing loudly is the correct behaviour. lib/opencode1/runtime is
+# verified present on oscar (47178844 bytes).
+for _rt in "$P/lib/opencode1/runtime/opencode"; do
+	if [ -x "$_rt" ]; then
+		exec "$_rt" "$@"
+	fi
+done
+echo "opencode1: runtime not found under $P/lib/opencode1/runtime" >&2
+exit 127

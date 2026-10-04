@@ -330,3 +330,107 @@ A1 是唯一必需项。执行步骤（批准后）：
 
   建议：走方案 B（登记为共享只读契约），A5/A7 可独立放行。
 ================================================================
+
+================================================================
+8. 执行段 2：A5 + A7 + B 落地（方案 B 裁决后）
+================================================================
+裁决：采纳方案 B（~/.opencode/ 登记为两代共享只读契约，不动数据）；
+A1 写入的 opencode.json 保留（惰性、已证无害）；C / D 不做。
+A5 + A7 放行。本段记录实际执行、验证与我的一处自我纠错。
+
+--- 8.1 前置备份 ---
+  wrapper: cp $PREFIX/bin/opencode1 $PREFIX/tmp/opencode1.task22.bak
+          原 md5 fcde4f61f1febc80fdde9913734d1f44（73 行）
+  本地留档: ~/tmp-t22/opencode1.orig
+  新版留档: .omo/evidence/a2-v1-effect-rebuild/task-22-opencode1.wrapper
+  安装后 md5 9146aeccd5b581b3daeea7acb4721d91（6742 bytes, mode 755）
+  数据备份沿用 §7.1 的 task22-pre-20261004-225639.tar.gz（本段无数据改动）
+
+--- 8.2 自我纠错：A7 第一次干跑方法错误（重要）---
+  我最初用 `env LD_LIBRARY_PATH=... $P/lib/opencode1/runtime/opencode session list`
+  直接调 runtime 做 A7 干跑，**漏了 wrapper 的四个 XDG_*_HOME 导出**，
+  结果读到了 v2 的库、列出了 v2 的会话（本机 opencode 部署与运行信息 等），
+  而非 v1 的 4 会话。若据此汇报 "A7 安全" 就是假证据。
+  纠正：重跑时补齐 XDG_*_HOME，并用 `env -i` 构造干净环境复验。
+  教训：wrapper 的隔离能力**完全来自那四个 export**，绕过 wrapper 直调
+  runtime 等于绕过隔离 —— 后续任何 A5/A7 验证都必须经 $PREFIX/bin/opencode1。
+
+--- 8.3 A7 可行性先验证后落地（未先改后验）---
+  落地前实测 lib/opencode1/ 内容：只有 runtime/ 子目录，
+    $P/lib/opencode1/libc.so   -> 不存在
+    $P/lib/opencode1/libc++.so -> 不存在
+    $P/lib/opencode1/pty       -> 不存在
+  即 v1 自己不携带任何 .so，它加载的 libc/libc++/libdl/libm/libnetd_client/
+  libpcre2-8/libopencode-crhandler 全部来自 v2 的 $P/lib/opencode/。
+  移除该路径属于高风险改动，故先干跑再落地：
+    带 XDG 的正确干跑（补齐四个 export）：
+      WITH    lib/opencode: exit=0, 4 会话
+      WITHOUT lib/opencode: exit=0, 4 会话
+      两者 session list 输出 diff -> IDENTICAL（逐字节相同）
+    TUI 冒烟（12s，TERM=xterm-256color）：
+      WITH    -> exit=124（存活）
+      WITHOUT -> exit=124（存活），输出 438 字节完整 opentui 帧
+                 （含 ESC[?1049h 备用屏 / ESC[?1000h 鼠标 / Gi=31337 等能力协商），
+                 crash 特征计数 0
+  结论：A7 安全，可落地。
+
+--- 8.4 A5 实现（TMPDIR 私有化）---
+  落地位置：wrapper 内，四个 XDG export 之前。
+    _TMP1="${TMPDIR:-$P/tmp}/opencode1"
+    if mkdir -p "$_TMP1" 2>/dev/null; then export TMPDIR="$_TMP1"
+    else echo "opencode1: WARN ..." >&2; fi
+  两点设计取舍：
+    - 用 $P（已带 :- 默认值）而非 $PREFIX —— wrapper 顶部 set -euo pipefail，
+      若用户未设 PREFIX，$PREFIX 会触发 unbound variable 直接中止启动。
+      实现时我先写成 $PREFIX，自查时发现并改正。
+    - mkdir 失败只告警不中止：TMPDIR 私有化是加固，不该让它变成启动阻断点。
+  实测生效（mkdirat strace 证据）：
+    mkdirat("opencode1", 0777)                                  = EEXIST
+    mkdirat("$PREFIX/tmp/opencode1/opencode", 0777)            = EEXIST
+    => v1 现在自建 $PREFIX/tmp/opencode1/opencode，不再用 $PREFIX/tmp/opencode
+    => 验证跑 `usr/tmp/opencode` 命中数 = 0，v2 的 tmp 目录不再被 v1 触碰
+
+--- 8.5 B 落地（共享只读契约登记）---
+  以注释块写入 wrapper 头部「task-22 B」段，登记：
+    - $HOME/.opencode/ 无代际前缀，XDG re-root 够不到（cwd 解析）
+    - project scope 优先级高于 global scope，复制无法驱逐（§7.3 实证）
+    - v1 对该目录全程只读，零 write-mode open，唯一 mkdirat 得 EEXIST
+    - 两代同名插件 superpowers-zh / gstack，各从各自 cache 解析
+    - v1 无 env 可屏蔽 project scope（二进制 strings 实证 + wrapper 自证）
+    - 后果：日后编辑 $HOME/.opencode/opencode.json 会同时改变 v1 插件集，
+      故该文件须保持代际中立
+  纯注释，不改行为。
+
+--- 8.6 可执行代码差异（剔除注释与空行后 diff，全量）---
+  + _TMP1="${TMPDIR:-$P/tmp}/opencode1"                       <- A5 新增
+  + if mkdir -p "$_TMP1" 2>/dev/null; then
+  +   export TMPDIR="$_TMP1"
+  + else
+  +   echo "opencode1: WARN cannot create ..." >&2
+  + fi
+  - export LD_LIBRARY_PATH="$P/lib/opencode:$P/lib/opencode1:..."   <- A7 删 v2 根
+  + export LD_LIBRARY_PATH="$P/lib/opencode1:$P/lib/opencode1/pty..."
+  - for _rt in "$P/lib/opencode1/runtime/opencode" "$P/lib/opencode/runtime/opencode"
+  + for _rt in "$P/lib/opencode1/runtime/opencode"                    <- A7 删 v2 回退
+  - echo "...not found under ...lib/opencode1/runtime or ...lib/opencode/runtime"
+  + echo "opencode1: runtime not found under $P/lib/opencode1/runtime"
+  其余 73 行原有逻辑（service-port split / pty splice / epoll shim）逐字未动。
+  保留 lib/opencode1 与 lib/opencode1/pty 两个候选：本代自己的根，
+  分层包布局下 pty/ 与 shim 资产会落在那里。
+
+--- 8.7 验证结果汇总 ---
+  wrapper 语法      bash -n 本地 + 设备端各一次 -> SYNTAX OK
+  A5 生效          $PREFIX/tmp/opencode1 存在；v1 mkdirat 落到其下；
+                   `usr/tmp/opencode` 命中 0
+  A7 生效          v1 strace 中 v2 根 .so 命中集合为空（移除前实测
+                   libopencode-crhandler.so 会被 dlopen，现已不会）
+  v1 功能          session list 4 会话；db quick_check ok / session 表 4 行；
+                   debug config plugin = [superpowers-zh, gstack]（合并结果与
+                   改动前逐字一致）；TUI 冒烟 exit=124 存活、438 字节完整帧、
+                   crash 计数 0
+  v2 零影响        pid 18724 / 27905 存活且 cmdline 未变；
+                   4096 在听（/proc/net/tcp :1000 = 1）；db size 56393728 未变
+                   （mtime 23:08 系本次诊断自身跑的 v2 CLI 查询所致，非改动影响）；
+                   v2 session list 正常 2 会话；v2 wrapper md5 4e8852d7bf32927b8ac479af991d14c4
+                   未被触碰（我只改了 $PREFIX/bin/opencode1）
+================================================================
