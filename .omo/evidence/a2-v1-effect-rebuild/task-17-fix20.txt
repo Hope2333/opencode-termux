@@ -68,6 +68,70 @@ task-17 fix20 全案证据（impl-fix20，2026-10-04）
 - hope2333.github.io commit: d890bb0
 - opencode-termux branch: rc6-a2/fix20-mirrorlist（见本仓 commit 记录）
 - pkg sha256: 见下（sha256sum 输出附录）
+958584cbc6097c1544d0a4ce02846b60b6c694404f5c1742af35632c11c8cc73  hope2333-mirrorlist-1.0.20261004-1-any.pkg.tar.xz（已作废，被 -2 取代）
+86de3b4b0c92d419791c47c9381d98f3afbc5faf6f9c72d15c4df479a2cbc2bd  hope2333.db（-1 版，已作废）
+ac8ba829016ee5f525c03dbdb19192202e14f69d9006db05e17cbd0c4a43f92e  hope2333.db.tar.gz（-1 版，已作废）
+
+---
+
+# 第二轮（用户订正 2026-10-04，覆盖两点）
+
+## 订正内容
+①hook 从「检出打印指引」改为「静默无感；检出 → 打印 + 直接自动修复」——
+  包内自带修复脚本（usr/lib/hope2333/repair-doubled.sh），离线可修，不依赖 curl。
+②判据改为递归检出 <RootDir>/data/data/com.termux/files/usr 子树存在且非空
+  （空壳不算病）；修复流程 = RootDir 注释回落 / → 反查受影响包重装归位
+  （--overwrite）→ 复检叠影 → 打印摘要；任何一步失败红字 + 保留现场 +
+  指向 fix20 手动脚本，不静默吞错。
+③fix20 独立脚本保留（hook 修复失败/离线场景手动跑），两者同修复语义。
+
+## 新交付物
+- hope2333.github.io/scripts/repair-doubled.sh（共享修复实现，随包安装于
+  $PREFIX/lib/hope2333/repair-doubled.sh）：
+  - 健康门：无叠影子树 / 仅剩冗余副本（RootDir 已回落且全部 -Qk 过）→ 静默 exit 0
+    （保证修复后残留副本不会在每次升级时反复触发）
+  - 病灶 = 叠影子树非空 且（RootDir 活动态 或 存在 -Qk 缺文件包）
+  - 锁感知：.INSTALL hook 在 pacman 事务内被调（scriptlet 持锁），pacman -S
+    不可重入 → 检测到 db.lck 即派生延迟进程（pacman 退出释放锁后自动续跑），
+    输出落 ~/hope2333-repair.log 并尽力写 /dev/tty；手动模式同步执行
+  - 归位只重装「正确路径缺文件」的包（-Qk 不过者）：旧双叠直录包（-Qk 过）
+    不动——重装它们只会再写叠影，等 repack 版才是正解
+  - 断言：叠影文件数不得增长 + 逐包 -Qk 复检；失败 → fail() 红字 + 保留现场
+    + fix20 URL + exit 1
+- site.yml .INSTALL v11：_check_pacshadow 静默调用包内修复脚本（脚本自带健康门）；
+  修复脚本缺失时才做递归判病 + 手动指引兜底。CI 同步 cp scripts/repair-doubled.sh。
+- site.yml PKGBUILD v11：成员迁移为绝对路径约定（data/data/com.termux/files/usr/...，
+  与重打包应用包一致；旧相对 usr/ 成员在 RootDir 回落后会写到 /usr/etc 必坏，
+  自动修复重装 mirrorlist 自身也要求绝对成员）；backup= 同步迁移；
+  repair-doubled.sh 入包 usr/lib/hope2333/。
+- fix20 脚本：shadow_tops 判据同步改为「递归子树非空」（空壳不算病）；
+  头注标明本脚本为手动/兜底路径。
+
+## 修复脚本测试矩阵（mock FS + stub pacman，T1-T6 全过）
+- T1 健康（无叠影）：exit 0 零输出 ✓
+- T2 空壳子树（仅目录无文件）：exit 0 零输出 ✓（空壳不算病）
+- T3 病灶手动修复：RootDir 注释 ✓、pkgA（绝对约定、缺文件）重装落位 ✓、
+  pkgB（旧双叠直录、-Qk 过）不动 ✓、摘要绿字 ✓
+- T4 修复后重跑：静默 exit 0 ✓（冗余副本不复发触发）
+- T5 重装失败（stub -S exit 1）：exit 1、红字、现场保留（叠影文件仍在）、
+  fix20 指引 ✓
+- T6 事务内锁持有：立即打印「已调度自动修复」+ exit 0；锁释放后延迟进程
+  自动完成（日志落盘 + RootDir 注释 + 归位落位）✓
+
+## 重打与 db（第二轮）
+- 版本 1.0.20261004-2（pkgrel 递增；-1 作废未发布）
+- 产物（build/mirrorlist-local/）：
+  hope2333-mirrorlist-1.0.20261004-2-any.pkg.tar.xz
+  sha256 845c9cc12b0a39c2e2b25ff4cc20b0c84fcbaabbfb68327121429949e9e73c0e
+  hope2333.db / hope2333.db.tar.gz（同 hash 908f5dba…，Pages 线上 db 顶替 mirrorlist 条目，
+  11 条目，干净 conf pacman -Sl/-Si 验证 1.0.20261004-2）
+- 包内验证：.INSTALL 含 _check_pacshadow；包内 repair-doubled.sh bash -n 过；
+  成员为绝对路径约定，零 terdir 污染（terdir 即载荷）。
+
+## hashes（第二轮）
+- hope2333.github.io commit:（见 git log —— 修复脚本 + site.yml v11 + NOTICE 订正）
+- opencode-termux commit:（见 git log —— fix20 判据对齐 + 证据/文案更新）
+- 旧 -1 产物作废说明：第一轮 -1 包为相对 usr/ 成员，未发布过，直接删除由 -2 取代。
 958584cbc6097c1544d0a4ce02846b60b6c694404f5c1742af35632c11c8cc73  hope2333-mirrorlist-1.0.20261004-1-any.pkg.tar.xz
 86de3b4b0c92d419791c47c9381d98f3afbc5faf6f9c72d15c4df479a2cbc2bd  hope2333.db
 ac8ba829016ee5f525c03dbdb19192202e14f69d9006db05e17cbd0c4a43f92e  hope2333.db.tar.gz

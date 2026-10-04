@@ -18,7 +18,8 @@ RootDir = /data/data/com.termux/files，绝对路径包被叠装入多余目录�
   bash <(curl -sL https://github.com/Hope2333/opencode-termux/releases/download/EarlyEmergencyRelease0/init-pacmanV00fix20.sh)
 
 脚本自动完成：注释 RootDir 回落默认 → 重装受影响包归位 → 校验落点 → 经确认后清理叠影目录。
-已装 hope2333-mirrorlist 的机器：更新该包时会自动检测，检出问题即打印上述修复命令。
+已装 hope2333-mirrorlist 的机器：更新该包时会自动检测并**直接修复**（离线完成，无需手动操作）；
+仅当自动修复失败时才红字提示并指向本手动脚本。
 预防：包生成器已加绝对路径断言门（零相对 usr/ 成员方可出包），install.sh 的 RootDir 写入已纠正。
 ```
 
@@ -35,7 +36,7 @@ RootDir = /data/data/com.termux/files，绝对路径包被叠装入多余目录�
 一键修复：
   bash <(curl -sL https://github.com/Hope2333/opencode-termux/releases/download/EarlyEmergencyRelease0/init-pacmanV00fix20.sh)
 
-无需手动操作的部分：已装 hope2333-mirrorlist 的机器，更新该包时将自动检测，
-并在发现问题时于安装输出中打印上述修复命令。
+无需手动操作的部分：已装 hope2333-mirrorlist 的机器，更新该包时将自动检测
+并**直接修复**（离线完成）；仅当自动修复失败时才红字提示并给出上述修复命令。
 详见公告文件：https://hope2333.github.io/NOTICE.md
 ```
