@@ -14,6 +14,15 @@ pkgrel=1
 # pkgname/pkgver/pkgrel/MIGRATE_HOOK are rewritten there.
 # MIGRATE_HOOK also gates the migrate helper install in package() below.
 MIGRATE_HOOK=0
+# Optional-shim switches, rewritten per build by package_pacman_compressed.sh
+# from its OCOMP_SHIMS knob. Defaults below are the historical contract (all
+# three shims embedded); a zero-external-.so runtime (e.g. the A2 todo16
+# bun-absorb press5 line, which carries its pty inside the bun store chunk and
+# uses bun's builtin epoll fallback) is built with OCOMP_SHIMS=none and gets a
+# launcher + payload only, with no .so escaping next to the runtime.
+SHIP_CR_HANDLER=1
+SHIP_PTY=1
+SHIP_EPOLL=1
 pkgdesc='OpenCode compressed variant for Termux (UPX-packed native bionic runtime, zero glibc)'
 arch=('aarch64')
 url='https://github.com/anomalyco/opencode'
@@ -46,16 +55,20 @@ package() {
     # v12.1 layered: UPX runtime under lib/opencode1/runtime/ + XDG-isolating launcher
     install -D -m755 "$OPENCODE_COMPRESSED_BIN" "$pkgdir/data/data/com.termux/files/usr/lib/opencode1/runtime/opencode"
     install -D -m755 "${REPO_ROOT:?REPO_ROOT must point at the repo root}/scripts/opencode1-launcher.sh" "$pkgdir/data/data/com.termux/files/usr/bin/opencode1"
-    # crhandler shim (REQUIRED, unconditional): UPX hides the DT_NEEDED string
-    # from grep, so the shim ships unconditionally (family contract).
-    : "${OPENCODE_CRHANDLER_SO:?OPENCODE_CRHANDLER_SO must point to libopencode-crhandler.so}"
-    mkdir -p "$pkgdir/data/data/com.termux/files/usr/lib/opencode1"
-    install -m755 "$OPENCODE_CRHANDLER_SO" "$pkgdir/data/data/com.termux/files/usr/lib/opencode1/libopencode-crhandler.so"
+    # crhandler shim: REQUIRED whenever SHIP_CR_HANDLER=1 (the DT_NEEDED string
+    # is hidden inside the UPX-compressed payload, so the shim ships
+    # unconditionally for UPX inputs). Skipped only for a zero-external-.so
+    # runtime that declares no DT_NEEDED at all.
+    if [[ "$SHIP_CR_HANDLER" == "1" ]]; then
+        : "${OPENCODE_CRHANDLER_SO:?OPENCODE_CRHANDLER_SO must point to libopencode-crhandler.so}"
+        mkdir -p "$pkgdir/data/data/com.termux/files/usr/lib/opencode1"
+        install -m755 "$OPENCODE_CRHANDLER_SO" "$pkgdir/data/data/com.termux/files/usr/lib/opencode1/libopencode-crhandler.so"
+    fi
     # pty splice assets (OPTIONAL): patched musl librust_pty + bionic shim from
     # tools/bun-pty-splice/build-splice.sh. Shipped when the packaging script
     # exports OPENCODE_PTY_SPLICE_DIR; the launcher injects BUN_PTY_LIB only
     # when the file exists (backward compatible with splice-less packages).
-    if [[ -n "${OPENCODE_PTY_SPLICE_DIR:-}" ]]; then
+    if [[ "$SHIP_PTY" == "1" && -n "${OPENCODE_PTY_SPLICE_DIR:-}" ]]; then
         if [[ -f "$OPENCODE_PTY_SPLICE_DIR/librust_pty_arm64_musl_patched.so" && -f "$OPENCODE_PTY_SPLICE_DIR/shim.so" ]]; then
             install -D -m755 "$OPENCODE_PTY_SPLICE_DIR/librust_pty_arm64_musl_patched.so" \
                 "$pkgdir/data/data/com.termux/files/usr/lib/opencode1/pty/librust_pty_arm64_musl_patched.so"
@@ -70,7 +83,7 @@ package() {
     # epoll_pwait2(441) -> epoll_pwait for pre-#32490 bun builds. Shipped
     # when the packaging script exports OPENCODE_EPOLL_SHIM_SO; the launcher
     # injects LD_PRELOAD only when the file exists (backward compatible).
-    if [[ -n "${OPENCODE_EPOLL_SHIM_SO:-}" ]]; then
+    if [[ "$SHIP_EPOLL" == "1" && -n "${OPENCODE_EPOLL_SHIM_SO:-}" ]]; then
         if [[ -f "$OPENCODE_EPOLL_SHIM_SO" ]]; then
             install -m755 "$OPENCODE_EPOLL_SHIM_SO" "$pkgdir/data/data/com.termux/files/usr/lib/opencode1/libepoll-compat.so"
             msg "epoll compat shim installed under usr/lib/opencode1/"

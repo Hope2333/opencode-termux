@@ -36,6 +36,37 @@ PACKAGER_NAME="${PACKAGER_NAME:-Hope2333(幽零小喵) <u0catmiao@proton.me>}"
 PKGREL="${PKGREL:-1}"
 TRANSPLANT_ROOT="${TRANSPLANT_ROOT:-$ROOT_DIR/artifacts/transplant}"
 
+# Optional-shim selection (OCOMP_SHIMS): space-separated subset of
+# "crhandler pty epoll", or "none" for a launcher+payload-only package.
+#   default (unset) -> "crhandler pty epoll": the historical contract, every
+#                      shim embedded, nothing escaping next to the runtime.
+#   none            -> zero-external-.so build (A2 todo16 bun-absorb press5
+#                      line: pty lives in the bun store chunk, epoll uses bun's
+#                      builtin fallback, no DT_NEEDED at all).
+# The switches are baked into the PKGBUILD copy as SHIP_* literals so the
+# built recipe is self-describing rather than depending on build-time env.
+OCOMP_SHIMS="${OCOMP_SHIMS:-crhandler pty epoll}"
+if [[ "$OCOMP_SHIMS" != "none" ]]; then
+	read -r -a _shims <<<"$OCOMP_SHIMS"
+	for _s in "${_shims[@]}"; do
+		case "$_s" in
+			crhandler | pty | epoll) ;;
+			*)
+				echo "Error: OCOMP_SHIMS must be a subset of 'crhandler pty epoll' or 'none' (got: '$OCOMP_SHIMS')" >&2
+				exit 1
+				;;
+		esac
+	done
+fi
+has_shm() { [[ " $OCOMP_SHIMS " == *" $1 "* ]]; }
+SHIP_CR_HANDLER=0
+SHIP_PTY=0
+SHIP_EPOLL=0
+has_shm crhandler && SHIP_CR_HANDLER=1
+has_shm pty && SHIP_PTY=1
+has_shm epoll && SHIP_EPOLL=1
+echo "optional shims: OCOMP_SHIMS='$OCOMP_SHIMS' (crhandler=$SHIP_CR_HANDLER pty=$SHIP_PTY epoll=$SHIP_EPOLL)"
+
 command -v makepkg >/dev/null 2>&1 || {
 	echo "Error: makepkg not found" >&2
 	exit 1
@@ -68,20 +99,27 @@ COMPRESSED_BIN="${OPENCODE_COMPRESSED_BIN:-$TRANSPLANT_ROOT/$VERSION/opencode-na
 COMPRESSED_BIN="$(readlink -f "$COMPRESSED_BIN")"
 
 # Same T5-class fix for the crhandler shim: package() resolves it from the
-# makepkg cwd, so a relative path would fail there.
-OPENCODE_CRHANDLER_SO="$(readlink -f "${OPENCODE_CRHANDLER_SO:?OPENCODE_CRHANDLER_SO must point to libopencode-crhandler.so}")"
+# makepkg cwd, so a relative path would fail there. Only resolved when the
+# build actually ships it (OCOMP_SHIMS without crhandler = zero-external-.so).
+if [[ "$SHIP_CR_HANDLER" == "1" ]]; then
+	OPENCODE_CRHANDLER_SO="$(readlink -f "${OPENCODE_CRHANDLER_SO:?OPENCODE_CRHANDLER_SO must point to libopencode-crhandler.so}")"
+	export OPENCODE_CRHANDLER_SO
+else
+	unset OPENCODE_CRHANDLER_SO || true
+	echo "crhandler shim not shipped (OCOMP_SHIMS='$OCOMP_SHIMS' — zero-external-.so build)"
+fi
 
 # pty splice assets (OPTIONAL, backward compatible): pass the splice dir to
 # package() only when both files exist; otherwise PKGBUILD ships without and
 # the launcher degrades gracefully (no BUN_PTY_LIB injection).
 PTY_SPLICE_DIR="${OPENCODE_PTY_SPLICE_DIR:-$ROOT_DIR/tools/bun-pty-splice/dist}"
-if [[ -f "$PTY_SPLICE_DIR/librust_pty_arm64_musl_patched.so" && -f "$PTY_SPLICE_DIR/shim.so" ]]; then
+if [[ "$SHIP_PTY" == "1" && -f "$PTY_SPLICE_DIR/librust_pty_arm64_musl_patched.so" && -f "$PTY_SPLICE_DIR/shim.so" ]]; then
 	OPENCODE_PTY_SPLICE_DIR="$(readlink -f "$PTY_SPLICE_DIR")"
 	export OPENCODE_PTY_SPLICE_DIR
 	echo "pty splice assets: shipping from $OPENCODE_PTY_SPLICE_DIR"
 else
 	unset OPENCODE_PTY_SPLICE_DIR || true
-	echo "pty splice assets not found under $PTY_SPLICE_DIR — shipping without (launcher degrades gracefully)"
+	echo "pty splice assets not shipped (OCOMP_SHIMS='$OCOMP_SHIMS' or assets missing under $PTY_SPLICE_DIR — launcher degrades gracefully)"
 fi
 
 # epoll compat shim (OPTIONAL, backward compatible, v1 family ONLY — v2
@@ -89,13 +127,13 @@ fi
 # exists; otherwise PKGBUILD ships without and the launcher skips the
 # LD_PRELOAD block. Built by tools/epoll-shim/build-android.sh.
 EPOLL_SHIM="${OPENCODE_EPOLL_SHIM_SO:-$ROOT_DIR/tools/epoll-shim/dist/libepoll-compat.so}"
-if [[ "$FAMILY" == "opencode1" && -f "$EPOLL_SHIM" ]]; then
+if [[ "$SHIP_EPOLL" == "1" && "$FAMILY" == "opencode1" && -f "$EPOLL_SHIM" ]]; then
 	OPENCODE_EPOLL_SHIM_SO="$(readlink -f "$EPOLL_SHIM")"
 	export OPENCODE_EPOLL_SHIM_SO
 	echo "epoll compat shim: shipping from $OPENCODE_EPOLL_SHIM_SO"
 else
 	unset OPENCODE_EPOLL_SHIM_SO || true
-	echo "epoll compat shim not shipped (v2 family or asset missing at $EPOLL_SHIM)"
+	echo "epoll compat shim not shipped (v2 family, OCOMP_SHIMS='$OCOMP_SHIMS', or asset missing at $EPOLL_SHIM)"
 fi
 
 # v1 migration helper + hook (v1 family ONLY — v2 output stays byte-identical):
@@ -145,6 +183,13 @@ if [[ "$FAMILY" == "opencode" ]]; then
 fi
 sed -i "s/^pkgver=.*/pkgver=$VERSION/" "$TMP_PKGBUILD"
 sed -i "s/^pkgrel=.*/pkgrel=$PKGREL/" "$TMP_PKGBUILD"
+# Bake the optional-shim switches (OCOMP_SHIMS) as PKGBUILD literals so the
+# recipe is self-describing and makepkg's clean build env needs no exports.
+sed -i \
+	-e "s/^SHIP_CR_HANDLER=.*/SHIP_CR_HANDLER=$SHIP_CR_HANDLER/" \
+	-e "s/^SHIP_PTY=.*/SHIP_PTY=$SHIP_PTY/" \
+	-e "s/^SHIP_EPOLL=.*/SHIP_EPOLL=$SHIP_EPOLL/" \
+	"$TMP_PKGBUILD"
 if [[ "${MIGRATE_SHIP:-0}" == "1" ]]; then
 	sed -i 's/^MIGRATE_HOOK=.*/MIGRATE_HOOK=1/' "$TMP_PKGBUILD"
 fi
@@ -191,6 +236,28 @@ if [[ -n "$BUILT_PKG" ]]; then
     echo "Convention guard: OK (absolute data/data/com.termux/files/usr/ members, no relative usr/)"
 fi
 
+# payload identity guard: the staged runtime inside the package MUST be
+# byte-identical to the compressed binary handed in. makepkg normalizes
+# ownership/permissions, never content, so a sha256 comparison is exact —
+# this is what proves the package carries the intended build (e.g. a
+# specific press candidate) rather than a stale artifact picked up by path.
+if [[ -n "$BUILT_PKG" ]]; then
+    RUNTIME_MEMBER="data/data/com.termux/files/usr/lib/$FAMILY/runtime/opencode"
+    GOT_SHA=$(gzip -dc "$BUILT_PKG" 2>/dev/null | tar -xOf - "$RUNTIME_MEMBER" 2>/dev/null | sha256sum | cut -d' ' -f1 || true)
+    if [[ -z "$GOT_SHA" ]]; then
+        # .gz is the family default; fall back to a plain listing decompressor.
+        GOT_SHA=$(bsdtar -xOf "$BUILT_PKG" "$RUNTIME_MEMBER" 2>/dev/null | sha256sum | cut -d' ' -f1 || true)
+    fi
+    WANT_SHA=$(sha256sum "$COMPRESSED_BIN" | cut -d' ' -f1)
+    if [[ "$GOT_SHA" != "$WANT_SHA" ]]; then
+        echo "FATAL: payload identity mismatch" >&2
+        echo "  packaged runtime sha256: ${GOT_SHA:-<unreadable>}" >&2
+        echo "  input binary   sha256: $WANT_SHA ($COMPRESSED_BIN)" >&2
+        exit 1
+    fi
+    echo "payload guard: OK (runtime sha256 $WANT_SHA matches $COMPRESSED_BIN)"
+fi
+
 # launcher guard (unconditional): the launcher is the ONLY supported entry —
 # the UPX stub maps segments under /memfd:upx where DT_RUNPATH $ORIGIN
 # resolution dies, so a direct runtime exec cannot find libopencode-crhandler.so.
@@ -204,18 +271,39 @@ if [[ -n "$BUILT_PKG" ]]; then
     echo "launcher guard: OK (data/data/com.termux/files/usr/bin/$FAMILY shipped)"
 fi
 
-# crhandler guard (unconditional): the package MUST contain the shim.
+# crhandler guard (conditional on OCOMP_SHIMS): asserted when the build
+# declared the shim, and inverted into a zero-external-.so assertion when the
+# build declared OCOMP_SHIMS=none — a package that leaks a .so next to the
+# runtime in that mode is a packaging bug, not a harmless extra.
 if [[ -n "$BUILT_PKG" ]]; then
-    if ! bsdtar -tf "$BUILT_PKG" | grep -E 'data/data/com.termux/files/usr/lib/(opencode|opencode1)/libopencode-crhandler.so' >/dev/null; then
-        echo "FATAL: package does not ship libopencode-crhandler.so" >&2
+    if [[ "$SHIP_CR_HANDLER" == "1" ]]; then
+        if ! bsdtar -tf "$BUILT_PKG" | grep -E 'data/data/com.termux/files/usr/lib/(opencode|opencode1)/libopencode-crhandler.so' >/dev/null; then
+            echo "FATAL: package does not ship libopencode-crhandler.so" >&2
+            exit 1
+        fi
+        echo "crhandler guard: OK (shim shipped)"
+    else
+        if bsdtar -tf "$BUILT_PKG" | grep -E '\.so$' >/dev/null; then
+            echo "FATAL: zero-external-.so build (OCOMP_SHIMS=none) leaked a .so member:" >&2
+            bsdtar -tf "$BUILT_PKG" | grep -E '\.so$' >&2
+            exit 1
+        fi
+        echo "zero-external-.so guard: OK (no .so members in package)"
+    fi
+fi
+
+# pty splice guard (conditional on OCOMP_SHIMS + asset presence).
+if [[ -n "$BUILT_PKG" && "$SHIP_PTY" == "1" && -n "${OPENCODE_PTY_SPLICE_DIR:-}" ]]; then
+    if ! bsdtar -tf "$BUILT_PKG" | grep -E 'data/data/com.termux/files/usr/lib/(opencode|opencode1)/pty/' >/dev/null; then
+        echo "FATAL: package does not ship the pty splice assets" >&2
         exit 1
     fi
-    echo "crhandler guard: OK (shim shipped)"
+    echo "pty splice guard: OK (assets shipped)"
 fi
 
 # epoll shim guard (conditional, v1 family): asserted only when the shim
 # asset exists at build time (same optional contract the launcher injects by).
-if [[ -n "$BUILT_PKG" && "$FAMILY" == "opencode1" && -f "${OPENCODE_EPOLL_SHIM_SO:-/nonexistent}" ]]; then
+if [[ -n "$BUILT_PKG" && "$SHIP_EPOLL" == "1" && "$FAMILY" == "opencode1" && -f "${OPENCODE_EPOLL_SHIM_SO:-/nonexistent}" ]]; then
     if ! bsdtar -tf "$BUILT_PKG" | grep -E 'data/data/com.termux/files/usr/lib/opencode1/libepoll-compat.so' >/dev/null; then
         echo "FATAL: package does not ship libepoll-compat.so" >&2
         exit 1
