@@ -43,10 +43,10 @@ printf "\nPACKAGER=%q\n" "$PACKAGER_NAME" >>"$TMP_MAKEPKG_CONF"
 cp "$ROOT_DIR/packing/pacman/PKGBUILD" "$TMP_PKGBUILD"
 sed -i "s/^pkgver=.*/pkgver=$VERSION/" "$TMP_PKGBUILD"
 sed -i "s/^pkgrel=.*/pkgrel=$PKGREL/" "$TMP_PKGBUILD"
-# Bin-only: ship ONLY usr/bin/opencode (no full-prefix copy)
-# The PKGBUILD template is already edited for bin-only; these sed commands
-# enforce it on the temp copy as a safety net.
-sed -i '/^package() {/,/^}/c\package() {\n  mkdir -p "$pkgdir/usr/bin" "$pkgdir/usr/lib/opencode/runtime"\n  install -D -m755 "${_staged_prefix}/lib/opencode/runtime/opencode" "$pkgdir/usr/lib/opencode/runtime/opencode"\n  install -D -m755 "$REPO_ROOT/scripts/opencode1-launcher.sh" "$pkgdir/usr/bin/opencode1"\n}' "$TMP_PKGBUILD"
+# Bin-only + phase0 absolute convention: ship ONLY usr/bin/opencode1 under the
+# termux-pacman absolute member form data/data/com.termux/files/usr/...
+# These sed commands enforce it on the temp copy as a safety net.
+sed -i '/^package() {/,/^}/c\package() {\n  mkdir -p "$pkgdir/data/data/com.termux/files/usr/bin" "$pkgdir/data/data/com.termux/files/usr/lib/opencode/runtime"\n  install -D -m755 "${_staged_prefix}/lib/opencode/runtime/opencode" "$pkgdir/data/data/com.termux/files/usr/lib/opencode/runtime/opencode"\n  install -D -m755 "$REPO_ROOT/scripts/opencode1-launcher.sh" "$pkgdir/data/data/com.termux/files/usr/bin/opencode1"\n}' "$TMP_PKGBUILD"
 # Remove hook scripts that reference dropped files (run-system-skills.sh)
 sed -i '/^post_install() {/,/^}/d; /^post_upgrade() {/,/^}/d; /^pre_remove() {/,/^}/d; /^post_remove() {/,/^}/d' "$TMP_PKGBUILD"
 
@@ -56,7 +56,7 @@ sed -i '/^post_install() {/,/^}/d; /^post_upgrade() {/,/^}/d; /^pre_remove() {/,
 # with no opencode1 command. The sed-installed launcher line is the only
 # marker the rewrite leaves (the template's own package() spells REPO_ROOT
 # as ${REPO_ROOT:?...}); require it before building.
-grep -qF 'install -D -m755 "$REPO_ROOT/scripts/opencode1-launcher.sh" "$pkgdir/usr/bin/opencode1"' "$TMP_PKGBUILD" || {
+grep -qF 'install -D -m755 "$REPO_ROOT/scripts/opencode1-launcher.sh" "$pkgdir/data/data/com.termux/files/usr/bin/opencode1"' "$TMP_PKGBUILD" || {
 	echo "FATAL: package() rewrite did not land on the PKGBUILD (template anchor drifted?)" >&2
 	exit 1
 }
@@ -65,27 +65,35 @@ STAGED_PREFIX="$STAGED_PREFIX" REPO_ROOT="$ROOT_DIR" makepkg --config "$TMP_MAKE
 
 echo "Pacman package created under: $ROOT_DIR/packing/pacman"
 
-# --- Regression guard: reject packages with data/ payload paths (double-prefix bug) ---
+# --- Convention guard (phase0 reversal): packages MUST use the absolute member
+# convention data/data/com.termux/files/usr/... — relative usr/ members resolve
+# to /usr on a standard termux-pacman machine (RootDir=/) and the transaction
+# fails with "Partition / is mounted read only".
 BUILT_PKG=$(ls "$ROOT_DIR/packing/pacman/opencode1-wrapper-${VERSION}-${PKGREL}-aarch64.pkg.tar.xz" 2>/dev/null || true)
 if [[ -n "$BUILT_PKG" ]]; then
-    DATA_PAYLOAD=$(bsdtar -tf "$BUILT_PKG" | grep -E '^data/' | head -1 || true)
-    if [[ -n "$DATA_PAYLOAD" ]]; then
-        echo "FATAL: regression guard triggered — found data/ payload path: $DATA_PAYLOAD" >&2
-        echo "Ensure PKGBUILD stages to \$pkgdir/usr/ (relative), not \$pkgdir\$prefix." >&2
+    REL_PAYLOAD=$(bsdtar -tf "$BUILT_PKG" | grep -E '^usr/' | head -1 || true)
+    if [[ -n "$REL_PAYLOAD" ]]; then
+        echo "FATAL: convention guard triggered — found relative usr/ member: $REL_PAYLOAD" >&2
+        echo "Ensure PKGBUILD stages to \$pkgdir/data/data/com.termux/files/usr/ (absolute convention), not \$pkgdir/usr/." >&2
+        exit 1
+    fi
+    ABS_PAYLOAD=$(bsdtar -tf "$BUILT_PKG" | grep -E '^data/data/com.termux/files/usr/' | head -1 || true)
+    if [[ -z "$ABS_PAYLOAD" ]]; then
+        echo "FATAL: convention guard triggered — no data/data/com.termux/files/usr/ members found" >&2
         exit 1
     fi
     # B1 payload gate (ISSUS@001): the launcher and a non-empty runtime must
     # both ship, and no doubled directory (bin/bin, lib/lib, share/share) —
     # the field incident's exact malformed layout — may ever appear.
     PAYLOAD_LIST=$(bsdtar -tf "$BUILT_PKG")
-    grep -qx 'usr/bin/opencode1' <<<"$PAYLOAD_LIST" || {
-        echo "FATAL: package payload missing usr/bin/opencode1 launcher" >&2
+    grep -qx 'data/data/com.termux/files/usr/bin/opencode1' <<<"$PAYLOAD_LIST" || {
+        echo "FATAL: package payload missing data/data/com.termux/files/usr/bin/opencode1 launcher" >&2
         echo "$PAYLOAD_LIST" >&2
         exit 1
     }
-    RT_SIZE=$(bsdtar -tvf "$BUILT_PKG" usr/lib/opencode/runtime/opencode 2>/dev/null | awk '{print $5}')
+    RT_SIZE=$(bsdtar -tvf "$BUILT_PKG" data/data/com.termux/files/usr/lib/opencode/runtime/opencode 2>/dev/null | awk '{print $5}')
     [[ -n "$RT_SIZE" && "$RT_SIZE" -gt 0 ]] || {
-        echo "FATAL: package payload missing/empty usr/lib/opencode/runtime/opencode" >&2
+        echo "FATAL: package payload missing/empty data/data/com.termux/files/usr/lib/opencode/runtime/opencode" >&2
         echo "$PAYLOAD_LIST" >&2
         exit 1
     }
@@ -94,5 +102,5 @@ if [[ -n "$BUILT_PKG" ]]; then
         echo "FATAL: regression guard triggered — nested doubled directory in payload: $NESTED" >&2
         exit 1
     fi
-    echo "Payload gate: OK (launcher + runtime present, no data/ or doubled dirs)"
+    echo "Payload gate: OK (launcher + runtime present, absolute members, no relative usr/ or doubled dirs)"
 fi

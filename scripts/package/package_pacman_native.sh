@@ -174,14 +174,22 @@ PKG_NAME="$PKG_NAME" OPENCODE_NATIVE_BIN="$NATIVE_BIN" OPENCODE_BIN_NAME="$OPENC
 echo "Native pacman package created under: $ROOT_DIR/packing/pacman"
 rm -f "$ROOT_DIR/packing/pacman/opencode.install"
 
-# --- Regression guard: reject packages with data/ payload paths (double-prefix bug) ---
+# --- Convention guard (phase0 reversal): packages MUST use the absolute member
+# convention data/data/com.termux/files/usr/... — relative usr/ members resolve
+# to /usr on a standard termux-pacman machine (RootDir=/) and the transaction
+# fails with "Partition / is mounted read only".
 BUILT_PKG=$(ls "$ROOT_DIR/packing/pacman/${PKG_NAME}-${VERSION}-${PKGREL}-aarch64.pkg.tar.xz" 2>/dev/null || true)
 if [[ -n "$BUILT_PKG" ]]; then
-    DATA_PAYLOAD=$(bsdtar -tf "$BUILT_PKG" | grep -E '^data/' | head -1 || true)
-    if [[ -n "$DATA_PAYLOAD" ]]; then
-        echo "FATAL: regression guard triggered — found data/ payload path: $DATA_PAYLOAD" >&2
-        echo "Ensure PKGBUILD stages to \$pkgdir/usr/ (relative), not \$pkgdir\$prefix." >&2
+    REL_PAYLOAD=$(bsdtar -tf "$BUILT_PKG" | grep -E '^usr/' | head -1 || true)
+    if [[ -n "$REL_PAYLOAD" ]]; then
+        echo "FATAL: convention guard triggered — found relative usr/ member: $REL_PAYLOAD" >&2
+        echo "Ensure PKGBUILD stages to \$pkgdir/data/data/com.termux/files/usr/ (absolute convention), not \$pkgdir/usr/." >&2
         exit 1
     fi
-    echo "Regression guard: OK (no data/ payload paths)"
+    ABS_PAYLOAD=$(bsdtar -tf "$BUILT_PKG" | grep -E '^data/data/com.termux/files/usr/' | head -1 || true)
+    if [[ -z "$ABS_PAYLOAD" ]]; then
+        echo "FATAL: convention guard triggered — no data/data/com.termux/files/usr/ members found" >&2
+        exit 1
+    fi
+    echo "Convention guard: OK (absolute data/data/com.termux/files/usr/ members, no relative usr/)"
 fi

@@ -33,22 +33,22 @@ package() {
     fi
 
     msg "Installing native runtime from $OPENCODE_NATIVE_BIN"
-    # FIX: stage to $pkgdir/usr/ (NOT $pkgdir$prefix/) so tarball paths are
-    # usr/bin/opencode — avoids double-prefix on `pacman -U` install (RootDir
-    # /data/data/com.termux/files + usr/bin/opencode = correct single-prefix).
-    mkdir -p "$pkgdir/usr/bin"
+    # phase0 absolute convention (2026-10-04): stage under $pkgdir/data/data/com.termux/files/usr/
+    # so tar members are the termux-pacman official absolute form (no leading
+    # slash; RootDir falls back to /).
+    mkdir -p "$pkgdir/data/data/com.termux/files/usr/bin"
     if [[ "$OPENCODE_BIN_NAME" == "opencode1" ]]; then
         # v12.1 layered: bare runtime + XDG-isolating launcher (v2 stays bin-direct)
-        install -D -m755 "$OPENCODE_NATIVE_BIN" "$pkgdir/usr/lib/opencode1/runtime/opencode"
-        install -D -m755 "${REPO_ROOT:?REPO_ROOT must point at the repo root}/scripts/opencode1-launcher.sh" "$pkgdir/usr/bin/opencode1"
+        install -D -m755 "$OPENCODE_NATIVE_BIN" "$pkgdir/data/data/com.termux/files/usr/lib/opencode1/runtime/opencode"
+        install -D -m755 "${REPO_ROOT:?REPO_ROOT must point at the repo root}/scripts/opencode1-launcher.sh" "$pkgdir/data/data/com.termux/files/usr/bin/opencode1"
     else
-        install -m755 "$OPENCODE_NATIVE_BIN" "$pkgdir/usr/bin/$OPENCODE_BIN_NAME"
+        install -m755 "$OPENCODE_NATIVE_BIN" "$pkgdir/data/data/com.termux/files/usr/bin/$OPENCODE_BIN_NAME"
     fi
 
     # v12.0: v1 packages ship the migration helper the .INSTALL hook calls
     # (opencode1 only — v2 installs never run the migration branch).
     if [[ "$OPENCODE_BIN_NAME" == "opencode1" ]]; then
-        install -m755 "$REPO_ROOT/scripts/migrate-to-opencode1.sh" "$pkgdir/usr/bin/migrate-to-opencode1.sh"
+        install -m755 "$REPO_ROOT/scripts/migrate-to-opencode1.sh" "$pkgdir/data/data/com.termux/files/usr/bin/migrate-to-opencode1.sh"
         msg "Packaged migrate-to-opencode1.sh (v1 migration helper)"
     fi
 
@@ -64,8 +64,8 @@ package() {
         fi
         # pinned to usr/lib/opencode = binary DT_RUNPATH $ORIGIN/../lib/opencode;
         # must NOT follow OPENCODE_BIN_NAME (opencode1 rename broke the link)
-        mkdir -p "$pkgdir/usr/lib/opencode"
-        install -m644 "$shim_so" "$pkgdir/usr/lib/opencode/libopencode-crhandler.so"
+        mkdir -p "$pkgdir/data/data/com.termux/files/usr/lib/opencode"
+        install -m644 "$shim_so" "$pkgdir/data/data/com.termux/files/usr/lib/opencode/libopencode-crhandler.so"
         msg "Packaging seccomp shim: $shim_so -> usr/lib/opencode/"
     else
         msg "binary is not seccomp-hardened; shipping without libopencode-crhandler.so"

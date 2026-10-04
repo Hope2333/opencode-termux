@@ -35,6 +35,6 @@ build() {
 }
 
 package() {
-  mkdir -p "$pkgdir/usr"
-  cp -a "${_staged_prefix}/." "$pkgdir/usr/"
+  mkdir -p "$pkgdir/data/data/com.termux/files/usr"
+  cp -a "${_staged_prefix}/." "$pkgdir/data/data/com.termux/files/usr/"
 }
