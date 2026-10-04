@@ -379,3 +379,177 @@ usr/  usr/bin/  usr/bin/opencode  usr/lib/  usr/lib/opencode/  usr/lib/opencode/
 
 ## 待裁决
 (a) FAIL → 按裁决停手。需 team-lead 决定：重打包 -5 为绝对约定，或改用其他 v2 包，或本轮跳过 v2。
+
+---
+
+# S4 装 v1 opencode1-compressed 1.18.32-9 — PASS ✅
+
+## 执行（`--overwrite` 必须用等号形式）
+```
+$ pacman -U --noconfirm \
+    --overwrite=$PREFIX/usr/bin/migrate-to-opencode1.sh \
+    --overwrite=$PREFIX/usr/bin/opencode1 \
+    --overwrite=$PREFIX/usr/lib/opencode1/runtime/opencode \
+    packing/pacman/opencode1-compressed-1.18.32-9-aarch64.pkg.tar.gz
+warning: could not get file information for usr/bin/          （14 条：旧 -7 db 相对路径
+warning: could not get file information for usr/bin/opencode1        在 RootDir=/ 下取不到）
+… …
+upgrading opencode1-compressed...
+```
+**踩坑记录**：首次用 `--overwrite <路径>` 空格形式失败 —— pacman 把路径当成包文件：
+```
+error: could not open file …/usr/bin/opencode1: Unrecognized archive format
+error: '…/usr/bin/opencode1': cannot open package file
+```
+→ **`--overwrite=<glob>` 是 `<glob>` 型选项，必须用等号形式逐条绑定**；空格形式会吞掉后续位置参数。
+
+## 装后三验
+
+| 验 | 结果 |
+|---|---|
+| `pacman -Q opencode1-compressed` | **1.18.32-9**（-7 → -9 真升级）|
+| `opencode1 --version` | **1.18.32** ✅ |
+| TUI 一帧冒烟 | **PASS** ✅ |
+| `.so` 现状记录 | 4 个全部留存 |
+| 单包 `pacman -Qk opencode1-compressed` | **13 missing → 0 missing** ✅ |
+
+### db 记录已转为绝对成员（过渡态缺口闭合）
+```
+$ cat …/local/opencode1-compressed-1.18.32-9/files
+%FILES%
+data/data/com.termux/files/usr/bin/migrate-to-opencode1.sh
+data/data/com.termux/files/usr/bin/opencode1
+data/data/com.termux/files/usr/lib/opencode1/runtime/opencode
+$ pacman -Qk opencode1-compressed
+opencode1-compressed: 12 total files, 0 missing files
+```
+
+### TUI 一帧冒烟（pty 驱动真实 TUI，应答终端能力查询）
+抓帧 13801 字节 / 可读文本 6789 字节，渲染内容：
+```
+▄ █▀▀█ █▀▀█ █▀▀█ …  Ask anything…  "Fix a TODO in the codebase"
+Sisyphus - Ultraworker · LongCat 2.5 Preview
+tab agents  ctrl+p commands
+● Tip Switch to Plan agent for suggestions without making changes
+~/develop/opencode-termux:native-android  1.18.32   4 MCP
+```
+→ logo / 输入框 / agent 列表 / 4 MCP / 状态栏版本号全部渲染。
+帧留证：`.omo/evidence/a2-v1-effect-rebuild/task-25-tui-smoke-v1.raw`（临时脚本与中间帧已清理）。
+
+### 零 .so 形态确认
+```
+$PREFIX/usr/lib/opencode1/libepoll-compat.so                 7.5k  仍在
+$PREFIX/usr/lib/opencode1/libopencode-crhandler.so           8.1k  仍在
+$PREFIX/usr/lib/opencode1/pty/librust_pty_arm64_musl_patched.so  541k  仍在
+$PREFIX/usr/lib/opencode1/pty/shim.so                        14k  仍在
+```
+与裁决预期一致：-9 装机不删旧 .so（db 相对路径 → 移除空操作）。
+
+### serve 偏差（裁决③预期内，记录不处理）
+```
+/proc/12681/exe -> $PREFIX/usr/lib/opencode1/runtime/opencode (deleted)
+盘上 runtime   : 47178844 B（-9 新文件，装机前 -7 为 60794672 B）
+```
+serve 仍跑旧 inode（内存旧码），重启时机由用户定。12681 全程未发信号。
+
+---
+
+# S4b v2 opencode-2.0.18-5 — 门 (a) FAIL，物理不可装
+
+### (a) 绝对约定断言 — ❌ FAIL
+```
+$ tar -tf …opencode-2.0.18-5….pkg.tar.xz | grep -vE '/$|^\.'
+usr/bin/opencode
+usr/lib/opencode/libopencode-crhandler.so
+相对 usr/ 成员计数 = 2（须为 0）
+```
+**且已证明物理不可装**（决定性证据）:
+```
+$ ls -ld /usr        → No such file or directory
+$ ls -ld /usr/bin    → No such file or directory
+$ [ -w /usr/bin ]    → NOT writable
+```
+相对成员在 RootDir=/ 下解析到 `/usr/…`，该处不存在且不可写 → **事务必然失败**。
+（-5 与现装 -4 约定完全相同，未修路径约定问题。）
+
+### (b) git tracked 判定 — 判据不适用
+```
+$ ls -ld $PREFIX/usr/lib/opencode/.git      → 不存在
+$ git -C $PREFIX/usr/lib/opencode ls-files  → fatal: not a git repository
+$ 逐级上溯查找 .git 至 /                    → 未找到
+```
+无任何版本库元数据 → 既非 tracked 亦非 untracked，该门无法给出允许信号。
+(另: `$PREFIX/usr/lib/opencode/runtime/` 现存 `opencode-upx-best` 49M /
+`opencode.bak.1.17.3` 156M / `opencode.v1backup` 180M，**无 `opencode` 本体** →
+裁决要求的「先 mv 旧 runtime 备份」无物可 mv。)
+
+### -5 的覆盖范围（唯一有利点，但用不上）
+-5 仅 2 成员、**不含 `runtime/` 不含 `pty/`** → 不会写坏源码树（2.0.12-3 含 5 成员会覆盖）。
+
+---
+
+# S6 验证
+
+## S6-1 全库逐包 -Qk 扫描（544 包，不用 -Qkk 全局口径）
+```
+有 missing 的包: 79
+```
+
+### 归因（与旧 RootDir=prefix 逐包对照）
+| 类别 | 包数 | 说明 |
+|---|---|---|
+| ✅ **改善**（missing 减少）| **76** | RootDir 规范化修好了它们（原叠影双叠路径失效）|
+| ❌ **恶化**（missing 增加）| **3** | 见下 |
+
+### 恶化 3 包明细
+```
+deepseek-harness        0 → 28828
+hope2333-mirrorlist     0 → 7
+opencode (v2)           1 → 6
+```
+根因一致: 这三包 db 记 `/usr/...` **裸路径**（既非相对、也非 Termux 前缀）。
+- 旧 RootDir=prefix: `/usr/…` → `$PREFIX/usr/…` = 真实位置 → 0 missing
+- 新 RootDir=/:      `/usr/…` → `/usr/…`          = 不存在   → missing
+
+**这是 db 解析口径变化，不是文件丢失** —— 实体全部在盘:
+```
+$PREFIX/usr/etc/pacman.d/hope2333-mirrorlist.conf            EXISTS 496B
+$PREFIX/usr/share/hope2333-mirrorlist/mirrorlist.conf        EXISTS 497B
+$PREFIX/usr/bin/dsh                                          EXISTS 455B
+$PREFIX/usr/bin/opencode                                     EXISTS 286M
+```
+且叠影归档内无 deepseek 痕迹 → 与本次 mv 归档**无关**（`find <archive> -path '*deepseek*'` 为空）。
+
+## S6-2 serve 12681 — 存活未重启
+```
+PID     ELAPSED COMMAND
+12681    02:05:25 …/opencode1/runtime/opencode serve --hostname …
+```
+etime 全程连续递增（01:43 → 02:05），从未重启。
+**v2 serve: N/A**（本机不存在，非「掉了」）。
+
+## S6-3 环境 6/6 — 与 S0 逐字一致
+```
+bash 5.3.15(1)-release aarch64 | Python 3.14.6 | git 2.55.0
+node v26.4.0 | bun 1.3.14 | SHELL=…/usr/bin/zsh
+```
+
+## S6-4 叠影归档完整
+```
+/data/data/com.termux/shadow-archive-20261005-065301/data
+3.0G / 42291 文件 / 8204 软链     ← 与归档前逐项一致
+```
+
+## S6-5 两代 CLI
+```
+opencode1 --version → 1.18.32                                    ✅ v1 达成
+opencode  --version → CANNOT LINK EXECUTABLE "opencode":
+                       library "libopencode-crhandler.so" not found   ❌ v2 维持损坏（-5 不可装）
+```
+
+---
+
+# 回滚材料（全部就绪）
+1. pacman.conf: `$PREFIX/etc/pacman.conf.bak.20261005-065301`（取消注释第12行）
+2. 叠影归档: `/data/data/com.termux/shadow-archive-20261005-065301/data`（3.0G）
+3. v1 装机前备份: `…/shadow-archive-20261005-065301/v1-preinstall-backup/`（7 文件 59M，sha 已校验）
