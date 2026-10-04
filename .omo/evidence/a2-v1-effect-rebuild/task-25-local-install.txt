@@ -139,3 +139,108 @@ opencode-compressed-2.0.12-3-aarch64.pkg.tar.gz     94M  (pkgname=opencode-compr
 
 ## 回滚材料（尚未产生）
 S1/S2 未动手,现场未改。动手后回滚材料 = pacman.conf.bak<ts> + 叠影 tar/mv 归档。
+
+---
+
+## S1 RootDir 回落 — PASS ✅
+
+```
+$ cp -p $PREFIX/etc/pacman.conf $PREFIX/etc/pacman.conf.bak.20261005-065301   # 备份
+12:RootDir = /data/data/com.termux/files      →  12:#RootDir = /data/data/com.termux/files
+$ pacman-conf RootDir
+/                                            ← PASS 断言 = /
+$ pacman -Q | wc -l  → 544                   ← 包仍可列
+[ -d /proc/12681 ] → ALIVE
+```
+
+## S2 叠影归位（mv 归档）— PASS ✅
+
+审计自检（SHADOW_AUDIT_ONLY=1，脚本内在 [1] 前 exit，零副作用）:
+```
+叠影顶层: /data/data/com.termux/files/data
+叠影规模: 文件 42291 / 软链 8204
+受影响包: 146
+审计: OK=27494 RESTORABLE=22999 STALE=0 ABSENT=0
+      RESTORABLE 中软链 7641
+```
+
+按「优先 mv 归档而非 tar」指示（同盘，3.0G，零拷贝）:
+```
+$ mv /data/data/com.termux/files/data \
+     /data/data/com.termux/files/shadow-archive-20261005-065301/data
+real 0m0.008s          ← 原子 rename
+归档后: 3.0G / 42291 文件 / 8204 软链   ← 完整保留
+原位: No such file or directory          ← 已移出
+```
+
+**注**: fix20 的归位段（rename 22999 条）**尚未执行** —— 叠影已移至归档路径，
+归位段需改指向归档路径，待 team-lead 裁决后才执行。
+
+## S3 环境健全复核 — PASS ✅（6/6 与 S0 逐字一致）
+
+| 项 | S0 | S3 | 判定 |
+|---|---|---|---|
+| bash | 5.3.15(1)-release aarch64 | 同 | ✅ |
+| python | 3.14.6 | 3.14.6 | ✅ |
+| git | 2.55.0 | 2.55.0 | ✅ |
+| node | v26.4.0 | v26.4.0 | ✅ |
+| bun | 1.3.14 | 1.3.14 | ✅ |
+| SHELL | zsh | zsh | ✅ |
+
+serve 未重启:
+```
+PID     ELAPSED COMMAND
+12681    01:51:58 .../opencode1/runtime/opencode serve --hostname 0.0.0.0 --port 4096
+S0 时 01:43:31 → S3 时 01:51:58  连续递增 = 未重启
+```
+
+## 回滚材料
+1. `pacman.conf.bak.20261005-065301` — 取消注释第 12 行即还原 RootDir
+2. `mv /data/data/com.termux/files/shadow-archive-20261005-065301/data /data/data/com.termux/files/data` — 叠影原位还原
+
+---
+
+## S0 测量口径更正
+
+S0 报的「altered=544 / missing=0」是 `pacman -Qkk` **全库**口径（RootDir=prefix 时）。
+**单包 `-Qk` 才是真相**：
+```
+$ pacman -r /data/data/com.termux/files -Qk opencode1-compressed   (旧 RootDir)
+opencode1-compressed: 13 total files, 0 missing files
+$ pacman -Qk opencode1-compressed                                   (RootDir=/)
+opencode1-compressed: 13 total files, 13 missing files
+```
+根因: db `files` 记的是**相对路径** `usr/lib/opencode1/...`，RootDir=/ 时解析到
+`/usr/lib/opencode1/`（不存在），RootDir=prefix 时才解析正确。
+→ RootDir 规范化后这两包路径解析必然失效；叠影内无 opencode 文件，归位段不会修复它们。
+
+## 阻断项 4（严重）: v2 目标包 payload 指向源码树
+
+`/data/data/com.termux/files/usr/lib/opencode/` 是 **git 源码 checkout**
+（AGENTS.md / package.json / bun.lock / packages / node_modules / runtime/ …），
+`libopencode-crhandler.so` 不存在。实证:
+```
+$ opencode --version
+CANNOT LINK EXECUTABLE "opencode": library "libopencode-crhandler.so" not found: needed by main executable
+```
+→ **v2 现装即已损坏**；2.0.12-3 会向源码树覆盖写入 → 不能装。
+
+## 阻断项 5: v1 -9 payload 残缺
+
+| 版本 | 大小 | payload 文件数 | 内容 |
+|---|---|---|---|
+| -7（现装）| 57M | 7 | bin/opencode1 + bin/migrate + runtime/opencode + 4×.so |
+| -8 | 57M | 7 | 同 -7（路径改 data/data/… 绝对成员）|
+| **-9（任务书目标）** | **44M** | **3** | **bin/opencode1 + bin/migrate + runtime/opencode（4 个 .so 全缺）** |
+
+`.INSTALL` 自身契约明写「compressed additionally ships its shim」→ -9 违背契约。
+
+干跑验证（不安装）:
+```
+$ tar -xzf …-9.pkg.tar.gz -C $PREFIX/tmp …/runtime/opencode
+$ …/runtime/opencode --version   →  1.18.32      ← 二进制本身可执行
+（临时目录已清理）
+```
+
+wrapper `opencode1` 对 4 个 .so 全部用 `[ -f ]` 守卫兜底，且 .so 现装在盘 →
+装 -9 后 v1 仍可跑；但 `pacman -U` 会先删除旧包文件 → 4 个 .so 成 orphan 被删 → v1 随后崩。
