@@ -248,3 +248,81 @@ $ …/runtime/opencode --version   →  1.18.32      ← 二进制本身可执�
 
 wrapper `opencode1` 对 4 个 .so 全部用 `[ -f ]` 守卫兜底，且 .so 现装在盘 →
 装 -9 后 v1 仍可跑；但 `pacman -U` 会先删除旧包文件 → 4 个 .so 成 orphan 被删 → v1 随后崩。
+
+---
+
+## 裁决落地（team-lead 第二轮）
+
+| 项 | 裁决 |
+|---|---|
+| v1 | 装 **-9**（press5 零外部 .so 新设计，4 个 .so 缺失为预期）|
+| v2 | 装 **opencode-2.0.18-5**（同包名真升级）；**2.0.12-3 永久弃用** |
+| serve 门禁 | 「v1 serve 12681 存活 + 全程不发信号」；v2 serve 本机不存在 → 记 N/A |
+| fix20 归位段 | **不跑**（42291 是纯重复副本，22999 rename 多余且扰动驱动机）；保留归档 |
+| RootDir 缺口 | 过渡态，装上 -9/-5 后自动闭合，不单独处理 |
+
+## 装机前备份（新增回滚材料）
+```
+/data/data/com.termux/shadow-archive-20261005-065301/v1-preinstall-backup/
+7 文件 / 59M（含 4 个 .so，sha256 已校验）
+libopencode-crhandler.so sha256 前缀 ebf59e44e737f2ed4624d662
+```
+
+## S4 装 v1 -9 — 事务原子回滚，停手报告
+
+```
+$ pacman -U --noconfirm packing/pacman/opencode1-compressed-1.18.32-9-aarch64.pkg.tar.gz
+Packages (1) opencode1-compressed-1.18.32-9
+Total Installed Size:   45.01 MiB
+Net Upgrade Size:      -13.53 MiB
+checking for file conflicts...
+error: failed to commit transaction (conflicting files)
+opencode1-compressed: /data/data/com.termux/files/usr/bin/migrate-to-opencode1.sh exists in filesystem
+opencode1-compressed: /data/data/com.termux/files/usr/bin/opencode1 exists in filesystem
+opencode1-compressed: /data/data/com.termux/files/usr/lib/opencode1/runtime/opencode exists in filesystem
+Errors occurred, no packages were upgraded.
+```
+
+### 现场状态（事务原子回滚，未变）
+```
+$ pacman -Q opencode1-compressed   → 1.18.32-7     （仍 -7）
+$ opencode1 --version              → 1.18.32
+serve 12681 etime 01:56:39          → 未发信号、未重启
+```
+
+### 根因：db 路径约定不一致（非真无主文件）
+- **-7（旧）db 记相对路径** `usr/bin/opencode1` → RootDir=/ 下拼成 `/usr/bin/opencode1`，**不存在**
+  → pacman 视图里 -7 **不拥有**真实文件
+- **-9（新）包成员为绝对成员** `data/data/com.termux/files/usr/bin/opencode1`
+  → 落 `/data/data/…/usr/bin/opencode1`，**确实存在**
+
+实证:
+```
+$ pacman -Qo $PREFIX/usr/bin/opencode1
+error: No package owns /data/data/com.termux/files/usr/bin/opencode1
+```
+（与「13 missing」同一根源：db 相对路径在 RootDir=/ 下解析失效）
+
+### 推翻先前风险判断：4 个 .so **不会**被删
+裁决②的预期是「旧 -7 的 4 个 .so 会被 pacman 判 orphan 删除」。按同一机制**实际相反**：
+- -7 db 记 `usr/lib/opencode1/*.so` → RootDir=/ 下拼成 `/usr/lib/opencode1/*.so`，**全不存在**
+- pacman 移除旧包文件按 db 路径找不到 → **移除空操作** → .so 原样留存
+
+盘上实测 4 个 .so 俱在:
+```
+libepoll-compat.so                    7456 B
+libopencode-crhandler.so              8104 B
+pty/librust_pty_arm64_musl_patched.so 541400 B
+pty/shim.so                           14240 B
+```
+→ 先前报的「-9 致 v1 崩」风险**不成立**。-9 装机不破坏 v1 运行时。
+
+### 请求授权的精确 --overwrite（3 条 = -9 全部 payload 目标，非通配）
+```
+pacman -U --noconfirm --overwrite \
+  /data/data/com.termux/files/usr/bin/migrate-to-opencode1.sh \
+  /data/data/com.termux/files/usr/bin/opencode1 \
+  /data/data/com.termux/files/usr/lib/opencode1/runtime/opencode \
+  packing/pacman/opencode1-compressed-1.18.32-9-aarch64.pkg.tar.gz
+```
+预期收益: -9 db 记录绝对成员 → RootDir=/ 下解析回真实路径 → 单包 `-Qk` 应 13 missing → **0 missing**，过渡态缺口闭合。
