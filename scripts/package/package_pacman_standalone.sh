@@ -53,26 +53,34 @@ STAGED_PREFIX="$STAGED_PREFIX" REPO_ROOT="$ROOT_DIR" makepkg --config "$TMP_MAKE
 
 echo "Pacman package created under: $ROOT_DIR/packing/pacman"
 
-# --- Regression guard: reject packages with data/ payload paths (double-prefix bug) ---
+# --- Convention guard (phase0 reversal): packages MUST use the absolute member
+# convention data/data/com.termux/files/usr/... — relative usr/ members resolve
+# to /usr on a standard termux-pacman machine (RootDir=/) and the transaction
+# fails with "Partition / is mounted read only".
 BUILT_PKG=$(ls "$ROOT_DIR/packing/pacman/"*-standalone-* 2>/dev/null || ls "$ROOT_DIR/packing/pacman/"*-compressed-* 2>/dev/null || true)
 if [[ -n "$BUILT_PKG" ]]; then
-    DATA_PAYLOAD=$(bsdtar -tf "$BUILT_PKG" | grep -E '^data/.*/(bin|lib)/' | head -1 || true)
-    if [[ -n "$DATA_PAYLOAD" ]]; then
-        echo "FATAL: regression guard triggered — found data/ payload path: $DATA_PAYLOAD" >&2
-        echo "Ensure PKGBUILD stages to \$pkgdir/usr/ (relative), not \$pkgdir\$prefix." >&2
+    REL_PAYLOAD=$(bsdtar -tf "$BUILT_PKG" | grep -E '^usr/(bin|lib)/' | head -1 || true)
+    if [[ -n "$REL_PAYLOAD" ]]; then
+        echo "FATAL: convention guard triggered — found relative usr/ member: $REL_PAYLOAD" >&2
+        echo "Ensure PKGBUILD stages to \$pkgdir/data/data/com.termux/files/usr/ (absolute convention), not \$pkgdir/usr/." >&2
+        exit 1
+    fi
+    ABS_PAYLOAD=$(bsdtar -tf "$BUILT_PKG" | grep -E '^data/data/com.termux/files/usr/(bin|lib)/' | head -1 || true)
+    if [[ -z "$ABS_PAYLOAD" ]]; then
+        echo "FATAL: convention guard triggered — no data/data/com.termux/files/usr/ members found" >&2
         exit 1
     fi
     # B1 payload gate (ISSUS@001): launcher + non-empty runtime must both
     # ship, and no doubled directory (bin/bin, lib/lib, share/share).
     PAYLOAD_LIST=$(bsdtar -tf "$BUILT_PKG")
-    grep -qx 'usr/bin/opencode-wrapper' <<<"$PAYLOAD_LIST" || {
-        echo "FATAL: package payload missing usr/bin/opencode-wrapper launcher" >&2
+    grep -qx 'data/data/com.termux/files/usr/bin/opencode-wrapper' <<<"$PAYLOAD_LIST" || {
+        echo "FATAL: package payload missing data/data/com.termux/files/usr/bin/opencode-wrapper launcher" >&2
         echo "$PAYLOAD_LIST" >&2
         exit 1
     }
-    RT_SIZE=$(bsdtar -tvf "$BUILT_PKG" usr/lib/opencode-wrapper/runtime/opencode 2>/dev/null | awk '{print $5}')
+    RT_SIZE=$(bsdtar -tvf "$BUILT_PKG" data/data/com.termux/files/usr/lib/opencode-wrapper/runtime/opencode 2>/dev/null | awk '{print $5}')
     [[ -n "$RT_SIZE" && "$RT_SIZE" -gt 0 ]] || {
-        echo "FATAL: package payload missing/empty usr/lib/opencode-wrapper/runtime/opencode" >&2
+        echo "FATAL: package payload missing/empty data/data/com.termux/files/usr/lib/opencode-wrapper/runtime/opencode" >&2
         echo "$PAYLOAD_LIST" >&2
         exit 1
     }
@@ -81,5 +89,5 @@ if [[ -n "$BUILT_PKG" ]]; then
         echo "FATAL: regression guard triggered — nested doubled directory in payload: $NESTED" >&2
         exit 1
     fi
-    echo "Regression guard: OK (no data/ payload paths)"
+    echo "Convention guard: OK (absolute members, launcher + runtime present, no relative usr/ or doubled dirs)"
 fi

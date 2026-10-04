@@ -13,8 +13,11 @@ makedepends=()
 source=()
 sha256sums=()
 
-# FIX: use /usr (relative staging) not the full prefix path, so tarball paths
-# are usr/bin/opencode1 — v1 bin-direct binary named opencode1 to coexist with v2 opencode on `pacman -U` install.
+# phase0 absolute convention (2026-10-04): stage under
+# $pkgdir/data/data/com.termux/files/usr/ so tar members are the termux-pacman
+# official absolute form `data/data/com.termux/files/usr/...` (no leading
+# slash) — relative `usr/...` members resolve to /usr on a standard
+# termux-pacman machine (RootDir=/) and the transaction fails.
 _repo_root="${REPO_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}"
 _staged_prefix="${STAGED_PREFIX:-${_repo_root}/artifacts/staged/prefix}"
 
@@ -35,7 +38,7 @@ build() {
 
 package() {
   # v12.1 layered: wrapper runtime keeps lib/opencode/runtime/ + XDG-isolating launcher
-  mkdir -p "$pkgdir/usr/bin" "$pkgdir/usr/lib/opencode/runtime"
-  install -D -m755 "${_staged_prefix}/lib/opencode/runtime/opencode" "$pkgdir/usr/lib/opencode/runtime/opencode"
-  install -D -m755 "${REPO_ROOT:?REPO_ROOT must point at the repo root}/scripts/opencode1-launcher.sh" "$pkgdir/usr/bin/opencode1"
+  mkdir -p "$pkgdir/data/data/com.termux/files/usr/bin" "$pkgdir/data/data/com.termux/files/usr/lib/opencode/runtime"
+  install -D -m755 "${_staged_prefix}/lib/opencode/runtime/opencode" "$pkgdir/data/data/com.termux/files/usr/lib/opencode/runtime/opencode"
+  install -D -m755 "${REPO_ROOT:?REPO_ROOT must point at the repo root}/scripts/opencode1-launcher.sh" "$pkgdir/data/data/com.termux/files/usr/bin/opencode1"
 }

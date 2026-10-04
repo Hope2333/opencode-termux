@@ -171,16 +171,24 @@ OPENCODE_COMPRESSED_BIN="$COMPRESSED_BIN" REPO_ROOT="$ROOT_DIR" makepkg --config
 
 echo "Compressed pacman package created under: $ROOT_DIR/packing/pacman"
 
-# --- Regression guard: reject packages with data/ payload paths (double-prefix bug) ---
+# --- Convention guard (phase0 reversal): packages MUST use the absolute member
+# convention data/data/com.termux/files/usr/... — relative usr/ members resolve
+# to /usr on a standard termux-pacman machine (RootDir=/) and the transaction
+# fails with "Partition / is mounted read only".
 BUILT_PKG=$(ls "$ROOT_DIR/packing/pacman/"$PKG_NAME-"$VERSION"-"$PKGREL"-*.pkg.* 2>/dev/null || true)
 if [[ -n "$BUILT_PKG" ]]; then
-    DATA_PAYLOAD=$(bsdtar -tf "$BUILT_PKG" | grep -E '^data/' | head -1 || true)
-    if [[ -n "$DATA_PAYLOAD" ]]; then
-        echo "FATAL: regression guard triggered — found data/ payload path: $DATA_PAYLOAD" >&2
-        echo "Ensure PKGBUILD stages to \$pkgdir/usr/ (relative), not \$pkgdir\$prefix." >&2
+    REL_PAYLOAD=$(bsdtar -tf "$BUILT_PKG" | grep -E '^usr/' | head -1 || true)
+    if [[ -n "$REL_PAYLOAD" ]]; then
+        echo "FATAL: convention guard triggered — found relative usr/ member: $REL_PAYLOAD" >&2
+        echo "Ensure PKGBUILD stages to \$pkgdir/data/data/com.termux/files/usr/ (absolute convention), not \$pkgdir/usr/." >&2
         exit 1
     fi
-    echo "Regression guard: OK (no data/ payload paths)"
+    ABS_PAYLOAD=$(bsdtar -tf "$BUILT_PKG" | grep -E '^data/data/com.termux/files/usr/' | head -1 || true)
+    if [[ -z "$ABS_PAYLOAD" ]]; then
+        echo "FATAL: convention guard triggered — no data/data/com.termux/files/usr/ members found" >&2
+        exit 1
+    fi
+    echo "Convention guard: OK (absolute data/data/com.termux/files/usr/ members, no relative usr/)"
 fi
 
 # launcher guard (unconditional): the launcher is the ONLY supported entry —
@@ -189,16 +197,16 @@ fi
 if [[ -n "$BUILT_PKG" ]]; then
     # grep -q would SIGPIPE bsdtar mid-listing under pipefail (race, order
     # dependent) — consume full listing with a redirect instead.
-    if ! bsdtar -tf "$BUILT_PKG" | grep -E "usr/bin/${FAMILY}\$" >/dev/null; then
-        echo "FATAL: package does not ship the usr/bin/$FAMILY launcher (launcher-only contract)" >&2
+    if ! bsdtar -tf "$BUILT_PKG" | grep -E "data/data/com.termux/files/usr/bin/${FAMILY}\$" >/dev/null; then
+        echo "FATAL: package does not ship the data/data/com.termux/files/usr/bin/$FAMILY launcher (launcher-only contract)" >&2
         exit 1
     fi
-    echo "launcher guard: OK (usr/bin/$FAMILY shipped)"
+    echo "launcher guard: OK (data/data/com.termux/files/usr/bin/$FAMILY shipped)"
 fi
 
 # crhandler guard (unconditional): the package MUST contain the shim.
 if [[ -n "$BUILT_PKG" ]]; then
-    if ! bsdtar -tf "$BUILT_PKG" | grep -E 'usr/lib/(opencode|opencode1)/libopencode-crhandler.so' >/dev/null; then
+    if ! bsdtar -tf "$BUILT_PKG" | grep -E 'data/data/com.termux/files/usr/lib/(opencode|opencode1)/libopencode-crhandler.so' >/dev/null; then
         echo "FATAL: package does not ship libopencode-crhandler.so" >&2
         exit 1
     fi
@@ -208,7 +216,7 @@ fi
 # epoll shim guard (conditional, v1 family): asserted only when the shim
 # asset exists at build time (same optional contract the launcher injects by).
 if [[ -n "$BUILT_PKG" && "$FAMILY" == "opencode1" && -f "${OPENCODE_EPOLL_SHIM_SO:-/nonexistent}" ]]; then
-    if ! bsdtar -tf "$BUILT_PKG" | grep -E 'usr/lib/opencode1/libepoll-compat.so' >/dev/null; then
+    if ! bsdtar -tf "$BUILT_PKG" | grep -E 'data/data/com.termux/files/usr/lib/opencode1/libepoll-compat.so' >/dev/null; then
         echo "FATAL: package does not ship libepoll-compat.so" >&2
         exit 1
     fi

@@ -193,6 +193,11 @@ deb:
 pacman:
 	rm -rf packing/pacman/pkg packing/pacman/src
 	PACKAGER_NAME='$(PACKAGER_NAME)' ./scripts/package/package_pacman.sh
+	@# phase0 兜底: repack any relative-convention output to absolute members (idempotent skip on absolute input)
+	@for f in packing/pacman/opencode1-wrapper-$(VER)-*.pkg.*; do \
+		[ -f "$$f" ] || continue; \
+		bash tools/pkg-abs-repack.sh "$$f" || exit 1; \
+	done
 	@if [ "$(OUTPUT_ROOT)" != "$(CURDIR)/packing" ]; then \
 		if [ "$(MIX)" = "1" ]; then \
 			mkdir -p "$(OUTPUT_ROOT)" && cp -f packing/pacman/opencode1-wrapper-$(VER)-*.pkg.* "$(OUTPUT_ROOT)/"; \
@@ -226,6 +231,11 @@ pacman-native:
 	fi
 	rm -rf packing/pacman/pkg packing/pacman/src
 	PACKAGER_NAME='$(PACKAGER_NAME)' VERSION='$(VER)' HOOKS_ENABLE='$(HOOKS_ENABLE)' HOOKS_DISABLE='$(HOOKS_DISABLE)' HOOK_STALE_SERVE_KILL_VERSIONS='$(HOOK_STALE_SERVE_KILL_VERSIONS)' ./scripts/package/package_pacman_native.sh
+	@# phase0 兜底: repack any relative-convention output to absolute members (idempotent skip on absolute input)
+	@for f in packing/pacman/$$(case $(VER) in 1.*) echo opencode1;; *) echo opencode;; esac)-$(VER)-*.pkg.*; do \
+		[ -f "$$f" ] || continue; \
+		bash tools/pkg-abs-repack.sh "$$f" || exit 1; \
+	done
 	@if [ "$(OUTPUT_ROOT)" != "$(CURDIR)/packing" ]; then \
 		if [ "$(MIX)" = "1" ]; then \
 			mkdir -p "$(OUTPUT_ROOT)" && cp -f packing/pacman/$$(case $(VER) in 1.*) echo opencode1;; *) echo opencode;; esac)-$(VER)-*.pkg.* "$(OUTPUT_ROOT)/"; \
@@ -563,6 +573,11 @@ pacman-compressed:
 	@bin="$${OPENCODE_COMPRESSED_BIN:-$(NATIVE_DIR)/opencode-native-$(VER)-upx}"; \
 	shim="$${OPENCODE_CRHANDLER_SO:-$(NATIVE_DIR)/libopencode-crhandler.so}"; \
 	VERSION=$(VER) OPENCODE_COMPRESSED_BIN="$$bin" OPENCODE_CRHANDLER_SO="$$shim" bash scripts/package/package_pacman_compressed.sh
+	@# phase0 兜底: repack any relative-convention output to absolute members (idempotent skip on absolute input)
+	@for f in packing/pacman/*-compressed-$(VER)-*.pkg.*; do \
+		[ -f "$$f" ] || continue; \
+		bash tools/pkg-abs-repack.sh "$$f" || exit 1; \
+	done
 
 # Range batch build (multi-version, continue-on-fail)
 # ══════════════════════════════════════════════════════════════════════
@@ -772,6 +787,7 @@ release-upload:
 		echo "=== Building native provider packages (opencode) ==="; \
 		MAINTAINER='$(PACKAGER_NAME)' VERSION='$(NATIVE_VER)' ./scripts/package/package_deb_native.sh; \
 		PACKAGER_NAME='$(PACKAGER_NAME)' VERSION='$(NATIVE_VER)' ./scripts/package/package_pacman_native.sh; \
+		for f in packing/pacman/$$np-$(NATIVE_VER)-*.pkg.*; do [ -f "$$f" ] || continue; bash tools/pkg-abs-repack.sh "$$f" || exit 1; done; \
 		case "$(NATIVE_VER)" in 1.*) np=opencode1;; *) np=opencode;; esac; cp packing/dpkg-native/$$np_$(NATIVE_VER)_aarch64.deb "$(RELEASE_DIR)/" || exit 1; \
 		cp packing/pacman/$$np-$(NATIVE_VER)-*.pkg.* "$(RELEASE_DIR)/" || exit 1; \
 		for f in "$(RELEASE_DIR)/$$np-$(NATIVE_VER)-aarch64-android-native" "$(RELEASE_DIR)/$$np-$(NATIVE_VER)-report.json" "$(RELEASE_DIR)/$$np-$(NATIVE_VER)-watcher.tar.gz" $(RELEASE_DIR)/opencode_[0-9]*.deb $(RELEASE_DIR)/opencode-[0-9]*.pkg.*; do \

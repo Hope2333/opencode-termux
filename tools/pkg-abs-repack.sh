@@ -22,6 +22,7 @@
 set -euo pipefail
 
 ABS_PREFIX="data/data/com.termux/files"
+OUT_EXPLICIT=0
 
 usage() { echo "usage: $0 <input.pkg.tar.{gz,xz}> [output.pkg.tar.{gz,xz}]" >&2; exit 2; }
 
@@ -41,6 +42,15 @@ trap 'rm -rf "$WORK"' EXIT
 # --- 1. extract -------------------------------------------------------------
 $DECOMP "$IN" | tar -xf - -C "$WORK"
 cd "$WORK"
+
+# phase0 (2026-10-04): idempotent skip — inputs already in the absolute
+# convention (no relative usr/ tree, absolute tree present) pass through.
+# This lets the Makefile release chain run this script unconditionally as a
+# fallback (兜底) step without disturbing generator-direct absolute output.
+if [ ! -d usr ] && [ -d "$ABS_PREFIX/usr" ]; then
+  echo "SKIP: $IN already uses the absolute convention (${ABS_PREFIX}/usr/...) — nothing to repack"
+  exit 0
+fi
 
 for meta in .PKGINFO .MTREE; do
   [ -f "$meta" ] || { echo "FATAL: $meta missing in $IN" >&2; exit 1; }
@@ -100,6 +110,8 @@ mv usr "$ABS_PREFIX"/usr
 OUT=${2:-}
 if [ -z "$OUT" ]; then
   OUT=$(dirname "$IN")/${PKGNAME}-${NEW_VER}-${ARCH}${EXT}
+else
+  OUT_EXPLICIT=1
 fi
 OUT=$(readlink -f "$OUT")
 
@@ -145,6 +157,13 @@ done < <(gzip -dc "$MT" | awk '/sha256digest=/ {
 }')
 rm -f "$MT"
 [ "$CHECK_FAILED" = "0" ] || fail ".MTREE verification failed"
+
+# phase0: with the default output (pkgrel-bumped sibling), drop the stale
+# relative-convention input so release staging never keeps both variants.
+if [ -z "$OUT_EXPLICIT" ] && [ "$OUT" != "$IN" ]; then
+  rm -f "$IN"
+  echo "    stale relative-convention input removed: $IN"
+fi
 
 echo "OK: $OUT"
 echo "    pkgver $OLD_VER -> $NEW_VER"
