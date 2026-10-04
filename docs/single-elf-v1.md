@@ -169,7 +169,11 @@ wrapper 方案的路径 = `join(XDG_DATA_HOME, "opencode")` where `XDG_DATA_HOME
 | A8 | 双线共存 | 假 HOME 隔离跑 v1 + 真机 v2 并存，检查 v2 目录 mtime 不变 | 需在 oscar 复核 |
 | A9 | 迁移脚本仍可用 | `migrate-to-opencode1.sh check` 在新包下退出码语义不变 | 布局未变，应天然通过 |
 | A10 | 无 bash 依赖 | `ldd`/`readelf` 无关；实测 `bin/opencode1` 是 ELF 且 `head -c4` = `\x7fELF` | 防误装 shell 脚本 |
-| **A11** | **诱饵 XDG 下写入不外逸** | 假 HOME + `XDG_{DATA,CONFIG,STATE,CACHE}_HOME=<sandbox>/decoy-*` 跑 `debug paths` | **默认模式预期失败**（落 decoy，见 §9）；`--ignore-xdg` 模式预期落 `$HOME/.local/share/opencode1/opencode`。判据随模式而定，见 §9.3 |
+| **A11** | **诱饵 XDG 下写入不外逸** | 假 HOME + `XDG_{DATA,CONFIG,STATE,CACHE}_HOME=<sandbox>/decoy-*` 跑 `debug paths` | **默认模式（A+）必须落 `$HOME/.local/share/opencode1/opencode`，零 decoy 命中**（task-27 活体验证通过）。`--no-ignore-xdg` 逃生门下预期落 decoy（§9.3） |
+
+> **A11 的判据随模式翻转** —— 这是 task-27 的裁决：`--ignore-xdg` 从草案升为 **v1 线默认**，
+> 所以 A11 从「记录失败边界」变成**放行断言**。逃生门 `--no-ignore-xdg` 保留旧的 parity 行为，
+> 跑 A11 时预期落 decoy —— 那是该模式被记录下来的性质，不是回归。
 
 ### 5.1 ⚠️ tmp 根会随固化改变（与现役不等价）
 
@@ -187,9 +191,31 @@ namespaces 化：
 `agent/agent.ts:110`（含 permission 白名单 `path.join(Global.Path.tmp, "*")`）—— 语义不变，
 但断言与文档需跟上。
 
-**⚠️ 既有测试会红**：`packages/core/test/global.test.ts:9`
-`expect(Global.Path.tmp).toBe(path.join(os.tmpdir(), "opencode"))` —— 固化后必然失败。
-**重建前必须改这条测试**，否则回归门会被它挡住。
+**与 oscar 现状一致**：oscar 侧 v1 已跑在私有 `TMPDIR` 下（A5），tmp 根本就是
+`$TMPDIR/opencode1/opencode` 这一类落点，不存在跨代共用。本机构建 v1 未设私有 `TMPDIR`，
+固化后落 `$TMPDIR/opencode1/opencode`，两侧命名空间一致。
+
+### 5.2 随固化必须一起改的测试断言（task-27 已处理，编入补丁链）
+
+固化改的是**测试自己断言的对象**，所以断言必须与补丁同批次落地。三处，均由
+`tools/a2/single-elf-namespace-patch.sh` 在同一次运行里改掉（**不手工改**：`$V1_SRC`
+随时可能被重新解包，手工改动会静默消失）：
+
+| 文件 | 位置 | 原断言 | 改为 |
+|---|---|---|---|
+| `packages/core/test/global.test.ts` | :9 | `toBe(path.join(os.tmpdir(), "opencode"))` | `toBe(path.join(os.tmpdir(), "opencode1/opencode"))` |
+| `packages/opencode/test/preload.ts` | :46 | `process.env["OPENCODE_TEST_HOME"] = testHome` | 同一行链式补 `process.env["HOME"] =`（见下） |
+| `packages/opencode/test/preload.ts` | :53 | `path.join(dir, "cache", "opencode")` | `path.join(dir, "home", ".cache", "opencode1", "opencode")` |
+
+**后两处是 A+ 特有的失效，只改 `global.test.ts` 会漏**：
+
+- `preload.ts` 靠 import 期 export `XDG_*_HOME` 来隔离整个测试套件（它自己的头注释就写着
+  这件事）。A+ 下这四个 export 变成**惰性** —— 不补 `HOME`，套件会直接写真实 `$HOME`。
+- :53 写 cache version 文件的目的是阻止 `global/index.ts` 清空全局 cache。A+ 下 cache 根
+  已从 `XDG_CACHE_HOME/opencode` 挪到 `$HOME/.cache/opencode1/opencode`；漏改的后果不是
+  报错，而是**每次跑测试都静默清一次全局 cache**。
+
+两处都排在 `:90` 第一次 `src/` import 之前，这是它们仍然生效的前提。
 
 ---
 
@@ -333,25 +359,36 @@ singleELF : $SB/decoy-data/opencode1/opencode
 
 ### 9.3 两模式行为对照表
 
-| 维度 | 默认（namespace only） | `--ignore-xdg`（A+ 草案） |
+> **task-27 裁决：列序已翻转。** A+ 从「草案/可选项」升为 **v1 线默认**，`--no-ignore-xdg`
+> 为逃生门。下表按新默认重排。
+
+| 维度 | **默认 = A+（`--ignore-xdg`，固化 + 忽略 XDG）** | 逃生门 `--no-ignore-xdg`（仅固化命名） |
 |---|---|---|
 | `app` 常量 | `opencode1/opencode` | `opencode1/opencode`（相同） |
-| XDG 根来源 | `xdg-basedir`（**读 env**） | `process.env.HOME ?? os.homedir()`（**不读 XDG_***） |
-| 诱饵 XDG 下 data 落点 | `$DECOY/opencode1/opencode`（**被劫持**） | `$HOME/.local/share/opencode1/opencode`（**免疫**，实测 IGNORED） |
-| 与现役 wrapper 关系 | **parity**（诱饵下逐字节相同） | **strictly stronger**（wrapper 会被劫持，A+ 不会） |
-| `XDG_*` 支持 | 尊重（用户可重定向） | **不再尊重**（能力回退） |
+| XDG 根来源 | `process.env.HOME ?? os.homedir()`（**不读 XDG_***） | `xdg-basedir`（**读 env**） |
+| 诱饵 XDG 下 data 落点 | `$HOME/.local/share/opencode1/opencode`（**免疫**，实测 IGNORED） | `$DECOY/opencode1/opencode`（**被劫持**） |
+| 与现役 wrapper 关系 | **strictly stronger**（wrapper 会被劫持，A+ 不会） | **parity**（诱饵下逐字节相同） |
+| `XDG_*` 支持 | **不再尊重**（能力回退） | 尊重（用户可重定向） |
 | 零 XDG 时布局 | `$HOME/…/opencode1/opencode` | 同左（**逐字节相同**） |
 | tmp | `$TMPDIR/opencode1/opencode` | 同左 |
-| 适用场景 | 与现役**行为等价**，迁移零风险；保留用户用 `XDG_*` 重定向 v1 数据的能力（如外置盘/加密卷） | 要「产物即隔离、env 绕不过去」的**强保证**；或审计要求拒绝一切外部 env 输入 |
-| 代价 | 无（现状等价） | 用户若依赖 `XDG_*` 重定向 v1 数据 → **配置失效**；`TMPDIR` **不**在 neutralize 范围（`os.tmpdir()` 仍生效），刻意保留 |
+| 代价 | 用户若依赖 `XDG_*` 重定向 v1 数据 → **配置失效**；`TMPDIR` **不**在 neutralize 范围（`os.tmpdir()` 仍生效），刻意保留 | 无（现状等价） |
 
-**建议：默认模式随单 ELF 一起发布**（等价、零风险）；`--ignore-xdg` **留作可选项**，
-仅在「必须拒绝外部 env」的场景显式启用。这是发布决策，不是构建决策。
+**为何把 A+ 定为默认**（主代理裁决，task-27）：
 
-### 9.4 `--ignore-xdg` 变体（草案，**未启用**）
+1. **v1 线的定位就是旧环境兼容线**，与 v2 共存、且可被任何 export 了 `XDG_*_HOME` 的容器或
+   shell 调用。多容器 XDG 外泄**正是这条线要防的隐患**。
+2. task-26 实测：外部 `XDG_*` 会 re-root 整个 runtime。namespace-only 只是 **parity**，不是
+   免疫 —— 等于「结构性隔离」这个卖点没兑现。
+3. 因此**牺牲 XDG 标准语义换结构性隔离**：产物即隔离，env 绕不过去。
+4. 回退面有界且有逃生门：真需要 env 重定向（外置盘/加密卷）的用户显式用
+   `--no-ignore-xdg`，行为与现役 wrapper 逐字节相同。
+5. **TMPDIR 不在这个交易里** —— 仅 `app` 子目录被命名空间化，`os.tmpdir()` 本身不动。
+
+### 9.4 A+ 变体（**v1 线默认**，task-27 起）
 
 ```bash
-tools/a2/single-elf-namespace-patch.sh --ignore-xdg   # 默认不加此参数
+tools/a2/single-elf-namespace-patch.sh              # 默认即 A+
+tools/a2/single-elf-namespace-patch.sh --no-ignore-xdg   # 逃生门：回到 parity 行为
 ```
 
 `global.ts` 改动（6 行；实测产出，L3 承接原 import 槽位，ESM import 提升使其合法）：
@@ -367,9 +404,16 @@ const state  = path.join(home, '.local', 'state', app)
 const tmp    = path.join(os.tmpdir(), app)                      ← 刻意不动
 ```
 
-补丁脚本已实现并验证：默认/`--ignore-xdg` 双模式幂等、`.bak` 保留、`post-verify`
-逐条校验、`marker` 行自我标记、上游漂移时 fail-fast、`--ignore-xdg` 下断言
-`xdg-basedir` import 已消失。**未接入任何打包脚本**，`--ignore-xdg` **默认关闭**。
+补丁脚本已实现并验证：双模式幂等、`.bak` 保留、`post-verify` 逐条校验、`marker` 行自我标记、
+上游漂移时 fail-fast、A+ 下断言 `xdg-basedir` import 已消失。**task-27 起默认即 A+**，
+`--no-ignore-xdg` 为逃生门。
+
+**分阶段幂等**（task-27 修的一个真 bug）：早退条件原先只看 `global.ts` 的 marker，于是
+「`global.ts` 已改、测试断言还没改」的中间态会被后续每次运行直接跳过 —— 测试断言永远补不上。
+现在 marker 检查覆盖三个文件（`global.ts` / `global.test.ts` / `preload.ts`），编辑阶段也各自
+独立判 marker，半途中断的运行下次自愈。
+
+**测试断言同批次修正**：见 §5.2（三处，全部编入同一次补丁运行）。
 
 **运行时验证**（bun 执行与 patch 产出逐行同构的派生区，诱饵 XDG 下）：
 
@@ -378,6 +422,9 @@ XDG_DATA_HOME = $SB/decoy-data
 data   = $SB/home/.local/share/opencode1/opencode
 => IGNORED decoy XDG_* (GOOD)
 ```
+
+task-27 进一步用**真 press6 产物**在诱饵 `XDG_*` + 隔离假 HOME 下复验（A11 活体），结果见
+`.omo/evidence/a2-v1-effect-rebuild/task-27-press6.txt`。
 
 ### 9.5 等价性说明（为何用未固化 ELF 做实测）
 

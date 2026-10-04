@@ -24,14 +24,19 @@ set -euo pipefail
 #   KIT_DIR      输出 kit 目录（默认 artifacts/build/1.18.32/beta103-press5）
 #   UPX_LEVEL    默认 -4
 #   SMOKE_RUNS   TUI 冒烟次数（默认 3）
+#   PRESS_TAG    压件名/kits 标签（默认 press5）。press6 用 PRESS_TAG=press6 复用本链：
+#                SRC_RUNTIME/GRAFTED_BIN/HERMETIC_BIN/KIT_DIR 均已是 env 化的，唯一硬编码
+#                的产物名就是 PRESS_BIN 与 launcher 里的它，故抽成这一个变量。
 
 ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 VER="1.18.32"
+# PRESS_TAG must be resolved before KIT_DIR's default expands it (set -u).
+PRESS_TAG="${PRESS_TAG:-press5}"
 SRC_RUNTIME="${SRC_RUNTIME:-$ROOT_DIR/artifacts/build/$VER/opencode-v1-$VER-beta103-t16-absorb}"
 GRAFT_LIB="$ROOT_DIR/artifacts/transplant/opentui-bionic-tlsdesc/libopentui.embed.so"
 GRAFTED_BIN="${GRAFTED_BIN:-$ROOT_DIR/artifacts/build/$VER/opencode-v1-$VER-beta103-t16-grafted}"
 HERMETIC_BIN="${HERMETIC_BIN:-$ROOT_DIR/artifacts/build/$VER/opencode-v1-$VER-beta103-t16-hermetic-grafted}"
-KIT_DIR="${KIT_DIR:-$ROOT_DIR/artifacts/build/$VER/beta103-press5}"
+KIT_DIR="${KIT_DIR:-$ROOT_DIR/artifacts/build/$VER/beta103-$PRESS_TAG}"
 UPX_LEVEL="${UPX_LEVEL:--4}"
 SMOKE_RUNS="${SMOKE_RUNS:-3}"
 EV_DIR="$ROOT_DIR/.omo/evidence/a2-v1-effect-rebuild"
@@ -50,7 +55,7 @@ FREE_MB="$(df_free_mb)"
 
 SRC_SHA="$(sha256sum "$SRC_RUNTIME" | awk '{print $1}')"
 SRC_SZ="$(stat -c%s "$SRC_RUNTIME")"
-echo "==> press-v5: src=$SRC_RUNTIME"
+echo "==> press-v5 (tag=$PRESS_TAG): src=$SRC_RUNTIME"
 echo "    src size=$SRC_SZ sha256=$SRC_SHA"
 echo "    kit=$KIT_DIR upx=$UPX_LEVEL free=${FREE_MB}MB"
 
@@ -134,7 +139,7 @@ PYEOF
 # ── 2. UPX press（只读输入，-o 出新件） ──────────────────────────────────
 echo "==> [2/6] upx $UPX_LEVEL press"
 PRESS_DIR="$KIT_DIR/runtime"
-PRESS_BIN="$PRESS_DIR/opencode-v1-$VER-beta103-press5"
+PRESS_BIN="$PRESS_DIR/opencode-v1-$VER-beta103-$PRESS_TAG"
 mkdir -p "$PRESS_DIR"
 if [[ ! -e "$PRESS_BIN" ]]; then
 	upx "$UPX_LEVEL" -o "$PRESS_BIN" "$HERMETIC_BIN"
@@ -157,10 +162,10 @@ echo "$NEED" | grep -Eq 'NEEDED.*lib(c|m|dl|pthread|rt)\.so\.[0-9]' && {
 echo "    zero-external-.so gate OK (kit has no loose .so; NEEDED bionic-only)"
 cat > "$KIT_DIR/opencode" << LAUNCHER
 #!/data/data/com.termux/files/usr/bin/bash
-# beta103-press5 candidate launcher (A2 todo16: bun-absorb, zero external .so)
+# beta103-$PRESS_TAG candidate launcher (A2 namespace bake + bun-absorb, zero external .so)
 set -euo pipefail
 D="\$(cd "\$(dirname "\$0")" && pwd)"
-exec "\$D/runtime/opencode-v1-$VER-beta103-press5" "\$@"
+exec "\$D/runtime/opencode-v1-$VER-beta103-$PRESS_TAG" "\$@"
 LAUNCHER
 chmod 755 "$KIT_DIR/opencode"
 
@@ -184,7 +189,7 @@ echo "    pressed  --version = $V_PRESS"
 if [[ "${SKIP_SMOKE:-0}" != "1" ]]; then
 	echo "==> [6/6] TUI smoke x$SMOKE_RUNS via launcher"
 	for i in $(seq 1 "$SMOKE_RUNS"); do
-		bash "$EV_DIR/task-3-smoke.sh" "$KIT_DIR/opencode" "press5-run$i"
+		bash "$EV_DIR/task-3-smoke.sh" "$KIT_DIR/opencode" "$PRESS_TAG-run$i"
 	done
 else
 	echo "==> [6/6] smoke skipped (SKIP_SMOKE=1)"
@@ -192,7 +197,7 @@ fi
 
 # ── MANIFEST ─────────────────────────────────────────────────────────────
 cat > "$KIT_DIR/MANIFEST.txt" << MANIFEST
-# beta103-press5 candidate kit (A2 todo16: bun-absorb, zero external .so) $(date -u +%FT%TZ)
+# beta103-$PRESS_TAG candidate kit (A2 namespace bake + bun-absorb, zero external .so) $(date -u +%FT%TZ)
 src_runtime: $SRC_RUNTIME
 src_size: $SRC_SZ
 src_sha256: $SRC_SHA
@@ -208,7 +213,7 @@ hermetic_patch: tools/a2/hermetic-home-patch.py (baked home paths remapped to /o
 hermetic: $HERMETIC_BIN
 hermetic_size: $HERMETIC_SZ
 hermetic_sha256: $HERMETIC_SHA
-pressed: runtime/opencode-v1-$VER-beta103-press5
+pressed: runtime/opencode-v1-$VER-beta103-$PRESS_TAG
 pressed_size: $PRESS_SZ
 pressed_sha256: $PRESS_SHA
 ratio: $(awk "BEGIN{printf \"%.1f%%\", $PRESS_SZ*100/$HERMETIC_SZ}")
