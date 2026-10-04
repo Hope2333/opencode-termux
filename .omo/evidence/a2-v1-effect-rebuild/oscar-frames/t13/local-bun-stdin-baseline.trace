@@ -1,0 +1,225 @@
+16101 fcntl(0, F_GETFL)                 = 0x20002 (flags O_RDWR|O_LARGEFILE)
+16101 fcntl(1, F_GETFL)                 = 0x20002 (flags O_RDWR|O_LARGEFILE)
+16101 fcntl(2, F_GETFL)                 = 0x20002 (flags O_RDWR|O_LARGEFILE)
+16101 read(3, "dir.system = /system/bin/\ndir.sy"..., 4096) = 4096
+16101 read(3, "iv-app\nnamespace.default.asan.pe"..., 4096) = 4096
+16101 read(3, "itted.paths += /system_ext/priv-"..., 4096) = 4096
+16101 read(3, "IB}/hwasan\nnamespace.com_android"..., 4096) = 4096
+16101 read(3, "mespace.com_android_appsearch.hw"..., 4096) = 4096
+16101 read(3, ".search.paths = /apex/com.androi"..., 4096) = 4096
+16101 read(3, "com.android.i18n/${LIB}\nnamespac"..., 4096) = 4096
+16101 read(3, "hs += /data/asan/system/${LIB}\nn"..., 4096) = 4096
+16101 read(3, "x/com.android.ondevicepersonaliz"..., 4096) = 4096
+16101 read(3, "uprobestats.shared_libs = libupr"..., 4096) = 4096
+16101 read(3, "ace.com_android_tethering.isolat"..., 4096) = 4096
+16101 read(3, "rt.hwasan-aarch64-android.so:lib"..., 4096) = 4096
+16101 read(3, "ndroid_art.shared_libs = libnati"..., 4096) = 4096
+16101 read(3, "aths += /vendor/${LIB}/vndk-sp\nn"..., 4096) = 4096
+16101 read(3, "hal.hwasan.search.paths += /odm/"..., 4096) = 4096
+16101 read(3, "wasan.permitted.paths += /vendor"..., 4096) = 4096
+16101 read(3, "B}/hwasan\nnamespace.com_android_"..., 4096) = 4096
+16101 read(3, ".com_android_media.asan.permitte"..., 4096) = 4096
+16101 read(3, "paths = /apex/com.android.os.sta"..., 4096) = 4096
+16101 read(3, "e.com_android_runtime.asan.searc"..., 4096) = 4096
+16101 read(3, "d.paths += /system_ext/${LIB}\nna"..., 4096) = 4096
+16101 read(3, "s += /vendor/${LIB}/vndk-sp\nname"..., 4096) = 4096
+16101 read(3, "itted.paths += /odm/priv-app\nnam"..., 4096) = 4096
+16101 read(3, "system/${LIB}/hwasan\nnamespace.s"..., 4096) = 4096
+16101 read(3, "amespace.system.link.com_android"..., 4096) = 4096
+16101 read(3, "64-android.so:libclang_rt.ubsan_"..., 4096) = 4096
+16101 read(3, "18n.hwasan.permitted.paths += /s"..., 4096) = 4096
+16101 read(3, "itted.paths += /system/${LIB}/hw"..., 4096) = 4096
+16101 read(3, "ths += /system/${LIB}/hwasan\nnam"..., 4096) = 4096
+16101 read(3, "ermitted.paths += /system/${LIB}"..., 4096) = 4096
+16101 read(3, "d.virt/${LIB}\nnamespace.com_andr"..., 4096) = 4096
+16101 read(3, "stem_ext/app\nnamespace.system.as"..., 4096) = 4096
+16101 read(3, "mitted.paths += /vendor/priv-app"..., 4096) = 4096
+16101 read(3, "san.search.paths += /data/asan/p"..., 4096) = 4096
+16101 read(3, "ce.com_android_adservices.asan.p"..., 4096) = 4096
+16101 read(3, "= /data/asan/system/${LIB}\nnames"..., 4096) = 4096
+16101 read(3, "h64-android.so:libclang_rt.ubsan"..., 4096) = 4096
+16101 read(3, "dia/${LIB}\nnamespace.com_android"..., 4096) = 4096
+16101 read(3, "solated = true\nnamespace.com_and"..., 4096) = 4096
+16101 read(3, "d.paths += /system_ext/${LIB}/hw"..., 4096) = 4096
+16101 read(3, "ault,com_android_tethering,com_a"..., 4096) = 4096
+16101 read(3, "ed.paths += /system_ext/${LIB}\nn"..., 4096) = 4096
+16101 read(3, "LIB}/hwasan\nnamespace.com_androi"..., 4096) = 4096
+16101 read(3, "asan.permitted.paths += /system_"..., 4096) = 4096
+16101 read(3, "odm/${LIB}\nnamespace.sphal.asan."..., 4096) = 4096
+16101 read(3, "id_media,com_android_mediaprovid"..., 4096) = 4096
+16101 read(3, "id.so:libclang_rt.ubsan_standalo"..., 4096) = 4096
+16101 read(3, "com.android.art/javalib\nnamespac"..., 4096) = 4096
+16101 read(3, "apex/com.android.extservices/${L"..., 4096) = 4096
+16101 read(3, "edia.links = system,com_android_"..., 4096) = 4096
+16101 read(3, "B}\nnamespace.com_android_neuraln"..., 4096) = 4096
+16101 read(3, "s_statsd.asan.permitted.paths +="..., 4096) = 4096
+16101 read(3, "amespace.com_android_runtime.asa"..., 4096) = 4096
+16101 read(3, ".paths += /system/${LIB}\nnamespa"..., 4096) = 4096
+16101 read(3, "virt.hwasan.search.paths += /ape"..., 4096) = 4096
+16101 read(3, ".permitted.paths += /system/vend"..., 4096) = 4096
+16101 read(3, ".permitted.paths += /data/asan/s"..., 4096) = 4096
+16101 read(3, "libadb_pairing_connection.so:lib"..., 4096) = 748
+16101 read(3, "", 4096)                 = 0
+16101 read(4, "1\n", 4096)              = 2
+16101 read(4, "", 4096)                 = 0
+16101 read(7, "always madvise [never]\n", 4096) = 23
+16101 read(7, "", 4096)                 = 0
+16101 read(3, "0-7\n", 4096)            = 4
+16101 read(3, "always madvise [never]\n", 32) = 23
+16101 ioctl(0, TCGETS, {c_iflag=ICRNL|IXON, c_oflag=NL0|CR0|TAB0|BS0|VT0|FF0|OPOST|ONLCR, c_cflag=B38400|CS8|CREAD, c_lflag=ISIG|ICANON|ECHO|ECHOE|ECHOK|IEXTEN|ECHOCTL|ECHOKE, ...}) = 0
+16101 ioctl(0, TCGETS, {c_iflag=ICRNL|IXON, c_oflag=NL0|CR0|TAB0|BS0|VT0|FF0|OPOST|ONLCR, c_cflag=B38400|CS8|CREAD, c_lflag=ISIG|ICANON|ECHO|ECHOE|ECHOK|IEXTEN|ECHOCTL|ECHOKE, ...}) = 0
+16101 ioctl(1, TCGETS, {c_iflag=ICRNL|IXON, c_oflag=NL0|CR0|TAB0|BS0|VT0|FF0|OPOST|ONLCR, c_cflag=B38400|CS8|CREAD, c_lflag=ISIG|ICANON|ECHO|ECHOE|ECHOK|IEXTEN|ECHOCTL|ECHOKE, ...}) = 0
+16101 ioctl(1, TCGETS, {c_iflag=ICRNL|IXON, c_oflag=NL0|CR0|TAB0|BS0|VT0|FF0|OPOST|ONLCR, c_cflag=B38400|CS8|CREAD, c_lflag=ISIG|ICANON|ECHO|ECHOE|ECHOK|IEXTEN|ECHOCTL|ECHOKE, ...}) = 0
+16101 ioctl(2, TCGETS, {c_iflag=ICRNL|IXON, c_oflag=NL0|CR0|TAB0|BS0|VT0|FF0|OPOST|ONLCR, c_cflag=B38400|CS8|CREAD, c_lflag=ISIG|ICANON|ECHO|ECHOE|ECHOK|IEXTEN|ECHOCTL|ECHOKE, ...}) = 0
+16101 ioctl(2, TCGETS, {c_iflag=ICRNL|IXON, c_oflag=NL0|CR0|TAB0|BS0|VT0|FF0|OPOST|ONLCR, c_cflag=B38400|CS8|CREAD, c_lflag=ISIG|ICANON|ECHO|ECHOE|ECHOK|IEXTEN|ECHOCTL|ECHOKE, ...}) = 0
+16101 read(3, "16101 (bun) R 16099 16099 16099 "..., 1024) = 308
+16101 read(3, "57b0870000-57b5c74000 r-xp 00000"..., 1024) = 1024
+16101 read(3, "5e6000 r--p 00000000 00:00 0    "..., 1024) = 1024
+16101 read(3, "                     /system/lib"..., 1024) = 1024
+16101 read(3, "0                        /apex/c"..., 1024) = 1024
+16101 read(3, " ---p 00000000 00:00 0 \n792899e0"..., 1024) = 1024
+16101 read(3, "289d8000-79289d9000 r--p 0000000"..., 1024) = 1024
+16101 read(3, "2996f000-7929973000 r--p 0000000"..., 1024) = 1024
+16101 read(3, "lloc_small_objects]\n7929b27000-7"..., 1024) = 1024
+16101 read(3, "--p 00000000 00:00 0            "..., 1024) = 1024
+16101 read(3, "n:bionic_alloc_small_objects]\n79"..., 1024) = 1024
+16101 read(3, "0000 07:148 88351               "..., 1024) = 625
+16101 read(3, "\351\347\37\310\261\216\345>zvT\366\244m\322\310\214P\373\242\35,\225\232+F\t@\311\33\16@"..., 128) = 128
+16101 clone(child_stack=0x785fd48cb0, flags=CLONE_VM|CLONE_FS|CLONE_FILES|CLONE_SIGHAND|CLONE_THREAD|CLONE_SYSVSEM|CLONE_SETTLS|CLONE_PARENT_SETTID|CLONE_CHILD_CLEARTID, parent_tid=[16102], tls=0x785fd49010, child_tidptr=0x785fd48cd0) = 16102
+16101 read(4, "16101 (bun) R 16099 16099 16099 "..., 1024) = 309
+16101 read(4, "57b0870000-57b5c74000 r-xp 00000"..., 1024) = 1024
+16101 read(4, "0 rw-p 00000000 00:00 0         "..., 1024) = 1024
+16101 read(4, "r-xp 00077000 fe:33 29479563    "..., 1024) = 1024
+16101 read(4, "fe:33 29480896                  "..., 1024) = 1024
+16101 read(4, "                          [page "..., 1024) = 1024
+16101 read(4, "ld-preload.so\n79289a3000-79289a4"..., 1024) = 1024
+16101 read(4, "79298ad000 r--p 00000000 07:148 "..., 1024) = 1024
+16101 read(4, "000 rw-p 00000000 00:00 0       "..., 1024) = 1024
+16101 read(4, "[anon:bionic_alloc_small_objects"..., 1024) = 1024
+16101 read(4, "--p 00000000 00:00 0            "..., 1024) = 1024
+16101 read(4, "n:bionic_alloc_small_objects]\n79"..., 1024) = 1024
+16101 read(4, "                       /apex/com"..., 1024) = 718
+16101 read(4, "0-7\n", 4096)            = 4
+16101 read(4, "5:freezer:/\n4:memory:/apps/com.t"..., 1023) = 109
+16101 epoll_ctl(4, EPOLL_CTL_ADD, 6, {events=EPOLLIN, data=0x7867fb00c0}) = 0
+16101 epoll_ctl(4, EPOLL_CTL_MOD, 6, {events=EPOLLIN|EPOLLET, data=0x7867fb00c0}) = 0
+16101 read(7, "tzdata2025a\0\0\0\0\30\0\0y(\0\0067/", 24) = 24
+16101 read(7, "Africa/Abidjan\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"..., 30992) = 30992
+16101 read(7, "TZif2\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"..., 111) = 111
+16101 epoll_ctl(4, EPOLL_CTL_ADD, 8, {events=EPOLLIN, data=0x7869970050}) = 0
+16101 read(9, "\17\333RI\17\r%\207\32&\22\225\212\16\21S\222\220\35\305j\17\r\312\352\347\321:\202\270\301\373"..., 128) = 128
+16101 read(10, "5:freezer:/\n4:memory:/apps/com.t"..., 1023) = 109
+16101 read(10, "tzdata2025a\0\0\0\0\30\0\0y(\0\0067/", 24) = 24
+16101 read(10, "Africa/Abidjan\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"..., 30992) = 30992
+16101 read(10, "TZif2\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"..., 393) = 393
+16101 read(11, "16101 (bun) R 16099 16099 16099 "..., 1024) = 312
+16101 read(11, "57b0870000-57b5c74000 r-xp 00000"..., 1024) = 1024
+16101 read(11, "p:s0\n783ac4a000-783cc4a000 rw-p "..., 1024) = 1024
+16101 read(11, "r:exported_default_prop:s0\n78a81"..., 1024) = 1024
+16101 read(11, " \n7928325000-7928326000 rw-p 000"..., 1024) = 1024
+16101 read(11, "    /dev/__properties__/u:object"..., 1024) = 1024
+16101 read(11, "                       /apex/com"..., 1024) = 1024
+16101 read(11, "0 0                             "..., 1024) = 1024
+16101 read(11, "              /apex/com.android."..., 1024) = 1024
+16101 read(11, "/u:object_r:vendor_socket_hook_p"..., 1024) = 1024
+16101 read(11, "                             [an"..., 1024) = 1024
+16101 read(11, "ject_r:debug_prop:s0\n7929c85000-"..., 1024) = 1024
+16101 read(11, "2ad75000-792ad79000 ---p 0000000"..., 1024) = 1024
+16101 read(11, "nker64\n792af12000-792af13000 rw-"..., 1024) = 551
+16101 clone(child_stack=0x783ac02cb0, flags=CLONE_VM|CLONE_FS|CLONE_FILES|CLONE_SIGHAND|CLONE_THREAD|CLONE_SYSVSEM|CLONE_SETTLS|CLONE_PARENT_SETTID|CLONE_CHILD_CLEARTID, parent_tid=[16103], tls=0x783ac03010, child_tidptr=0x783ac02cd0) = 16103
+16101 clone(child_stack=0x783ab76cb0, flags=CLONE_VM|CLONE_FS|CLONE_FILES|CLONE_SIGHAND|CLONE_THREAD|CLONE_SYSVSEM|CLONE_SETTLS|CLONE_PARENT_SETTID|CLONE_CHILD_CLEARTID, parent_tid=[16104], tls=0x783ab77010, child_tidptr=0x783ab76cd0) = 16104
+16101 clone(child_stack=0x783aaeacb0, flags=CLONE_VM|CLONE_FS|CLONE_FILES|CLONE_SIGHAND|CLONE_THREAD|CLONE_SYSVSEM|CLONE_SETTLS|CLONE_PARENT_SETTID|CLONE_CHILD_CLEARTID, parent_tid=[16105], tls=0x783aaeb010, child_tidptr=0x783aaeacd0) = 16105
+16101 clone(child_stack=0x7838a5ecb0, flags=CLONE_VM|CLONE_FS|CLONE_FILES|CLONE_SIGHAND|CLONE_THREAD|CLONE_SYSVSEM|CLONE_SETTLS|CLONE_PARENT_SETTID|CLONE_CHILD_CLEARTID, parent_tid=[16106], tls=0x7838a5f010, child_tidptr=0x7838a5ecd0) = 16106
+16101 clone(child_stack=0x78379d2cb0, flags=CLONE_VM|CLONE_FS|CLONE_FILES|CLONE_SIGHAND|CLONE_THREAD|CLONE_SYSVSEM|CLONE_SETTLS|CLONE_PARENT_SETTID|CLONE_CHILD_CLEARTID, parent_tid=[16107], tls=0x78379d3010, child_tidptr=0x78379d2cd0) = 16107
+16101 clone(child_stack=0x7836946cb0, flags=CLONE_VM|CLONE_FS|CLONE_FILES|CLONE_SIGHAND|CLONE_THREAD|CLONE_SYSVSEM|CLONE_SETTLS|CLONE_PARENT_SETTID|CLONE_CHILD_CLEARTID, parent_tid=[16108], tls=0x7836947010, child_tidptr=0x7836946cd0) = 16108
+16101 clone(child_stack=0x78368bacb0, flags=CLONE_VM|CLONE_FS|CLONE_FILES|CLONE_SIGHAND|CLONE_THREAD|CLONE_SYSVSEM|CLONE_SETTLS|CLONE_PARENT_SETTID|CLONE_CHILD_CLEARTID, parent_tid=[16109], tls=0x78368bb010, child_tidptr=0x78368bacd0) = 16109
+16101 ioctl(0, TCGETS, {c_iflag=ICRNL|IXON, c_oflag=NL0|CR0|TAB0|BS0|VT0|FF0|OPOST|ONLCR, c_cflag=B38400|CS8|CREAD, c_lflag=ISIG|ICANON|ECHO|ECHOE|ECHOK|IEXTEN|ECHOCTL|ECHOKE, ...}) = 0
+16101 clone(child_stack=0x783382ecb0, flags=CLONE_VM|CLONE_FS|CLONE_FILES|CLONE_SIGHAND|CLONE_THREAD|CLONE_SYSVSEM|CLONE_SETTLS|CLONE_PARENT_SETTID|CLONE_CHILD_CLEARTID, parent_tid=[16111], tls=0x783382f010, child_tidptr=0x783382ecd0) = 16111
+16101 ioctl(0, TCGETS, {c_iflag=ICRNL|IXON, c_oflag=NL0|CR0|TAB0|BS0|VT0|FF0|OPOST|ONLCR, c_cflag=B38400|CS8|CREAD, c_lflag=ISIG|ICANON|ECHO|ECHOE|ECHOK|IEXTEN|ECHOCTL|ECHOKE, ...}) = 0
+16101 ioctl(0, TIOCGPTN, 0x7fccd81fac)  = -1 EACCES (Permission denied)
+16101 ioctl(0, TCGETS, {c_iflag=ICRNL|IXON, c_oflag=NL0|CR0|TAB0|BS0|VT0|FF0|OPOST|ONLCR, c_cflag=B38400|CS8|CREAD, c_lflag=ISIG|ICANON|ECHO|ECHOE|ECHOK|IEXTEN|ECHOCTL|ECHOKE, ...}) = 0
+16101 epoll_ctl(4, EPOLL_CTL_ADD, 11, {events=EPOLLIN|EPOLLHUP|EPOLLONESHOT, data=0x80000786be20010}) = 0
+16101 clone(child_stack=0x78327a2cb0, flags=CLONE_VM|CLONE_FS|CLONE_FILES|CLONE_SIGHAND|CLONE_THREAD|CLONE_SYSVSEM|CLONE_SETTLS|CLONE_PARENT_SETTID|CLONE_CHILD_CLEARTID, parent_tid=[16112], tls=0x78327a3010, child_tidptr=0x78327a2cd0) = 16112
+16101 read(12, "19132093 11657 8657 21508 0 1770"..., 1024) = 39
+16101 epoll_ctl(4, EPOLL_CTL_ADD, 7, {events=EPOLLIN, data=0x7869970000}) = 0
+16101 read(11, "hello\n", 262144)       = 6
+16101 read(11, 0x7869080006, 262138)    = -1 EAGAIN (Try again)
+16101 epoll_ctl(4, EPOLL_CTL_MOD, 11, {events=EPOLLIN|EPOLLHUP|EPOLLONESHOT, data=0x80000786be20010}) = 0
+16101 read(7, "\1\0\0\0\0\0\0\0", 8)    = 8
+16101 epoll_ctl(4, EPOLL_CTL_ADD, 7, {events=EPOLLIN, data=0x7869970000}) = -1 EEXIST (File exists)
+16101 read(7, "\1\0\0\0\0\0\0\0", 8)    = 8
+16101 epoll_ctl(4, EPOLL_CTL_ADD, 7, {events=EPOLLIN, data=0x7869970000}) = -1 EEXIST (File exists)
+16101 read(7, "\1\0\0\0\0\0\0\0", 8)    = 8
+16101 read(11, "", 262144)              = 0
+16101 epoll_ctl(4, EPOLL_CTL_DEL, 11, NULL) = 0
+16101 clone(child_stack=0x7831716cb0, flags=CLONE_VM|CLONE_FS|CLONE_FILES|CLONE_SIGHAND|CLONE_THREAD|CLONE_SYSVSEM|CLONE_SETTLS|CLONE_PARENT_SETTID|CLONE_CHILD_CLEARTID, parent_tid=[16116], tls=0x7831717010, child_tidptr=0x7831716cd0) = 16116
+16101 epoll_ctl(4, EPOLL_CTL_ADD, 7, {events=EPOLLIN, data=0x7869970000}) = -1 EEXIST (File exists)
+16116 clone(child_stack=0x783030dcb0, flags=CLONE_VM|CLONE_FS|CLONE_FILES|CLONE_SIGHAND|CLONE_THREAD|CLONE_SYSVSEM|CLONE_SETTLS|CLONE_PARENT_SETTID|CLONE_CHILD_CLEARTID, parent_tid=[16117], tls=0x783030e010, child_tidptr=0x783030dcd0) = 16117
+16101 read(7, "\1\0\0\0\0\0\0\0", 8)    = 8
+16101 epoll_ctl(4, EPOLL_CTL_ADD, 7, {events=EPOLLIN, data=0x7869970000}) = -1 EEXIST (File exists)
+16101 read(7, "\1\0\0\0\0\0\0\0", 8)    = 8
+16101 epoll_ctl(4, EPOLL_CTL_ADD, 7, {events=EPOLLIN, data=0x7869970000}) = -1 EEXIST (File exists)
+16101 read(7, "\1\0\0\0\0\0\0\0", 8)    = 8
+16101 epoll_ctl(4, EPOLL_CTL_ADD, 7, {events=EPOLLIN, data=0x7869970000}) = -1 EEXIST (File exists)
+16101 read(7, "\1\0\0\0\0\0\0\0", 8)    = 8
+16101 epoll_ctl(4, EPOLL_CTL_ADD, 7, {events=EPOLLIN, data=0x7869970000}) = -1 EEXIST (File exists)
+16101 read(7, "\1\0\0\0\0\0\0\0", 8)    = 8
+16108 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16101, si_uid=10450} ---
+16108 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16101, si_uid=10450} ---
+16106 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16101, si_uid=10450} ---
+16106 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16101, si_uid=10450} ---
+16104 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16101, si_uid=10450} ---
+16104 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16101, si_uid=10450} ---
+16112 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16101, si_uid=10450} ---
+16112 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16101, si_uid=10450} ---
+16108 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16101, si_uid=10450} ---
+16108 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16101, si_uid=10450} ---
+16107 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16101, si_uid=10450} ---
+16107 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16101, si_uid=10450} ---
+16106 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16101, si_uid=10450} ---
+16106 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16101, si_uid=10450} ---
+16103 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16101, si_uid=10450} ---
+16103 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16101, si_uid=10450} ---
+16105 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16101, si_uid=10450} ---
+16105 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16101, si_uid=10450} ---
+16104 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16101, si_uid=10450} ---
+16104 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16101, si_uid=10450} ---
+16112 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16101, si_uid=10450} ---
+16112 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16101, si_uid=10450} ---
+16111 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16101, si_uid=10450} ---
+16111 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16101, si_uid=10450} ---
+16109 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16101, si_uid=10450} ---
+16109 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16101, si_uid=10450} ---
+16107 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16101, si_uid=10450} ---
+16107 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16101, si_uid=10450} ---
+16103 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16101, si_uid=10450} ---
+16103 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16101, si_uid=10450} ---
+16105 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16101, si_uid=10450} ---
+16105 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16101, si_uid=10450} ---
+16101 read(8, "\1\0\0\0\0\0\0\0", 8)    = 8
+16111 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16101, si_uid=10450} ---
+16111 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16101, si_uid=10450} ---
+16109 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16101, si_uid=10450} ---
+16109 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16101, si_uid=10450} ---
+16107 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16101, si_uid=10450} ---
+16107 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16101, si_uid=10450} ---
+16101 read(8, "\1\0\0\0\0\0\0\0", 8)    = 8
+16109 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16101, si_uid=10450} ---
+16109 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16101, si_uid=10450} ---
+16101 read(8, "\1\0\0\0\0\0\0\0", 8)    = 8
+16101 ioctl(0, TCSETS, {c_iflag=ICRNL|IXON, c_oflag=NL0|CR0|TAB0|BS0|VT0|FF0|OPOST|ONLCR, c_cflag=B38400|CS8|CREAD, c_lflag=ISIG|ICANON|ECHO|ECHOE|ECHOK|IEXTEN|ECHOCTL|ECHOKE, ...}) = 0
+16101 ioctl(1, TCSETS, {c_iflag=ICRNL|IXON, c_oflag=NL0|CR0|TAB0|BS0|VT0|FF0|OPOST|ONLCR, c_cflag=B38400|CS8|CREAD, c_lflag=ISIG|ICANON|ECHO|ECHOE|ECHOK|IEXTEN|ECHOCTL|ECHOKE, ...}) = 0
+16101 ioctl(2, TCSETS, {c_iflag=ICRNL|IXON, c_oflag=NL0|CR0|TAB0|BS0|VT0|FF0|OPOST|ONLCR, c_cflag=B38400|CS8|CREAD, c_lflag=ISIG|ICANON|ECHO|ECHOE|ECHOK|IEXTEN|ECHOCTL|ECHOKE, ...}) = 0
+16117 +++ exited with 0 +++
+16116 +++ exited with 0 +++
+16112 +++ exited with 0 +++
+16111 +++ exited with 0 +++
+16103 +++ exited with 0 +++
+16102 +++ exited with 0 +++
+16106 +++ exited with 0 +++
+16108 +++ exited with 0 +++
+16107 +++ exited with 0 +++
+16104 +++ exited with 0 +++
+16109 +++ exited with 0 +++
+16105 +++ exited with 0 +++
+16101 +++ exited with 0 +++

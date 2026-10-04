@@ -1,0 +1,131 @@
+# task-5c-auth-verdict: 带 auth/config 沙箱双件对照终裁（锚-7 vs beta103-press2）
+执行: impl-a2t7d  分支: rc6-a2/todo5b-oscar-rerun (tip 975b904)  日期: 2026-10-03
+通道: ssh -p 8022 u0_a450@10.254.129.10（密码认证）
+harness: oscar-gate-5c.sh（5b 版 + config 拷入 + mode=anchor）
+判据: ①锚-7 带 config：TUI→渲染→键入 DELTA→5min 冻结窗（预期 RED 复现）
+      ②press2 同判据同 config：GREEN=命题成立；RED 同形=治愈不成立转 C3
+      ③SIGSEGV 签名 vs La134cbb9  ④每件 ≥2 轮
+注:机上 auth.json 全机不存在（5c 脚本注释，zen 免费 provider 免 auth），
+   「带 auth」实操 = files1 用户 config 全树拷入沙箱（敏感值不回传，只记数量/大小）。
+
+---
+## P1 核身与现场甄别（2026-10-03T08:38Z）
+- uid=u0_a115；uname -r=3.18.140-mokee-g3592dbe76eff；getprop ro.product.model=OC105 ✓
+- files1 挂名锚：runtime/opencode 60,794,672B Oct 2 21:04 在位，容器未易位 ✓
+- oscar-gate-5c.sh 机上在位（6390B, Oct 3 16:27 本地时）
+- **前轮遗产甄别**：5c-anchor-r1 系前代理 nohup 后台跑，网络阵亡后进程存活至今。
+  - mark 全序列在位：S0..S4 全部钉 8192 字节（首帧后零增量）+ C1@1791016657
+  - progress.log 最后采样 1791016727（与探测时刻差 4s）→ 采样器仍在活
+  - 进程链在位：nohup bash → gate → script -qec → timeout 1100 → opencode(pid 9066)
+  - 无 metrics.txt / 无 GATE_DONE → 未跑完；按 T0≈1791016042 推算 timeout 收尾 ≈08:49Z
+- **处置**：不重跑 r1，等待收割（与重跑等效：判据进程从未中断，数据连续）。
+- press2 件核实：beta103-press2/runtime/opencode-v1-1.18.32-beta103-press2（47,320,600B, Oct 3 08:08）在位
+- 5c-anchor-r1 config 就位（cfgstats 实测）：cfg_files=3447 / 62964KB / node_modules 顶层 26 目录 / home .opencode 3442 文件 / auth_json_present=0（敏感值未回传）
+
+## P2 判据轮 1/4：5c-anchor-r1（锚-7 + config 拷入，mode=anchor）
+收割时间 2026-10-03T08:45:42Z（前轮 nohup 存活进程跑完，未重跑）
+```
+bin=…files1/usr/lib/opencode1/runtime/opencode mode=anchor port=36823 rc=124 elapsed=1100s exit_delay_after_ctrlC=473s
+render: TOTAL=10876 ANSI=1 crash_kw=0
+keys:   DELTA_z=0 DELTA_llm_window=0
+freeze: idle300s_then_arrow DELTA_arrow=0 ANSI_redraw_in_window=1
+llm:    token_footer_hits=0
+mark:   S0 8192 … S1 8192 S2 8192 S3 8192 S4 8192 C1（全程零增量）
+environ_probe: 17 lines
+cfg:    cfg_files=3447 cfg_bytes=62964KB node_modules_dirs=26 home_opencode_files=3442 auth_json_present=0
+```
+→ **判据①：锚-7 带 config 仍 RED（一帧后全冻结）**——与 5b 无-auth 锚形态同构（首帧后零增量、
+   Ctrl-C 473s 不退、timeout 124 收尾）。排除「无-auth 导致锚冻结」共因假设的一半：锚冻结与 auth/config 无关。
+
+## P2b 判据轮 2/4：5c-anchor-r2（锚-7 第二轮，确定性复现）
+执行: impl-a2t7e 收割 2026-10-03T09:2xZ（前棒 nohup 遗产跑完，未重跑）
+```
+bin=…files1/usr/lib/opencode1/runtime/opencode mode=anchor port=33925 rc=124 elapsed=1101s exit_delay_after_ctrlC=474s
+render: TOTAL=10787 ANSI=1 crash_kw=0
+keys:   DELTA_z=0 DELTA_llm_window=0
+freeze: idle300s_then_arrow DELTA_arrow=0 ANSI_redraw_in_window=1
+llm:    token_footer_hits=0
+mark:   S0 8192 … S4 8192 C1（全程零增量）
+cfg:    cfg_files=3447 cfg_bytes=62964KB node_modules_dirs=26 home_opencode_files=3442 auth_json_present=0
+```
+→ 锚-7 带 config 双轮 RED 同构（10787 vs 10876 字节，全部 DELTA=0）→ 判据① 收口：**锚冻结与 auth/config 无关，双轮确定性**。
+
+## P3 判据轮 press2（beta.103-press2 带 config，launcher 模式）
+### 5c-press2-r1 收割（2026-10-03T09:28:34Z，T0=1791019095，实际全程 615s——提前退出）
+- 启动 2026-10-03T09:18:15Z nohup PID=13998（启动前清点无残留进程、无旧 5c-press2-* 文件）
+```
+bin=…/beta103-press2/runtime/opencode-v1-1.18.32-beta103-press2 mode=launcher port=31629
+rc=0 elapsed=615s exit_delay_after_ctrlC=-12s（Ctrl-C 后 ~14s 内自行退出）
+render: TOTAL=25334 ANSI=2 crash_kw=0
+keys:   DELTA_z=0 DELTA_llm_window=16384
+freeze: idle300s_then_arrow DELTA_arrow=0 ANSI_redraw_in_window=1
+llm:    token_footer_hits=0
+mark:   S0 0 → S1 0 → S2 16384 → S3 24576 → S4 24576 C1
+environ_probe: 14 lines
+cfg:    cfg_files=3447 cfg_bytes=62964KB node_modules_dirs=26 home_opencode_files=3442 auth_json_present=0
+```
+- **与锚形态关键差异**：①输出增长（0→25334，锚钉死 8192）；②TUI 首帧晚出（S0/S1 时仍 0 字节，
+  16384 涨幅落在「键入+LLM 窗」S1→S2）；③**Ctrl-C 响应、rc=0 干净退出**（锚 473s 不退、timeout 124）。
+- 待核：typescript 终帧形态（"ok" 回复是否上屏）、DELTA_arrow=0 是否真冻结窗失败、environ 注入。
+- 注意：S0=0 意味着「z」键入时首帧未渲染（锚在 t+150s 已有 8192 帧）——press2 启动渲染明显更慢。
+### 5c-press2-r1 终帧形态判读（typescript/script.out 实读）
+- 终帧 = 完整 TUI 帧：编辑器 "Ask anything…" 占位（**z 与 "reply with exactly: ok" 零回显**）+
+  Tip "Run /connect to add an AI provider" + 尾栏 "3 MCP /status 1.18.32"；随后干净 alt-screen
+  teardown（^[[?1049l 序列），script 尾 "COMMAND_EXIT_CODE=0"。
+- DELTA_llm_window=16384 **实为迟到的首帧+spinner**：script.out 显示 "Loading plugins…" spinner
+  长时间重绘（config 3447 文件/node_modules 26 目录装载慢），帧在 S1→S3 间才落定——非 LLM 回复。
+- token_footer_hits=0 且 /connect tip 在场 → LLM 往返仍结构性不可达（auth.json 全机不存在，
+  config 拷贝带不回 auth）→「带 config」仍非完整「带 auth」环境。
+- **与锚的形态学对比**：TUI 活性轴（键入零回显/方向键零重绘/帧落定后零增量）与锚**同形**；
+  差异两点：①首帧晚出（config 装载慢）；②**Ctrl-C 响应、rc=0 干净退出**（锚 473s 不退、timeout 124）。
+
+### 5c-press2-r2 收割（2026-10-03T09:41:03Z，T0=1791019840，全程 615s——与 r1 逐字节同形）
+```
+bin=…/beta103-press2/runtime/opencode-v1-1.18.32-beta103-press2 mode=launcher port=31195
+rc=0 elapsed=615s exit_delay_after_ctrlC=-12s
+render: TOTAL=25334 ANSI=2 crash_kw=0
+keys:   DELTA_z=0 DELTA_llm_window=12288
+freeze: idle300s_then_arrow DELTA_arrow=0 ANSI_redraw_in_window=1
+llm:    token_footer_hits=0
+mark:   S0 12288 → S1 12288 → S2 24576 → S3 24576 → S4 24576 C1
+environ_probe: 16 lines
+cfg:    cfg_files=3447 cfg_bytes=62964KB node_modules_dirs=26 home_opencode_files=3442 auth_json_present=0
+```
+→ 双轮确定性复现：TOTAL 逐字节相同（25334=25334）、rc/elapsed/exit_delay 全同、帧落定后零增量同构。
+（DELTA_llm_window 12288 vs 16384 仅是采样点落在 spinner 渲染段的相位差，S0=12288 说明本轮首帧
+在 t+150s 前已部分落定——启动速度有随机性，落定后行为完全一致。）
+
+## P5 终裁（press2 beta.103 带 config ×2 轮 vs 锚-7 带 config ×2 轮）
+
+**判据矩阵（带 config 沙箱，cfg_files=3447 / node_modules 26 目录 / auth_json_present=0）**
+
+| run | 件 | rc | TOTAL | DELTA_z | DELTA_llm | DELTA_arrow | Ctrl-C 退出 | elapsed |
+|---|---|---|---|---|---|---|---|---|
+| 5c-anchor-r1 | 锚-7 常驻 | 124 | 10876 | 0 | 0 | 0 | 不退（473s） | 1100s |
+| 5c-anchor-r2 | 锚-7 常驻 | 124 | 10787 | 0 | 0 | 0 | 不退（474s） | 1101s |
+| 5c-press2-r1 | beta.103-press2 | **0** | 25334 | 0 | (16384=首帧) | 0 | **干净退（-12s）** | 615s |
+| 5c-press2-r2 | beta.103-press2 | **0** | 25334 | 0 | (12288=首帧) | 0 | **干净退（-12s）** | 615s |
+
+**裁决：RED 且与锚同形（TUI 活性轴）——「冻结根因=effect beta.83 纤维死锁，#6657（beta.103）救活」
+命题在 oscar 3.18 带 config 环境下不成立。**
+
+1. **TUI 活性轴锚-press2 同形**：两件四轮一致呈现「帧落定后零增量 + 键入零回显 + 方向键零重绘 +
+   token_footer=0」。DELTA_llm 的非零值经 typescript 实读证伪为迟到的首帧渲染（spinner→终帧落定），
+   非键入/LLM 响应。按判据口径（渲染+DELTA>0+无冻结 方为 GREEN），DELTA 判据不满足真活性语义。
+2. **process 轴存在真实差异（如实记录，不改 RED 裁决）**：press2 双轮 Ctrl-C 均 ~14s 内干净退出
+   （rc=0，alt-screen teardown 完整），锚双轮 Ctrl-C 473s 不退（timeout SIGTERM 收尾）。
+   即 #6657 后进程级「连 Ctrl-C 都死」的深冻结消失，但 TUI 视觉更新管线仍冻结——
+   死锁若在，已从「进程级不可杀」降级为「渲染/输入响应级停摆」。
+3. **auth 维度未能闭合**：auth.json 全机不存在，config 全树拷入（3447 文件）仍带不回凭据，
+   /connect tip 双件在场 → LLM 往返判据结构性不可达，与 5b 相同。5c 的共因分离因此只完成一半：
+   锚冻结与 config 无关已证，与 auth 的正交性仍未检验。
+4. **转 C3 处置建议**（主代理与用户裁决）：按 guardrail 禁止盲升 effect 版本。候选：
+   a) 接受「#6657 部分治愈（进程级）+ TUI 活性冻结仍在」结论入 C3 定案文档；
+   b) 在真用户 env（files1 原生 home，非沙箱）跑一次 press2 对照 v1env 历史 control（活 spinner）
+      以排除沙箱共因后再定案；
+   c) 冻结判据口径修订（把 Ctrl-C 响应单列为 process-liveness 二级判据）。
+5. crash_kw=0 全四轮：SIGSEGV/La134cbb9 签名未复现（TLSDESC 治愈保持稳定）。
+
+机上清理核验：press2 双轮均自行退出，锚轮 timeout 收尾已由前棒清点——本轮末次 pgrep 无残留
+gate/opencode/timeout 进程。禁令遵守：未 push；未动 files1 原配置（只读拷入沙箱）；判据外零实验。
+

@@ -1,0 +1,57 @@
+# task-11-mountname — 定位「同一容器内容换挂名即 boot 死锁」机制（E-A stale-state / E-B tmp 提取两刀）
+日期: 2026-10-03　分支: rc6-a2/todo9-input-probe (tip=5f7ffb7)
+前提（用户澄清）: 容器切换发生在 5c 健康跑之前且此后排列稳定（旧容器@files）→ delta=纯挂名效应，无翻饼变量。
+
+## S0 现状快照（2026-10-03T15:48-16:02Z, 核身 ✓ 3.18.140-mokee-g3592dbe76eff/OC105/uid=10115）
+- 槽探测: files = opencode1 PRESENT sha256前8=e4fba8d8 ✓（锚 kit 识别; 裸调 --version 需 LD env, 缺 crhandler）; files1 = opencode1 ABSENT（files1=另一容器 X, 顶层 Aria/home/usr/xinhao_system.infoJson）
+- **files1 文本残留全面排查 = 零命中**: grep -rl "files1" 于 ~/.local/share/opencode（含 56MB opencode.db, python 实测 hits=0）、~/.local/state/opencode、~/.config/opencode、~/.opencode、~/.cache/opencode、~/.npm(~868MB)、~/.bun → **假设 A 的字面形态（文本级 files1 绝对路径残留）不成立**
+- DB 路径引用画像: opencode.db 内 "/data/data/com.termux/files/" 39495 命中（会话 directory=/data/data/com.termux/files/home, projectID=global, 零 files1）——DB 全程 files 时代书写
+- 锁态: ~/.local/state/opencode/locks/ 两锁（meta.json pid=21754@Oct2 / pid=19205@Jun27, **实测均 dead, 无 pid 复用**）; service.json 指向 pid=12164（dead, port 49374）; files1/home 的 locks 为空
+- $PREFIX/tmp: .bun-10115-6b234171fedd8d8d.so(6MB, Oct3 21:20 local)——实测被 serve(pid 6557, 2.0.12, sha 8eca81f0) maps 持有 = serve 的提取产物, 非锚; $PREFIX/tmp/opencode/ 空目录
+- 锚 bundle(压缩变体)与 press2/press3 kit 均不含明文 "location services" 字符串（UPX/compressed）; 2.0.12 serve runtime(282MB)为明文 JS
+
+## S1 机制代码定位（2.0.12 serve runtime 明文段, 1.18.32 同源）
+- `LocationServiceMap.reload`: `rcMap` keys → 先逐 key invalidate（unbounded）→ 再逐 key `r.scoped(e.contextEffect(i))`（unbounded）→ **首个 failure 即 failCause** → 成功才 log "location services reloaded"
+- 底层 = Effect-TS LayerMap(~effect/LayerMap): rcMap=按 key 的 scoped resource cache, contextEffect=key 的 scoped layer 构建（location={directory, workspaceID}）
+- boot 在此 await 永不归 → 21 线程 futex 空转（与 T10 解剖一致）
+- 日志时序校准（T10 warmup/soak 重读）: **所有冻结跑在 t+0.5~10s 即到达 "booting location services"**（warm npm cache 下安装不构成掩蔽）→ 冻结点就是 location services await 本身
+- T10 warmup 尾注: 进程在 t+926s **自行退出**（非 timeout, timeout=3000s）——location await 有超时/放弃路径, 非纯死等
+
+## S2 对照口径修正（影响 E-A/E-B 判据设计）
+- 5c 健康参照 = press2 launcher 模式（sdcard 二进制, 25334B 全帧）; **锚-7 在 harness 下从未全帧渲染**（5c 时代 10876B spinner 级, T9 已记）→ 锚跑的判据只能用 LOG（是否越过 "booting location services"→"location services booted"）, 全帧判据只能用 press2 launcher
+- 5c log 中该行后 7ms 即 WARN 继续 + "fetching index http://127.0.0.1:37606/index.json" + init count=24; 冻结跑 init count=1 且零 socket（fd 表零 socket 零 pipe, T10）
+- press2ctl（sdcard 二进制+纯沙箱）也冻结 → 纯挂名无法直接影响该路径 → 机器级 10:23Z 窗口 delta 仍有未解释成分（runsv/serve 起停、pid 翻动等）——本实验矩阵即为此设计
+
+## S3 实验 E-A（真实 HOME + stale-state 移除 + 锚@files 动态 LD, 2026-10-03T16:06-16:14Z）
+- 备份并移走（记录于 t11/bak-realhome/）: .local/state/opencode/{locks,service.json,session.json,kv.json} —— files1 文本级残留为零（S0）, 故 E-A 退化为「清空全部陈旧 state 小文件」形态
+- 锚 sanity: files 槽 + LD env → --version=1.18.32 ✓（换挂名后锚 kit 本身健康）
+- 结果: typescript 4096→7603B spinner 级冻结; 真实 opencode.log: TUI run=32cc54fb 载入 tui.json(16:06:42) → instance run=47fae696 bootstrapping → config 五件加载 → "all LSPs/formatters disabled" → init(16:06:49.235) → **此后 420s 零日志**
+- **裁决: 假设 A 否证** —— 陈旧 state 全移走后 boot 仍冻（甚至冻在 init→init count 之间, 未达 location services）
+- 注: 真实 config 含 7+ 插件（node_modules 预装）, init 后段可能是插件装载相位; 无论哪种, 「移走 stale state 恢复 boot」不成立
+- 附: 真实 config 内容体量与 5c 一致（cfg_bytes=62956KB, node_modules_dirs=26, home_opencode_files=3442）→ 内容同一性佐证
+
+## S4 实验 E-B（fakehome 全新环境, 零 config 零缓存零链接, sbx-t11eb, 16:19-16:26Z, binpid=21605）
+- 结果: rc=124(timeout), typescript 4096B 冻结; 沙箱 log: config 三件(缺) → LSP/formatter disabled → init(16:19:27.879) → **WARN "background dependency install failed" NpmInstallFailed(16:19:35, 冷缓存+慢网预期内)** → init count=1(16:19:36.149) → **此后 ~410s 零日志**
+- **裁决: 假设 B 否证** —— HOME/TMPDIR/XDG 全新零残留环境 boot 仍冻; 且 $PREFIX/tmp 的 .so 提取产物也非因素（TMPDIR 独立且全新）
+- 判读: 冻点在 init count=1 之后、"booting location services" 之前（与 T10 warmup 冻在 location services 略有相位差, 属同一 boot await 链的相邻相位; warmup 当时有 warm npm cache, 相位更靠前）
+- 对照锚: T10 warmup（fresh home+warm npm symlink）= 冻在 location services; E-B（fresh home 全隔离）= 冻在 count 后 —— **两个相位都冻, 排除 home/tmp 态变量**
+
+## S5 机制综合判读（源码 + 实验交叉）
+- fork 源码在位（~/develop/opencode-upstream, 1.15.7, kit=1.18.32 同机制）: location-layer.ts → LocationServiceMap lookup = Catalog.defaultLayer + PluginBoot.defaultLayer（per-location scoped layer 构建）; plugin/boot.ts → PluginBoot.boot = Env/Account/Provider/ModelsDev 插件逐一 add, fork 进 Deferred, wait()=Deferred.await
+- "init count=N" = skill/index.ts:231 的技能发现计数（5c 健康=24, 冻结跑=1）; "fetching index http://127.0.0.1:37606/index.json" = skill/discovery.ts:59 从**本地 server** 拉技能索引 —— 5c 时本地有一个健康 server（端口 37606, 随机）, 冻结跑从未 bind/listen 任何 socket
+- 事件链重构: 5c 健康 = 当时有活着的健康 server（serve 37606）供 TUI 发现/取索引; 10:23Z 旧 serve 死、runsv 重启新 serve(4096) 但**新 serve 自身 boot 也冻**（"cli starting" 停滞, T10 S2）; TUI boot 依赖 server 就绪/注册（service.json+locks 发现机制）→ server 永不就绪 → TUI boot await 链停摆; T10 实验 a 停掉 serve 后 press2a 仍冻 = TUI 对 server 的等待不因拒绝连接而快速失败（重试/轮询型等待）
+- **两大假设均否证后的落点**: 冻结不是「挂名」直接因果（press2ctl: sdcard 二进制+纯沙箱+仅 config 拷贝源路径变 → 也冻; E-B 全隔离 → 也冻）, 而是 10:23Z 窗口机器级 delta 中「健康 server 死亡 + 新 serve 起不来」这一环; 新 serve 冻结与 TUI 冻结同机制（同为 location services/instance boot await）——鸡生蛋问题收敛到 serve boot 本身
+- 残余未解释: serve(2.0.12, 真实 HOME) boot 冻结的最终 await 归宿 —— 需对 2.0.12 明文 runtime 做 serve 模式 strace/源码级定位（T11 判据外, 移交后续）
+
+## S6 现机对照复跑 press2r2（launcher, sdcard 二进制, 16:28-16:45Z）+ 终局
+- press2r2: log 于 t+10s 到 "booting location services" 后冻结; typescript 8192B 定格（S0→S4 零增量, 零回显, 零 session）; rc=137（冻结跑无视 TERM, 需精确 SIGKILL 22637/22633/22631 解锁 probe9 管道 —— 精确 pid kill, 无展开式）
+- **16:45Z 时点机器仍处冻结态**（与 12:53Z press2ctl 一致, 数小时未自愈）
+- 现场收尾: serve(6557) 未触碰仍在跑; 真实 home state = E-A 跑重建的 locks（单锁）+ latest/model.json 等, service.json/session.json/kv.json 未重建（boot 未达注册相位）; E-A 移走的原件备份在 /mnt/sdcard_ext4/apps/a2todo9/t11/bak-realhome/; sbx-t11eb(24MB)与 t11/ 证据目录留机
+- 实验脚本留档本仓: t11-snap1..7.sh / t11-exp.sh / t11-eb.sh（本目录）
+
+## 终局裁决
+1. **机制定位达成**: boot 死锁 = instance boot await 链（init → skill 发现 → watcher/project copy → "booting location services" → LocationServiceMap.reload → 逐 location contextEffect(Catalog+PluginBoot 层构建)）永不完成; 5c 健康时该链 ~7ms 跨过（且本地 server 37606 提供技能索引, count=24）
+2. **假设 A（真实 HOME 残留 files1 陈旧态）否证**: 全盘 grep 零 files1 文本残留（含 56MB DB 二进制）; 移走全部陈旧 state 小文件后仍冻（E-A）
+3. **假设 B（bun tmp 提取按路径键控）否证**: 全新 HOME/TMPDIR/XDG 零链接环境仍冻（E-B）; spinner 渲染正常说明 opentui 原生层提取/dlopen 健康
+4. **「纯挂名因果」不成立**: press2ctl/press2r2（sdcard 二进制+纯沙箱, 不触及换名路径）同冻 → 10:23Z 机器级 delta 的有效成分 = 「旧健康 server 死亡 + runsv 新 serve boot 同病冻结」, TUI 与 serve 收敛到同一 await 链
+5. **press3 输入轴验收仍 BLOCKED**（渲染恢复前任何二进制级修复无法在此环境验收）——下一步建议: 对 2.0.12 明文 runtime 做 serve 模式定向 strace/源码定位 location await 归宿; 或容器侧恢复 5c 态（files1 回归/重建）后复验

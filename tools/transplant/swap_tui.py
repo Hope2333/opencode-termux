@@ -41,10 +41,10 @@ def find_libopentui_asset(data: bytes) -> int:
     while True:
         idx = data.find(ASSET_PREFIX, start)
         if idx < 0:
-            return -1
+            break
         name_end = data.find(b"\x00", idx + len(ASSET_PREFIX))
         if name_end < 0:
-            return -1
+            break
         name = data[idx + len(ASSET_PREFIX):name_end]
         # The raw ELF magic follows the name's trailing NUL.
         elf_off = name_end + 1
@@ -52,6 +52,22 @@ def find_libopentui_asset(data: bytes) -> int:
             return elf_off
         # Not the real asset (e.g. a reference inside bundled JS); keep scanning.
         start = name_end + 1
+    # bun >= 1.4.2 standalone layout: the bunfs registry is a consolidated
+    # NUL-separated name table (names no longer directly precede their
+    # payloads). Fall back to scanning raw ELF payloads of plausible size whose
+    # content identifies them as libopentui (SONAME string present).
+    scan = 0
+    while True:
+        i = data.find(ASSET_TERMINATOR, scan)
+        if i < 0:
+            return -1
+        try:
+            sz = elf_size(data, i)
+        except Exception:
+            sz = -1
+        if 1_000_000 < sz < 64_000_000 and b"libopentui.so" in data[i:i + sz]:
+            return i
+        scan = i + 1
 
 
 def list_bunfs_assets(data: bytes) -> list:

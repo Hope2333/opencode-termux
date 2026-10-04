@@ -1,0 +1,83 @@
+# task-5b-oscar-rerun: beta103-press2 vs beta83-baseline oscar(3.18) 重跑判据与裁决
+执行: impl-a2t7b  分支: rc6-a2/todo5b-oscar-rerun  日期: 2026-10-03
+通道: ssh -p 8022 u0_a450@10.254.129.10（密码认证，落地 uid=u0_a115）
+沙盒: /mnt/sdcard_ext4/apps/a2todo5b/（前代理 impl-a2t5b 阵亡前已部署并完成跑判；本轮甄别采信，未重跑）
+harness: oscar-gate.sh（bba4810 版 + 前代理 anchor 变体；ssh+script 真 PTY 三段判据+冻结窗）
+
+## 核身（每次 ssh 会话首查）
+- uname -r = 3.18.140-mokee-g3592dbe76eff；getprop ro.product.model = OC105；whoami = u0_a115 ✓
+- 容器挂名锚：/data/data/com.termux/files1/usr/lib/opencode1/runtime/opencode 在位（60,794,672B,
+  Oct 2 21:04）——容器未易位 ✓
+
+## 验包（本机 MANIFEST.txt / sha256 逐件比对，全部一致）
+| 件 | sha256(前8) | 结果 |
+|---|---|---|
+| beta103-press2/runtime/…press2 | 1d5bcbe9 | ✓ =MANIFEST pressed |
+| beta103-press2/pty/librust_pty… | 1047d3e2 | ✓ |
+| beta103-press2/pty/shim.so | babfea63 | ✓ |
+| beta103-press2/epoll/libepoll-compat.so | a200262e | ✓ |
+| opencode-v1-1.18.32-beta83-baseline（机上 136,246,944B） | c197eca6 | ✓ =本机冻结对照 |
+- a2todo5b-kit.tgz 本体未单独验（tgz 在 apps/ 惯例位）；解包后逐件验 sha 为更强判据，已覆盖。
+
+## 遗产甄别（为何采信不重跑）
+前代理阵亡前已完成：press2 launcher 跑两轮（06:47Z / 07:20Z）、baseline raw 一轮（06:54Z）、
+锚对照两轮（anchor-v17 rc=1 早夭弃用；anchor-v17b 07:47Z 完整 1100s）。marks 序列完整
+（S0-S4+C1）、typescript.gz/progress.log/script.out 齐全、双轮 press2 逐字节同形（确定性复现）。
+sha 已验、判据输出完整、无残留进程（pgrep 已清点）→ 采信为有效判据证据。
+
+## 判据矩阵（gate metrics 原始数字）
+
+| run | 件 | mode | rc | TOTAL | ANSI | crash_kw | DELTA_z | DELTA_llm | DELTA_arrow | token_footer | elapsed |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| beta103-press2 | press2 kit | launcher | 124 | 7237 | 1 | **0** | **0** | 0 | 0 | 0 | 1101s |
+| press2-run2 | press2 kit | launcher | 124 | 7237 | 1 | **0** | **0** | 0 | 0 | 0 | 1101s |
+| beta83-baseline | baseline | raw | **139** | 1909 | 6 | **2** | — | — | — | — | 150s |
+| anchor-v17b | 常驻 1.18.32-7 | raw | 124 | 7610 | 1 | 0 | 0 | 0 | 0 | 0 | 1100s |
+
+- marks：press2 双轮与锚 S0…S4 全部钉在 4096 字节（首帧后零增量）；baseline 仅 S0（1909=崩溃报告）即 139。
+- typescript 尾部形态：press2 与锚同为「完整 TUI 帧（编辑器 "Ask anything…" 占位 + Tip /connect +
+  1.18.32 尾栏）→ 干净 alt-screen teardown（SIGTERM 触发）」；键入的 z 与 "reply with exactly: ok"
+  **零回显**（编辑器仍空），Ctrl-C 亦无响应（exit_delay_after_ctrlC=473s，timeout 124 收尾）。
+- baseline 尾部：bun.report SIGSEGV 签名
+  **La134cbb9akQugggCuiloGurkp6B+oDm2yrF+n2yG+8khB+g6I_A2AA** —— 与 task-5 三 run 逐字节相同
+  （TLSDESC 无 shim 类崩溃，@~150s rc=139）。
+
+## 观察项
+- ③ BUN_PTY_LIB 注入实证 ✓：press2-run2.environ.txt pid=2906 runtime 进程 environ 含
+  BUN_PTY_LIB=…/pty/librust_pty_arm64_musl_patched.so + LD_PRELOAD=…/epoll/libepoll-compat.so。
+  （注：探针同时匹配到 bash 包装进程的 termux-exec preload，判读时已区分。）
+- ④ epoll-compat 生效 ✓（press2 侧）：无 4.4s 早期 epoll 崩，活到 1100s timeout。
+- ① 5min 冻结窗：press2/锚均「一帧后全死」——冻结窗内零输出，判 FROZEN（非「无冻结 GREEN」）。
+- ② 退出延迟：press2 C1 后 473s 不退（连 Ctrl-C 都死）→ 冻结深度到进程级。
+- 沙箱无 auth（帧含 "Run /connect to add an AI provider"）→ LLM 往返判据结构性不可达
+  （token_footer=0 不能单独归因冻结）。
+
+## 裁决
+
+**非「beta103 GREEN + beta83 RED」，实得双 RED（形态不同）：**
+
+1. **beta83-baseline = RED（被 TLSDESC 遮蔽）**：boot 段 SIGSEGV@~150s，签名与 task-5 逐字节
+   相同 → baseline 内嵌 opentui 无 shim，冻结命题在 baseline 上依旧不可观察。判据 3 已录。
+2. **beta103-press2 = RED（一帧后全冻结，双轮确定性复现）**：与冻结锚（常驻 1.18.32-7，已知
+   STILL_FROZEN 对照）形态逐字节同构（首帧 4096、全 DELTA=0、Ctrl-C 死、timeout 收尾）。
+   按判据口径：「#6657 治愈 beta.83 纤维死锁」命题在 oscar 3.18 上**未成立**。
+3. **TLSDESC graft 修复本身验证成功**：press2 crash_kw=0、完整渲染帧（对照 task-5 全家崩
+   La134cbb9）——运载层缺陷确已治愈，崩溃不再是遮蔽项；现在的 RED 是纯 TUI 活性判据失败。
+4. **如实分析（共因疑点，不下结论）**：历史用户-env control run（v1env/ctl.typescript，常驻 -7）
+   形态为「活 spinner 持续重绘」（输出持续增长），而本轮沙箱（无 auth、XDG 全重定向）中
+   press2 与锚双双「一帧即死」——冻结点可能存在**沙箱/无-auth/服务挂起共因**，与 effect 版本
+   正交。故不能据此断言「beta.103 修复无效」，也不能断言「冻结根因=beta.83 纤维死锁」。
+   按 guardrail：禁止盲升 effect 版本。
+5. **待 team-lead 裁决的岔路**：a) 带 auth 沙箱（拷入 files1 用户凭据）重跑双件判据以分离共因；
+   b) 按 guardrail 转 C3 冻结定案；c) 判据口径维持双 RED 结论直接收官。
+
+## 上机件与清理
+- /mnt/sdcard_ext4/apps/a2todo5b/ 全量保留（含双轮 press2 + baseline + 锚 run 取证：typescript.gz/
+  metrics/mark/progress/script.out/environ.txt），供下一棒复用；SD 余 106G。
+- 机上无残留 opencode/timeout/script 进程（pgrep 清点）。
+- 禁令遵守：未 push；未动 files1 常驻与用户数据；未装 prefix；判据外零实验（仅读取既有取证
+  与 v1env 历史 control 作旁证）；本机原件未动。
+
+## 失败记录
+- 本棒无工具失控。ssh 首连因非交互无 tty 密码认证失败 1 次 → 改 sshpass 后全通（一次性换法，
+  非重试同参数）。

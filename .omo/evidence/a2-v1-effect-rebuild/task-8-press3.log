@@ -1,0 +1,54 @@
+==> press-v3: src_grafted=/data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/1.18.32/opencode-v1-1.18.32-beta103-grafted
+    src size=136312480 sha256=392c79a42cbbfd5198d9bc3be9f2ce72abef7ceed20f14a99c97fdade54de824
+    kit=/data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/1.18.32/beta103-press3 upx=-4 free=2883MB
+==> [1/6] hermetic home remap
+    hermetic intermediate already clean (reuse)
+    hermetic size=136312480 sha256=8c42d3fdd47bdc12485cc9ce36f084a22b2ead0c0f6dbe309c3a03c00d42c956
+swap_tui: guard scan over 2 owner symbols: clamp=2 csel_vs=4
+    hermetic assert: gate=0, slot@0x7c1e8c6 5495136B, guard=OK, INIT_ARRAY=2, TLSDESC=11
+==> [2/6] upx -4 press
+                       Ultimate Packer for eXecutables
+                          Copyright (C) 1996 - 2026
+UPX 5.2.1       Markus Oberhumer, Laszlo Molnar & John Reiser   Aug 27th 2026
+
+        File size         Ratio      Format      Name
+   --------------------   ------   -----------   -----------
+ 136312480 ->  47320568   34.71%   linux/arm64   opencode-v1-1.18.32-beta103-press3
+
+Packed 1 file.
+                       Ultimate Packer for eXecutables
+                          Copyright (C) 1996 - 2026
+UPX 5.2.1       Markus Oberhumer, Laszlo Molnar & John Reiser   Aug 27th 2026
+
+testing /data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/1.18.32/beta103-press3/runtime/opencode-v1-1.18.32-beta103-press3 [OK]
+
+Tested 1 file.
+    pressed size=47320568 sha256=c77fb43f4f470d98968175e1a610998e29d7b2fe7d6ab87c092892136835b650
+==> [3/6] assets + launcher
+==> [4/6] pty graft probe (ctypes dlopen + canary)
+pty probe: symbols resolved 8/8
+    shim canary fired via DT_NEEDED: shim loaded, pid=696
+==> [5/6] --version
+    launcher --version = 1.18.32
+    pressed  --version = 1.18.32
+==> [6/6] TUI smoke x3 via launcher
+== smoke press3-run1 2026-10-03T10:55:32Z host=6.6.118-android15-8-ge58033dc8ea6-abogki498046332-4k ==
+bin=/data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/1.18.32/beta103-press3/opencode port=30339 rc=124
+render_bytes_at_25s=20480 total_bytes=44566 ansi_lines=11 crash_keywords=0
+DELTA_type_z=0 DELTA_arrow=4096 DELTA_keys_window=4096 echo_z_after_keys=0
+verdict=GREEN
+SMOKE_press3-run1_GREEN
+== smoke press3-run2 2026-10-03T10:56:40Z host=6.6.118-android15-8-ge58033dc8ea6-abogki498046332-4k ==
+bin=/data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/1.18.32/beta103-press3/opencode port=29210 rc=124
+render_bytes_at_25s=20480 total_bytes=45630 ansi_lines=11 crash_keywords=0
+DELTA_type_z=0 DELTA_arrow=4096 DELTA_keys_window=4096 echo_z_after_keys=0
+verdict=GREEN
+SMOKE_press3-run2_GREEN
+== smoke press3-run3 2026-10-03T10:57:31Z host=6.6.118-android15-8-ge58033dc8ea6-abogki498046332-4k ==
+bin=/data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/1.18.32/beta103-press3/opencode port=23317 rc=124
+render_bytes_at_25s=20480 total_bytes=36126 ansi_lines=1 crash_keywords=0
+DELTA_type_z=0 DELTA_arrow=4096 DELTA_keys_window=4096 echo_z_after_keys=0
+verdict=GREEN
+SMOKE_press3-run3_GREEN
+==> MANIFEST written
+==> press-v3 done: /data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/1.18.32/beta103-press3

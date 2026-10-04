@@ -1,0 +1,67 @@
+# task-6-tlsdesc: TLSDESC shim graft + press2 完成 + 本机冒烟（A2 todo4 补课）
+执行: impl-a2t6b  分支: rc6-a2/todo4b-tlsdesc  日期: 2026-10-03
+输入（只读未动）: artifacts/build/1.18.32/opencode-v1-1.18.32-beta103-bump
+  136,312,480 B  sha256 c80d30a7ed1dc72e52b5115e46469807bf5dd0fc323ec874469609209feb4b60
+脚本: tools/a2/press-v2.sh（幂等可复刻；graft/压件已存在则复用，断言每次重跑）
+
+## 结论（一句话）
+**TLSDESC shim graft 断言全绿并复验通过：内嵌 opentui 由「11×TLSDESC 无 ctor」坏形换为
+B2 实证同件（INIT_ARRAY ctor 就位 + TLSDESC 11 保留 + 槽外 0B 漂移）；press2 kit 全件就位
+（runtime+pty+epoll+launcher+MANIFEST，sha 全记录）；本机 --version 双路 PASS + TUI 冒烟
+3/3 GREEN（同 task-3/4 判据）。todo4 补课完成，oscar 重验候补件就绪。**
+
+## 槽位勘察（swap_tui.find_libopentui_asset）
+- 槽位 base = 0x7c1e8c6（bump 与 grafted 同址）
+- bump 槽内 libopentui-<hash>.so ELF = 6,037,032 B；graft lib libopentui.embed.so = 5,495,136 B
+  → 塞入后槽尾 541,896 B 填充垫，总长不变（136,312,480 B）
+
+## graft readelf 断言对照（本机实测数字，槽内容提取后独立 readelf）
+| 断言项 | bump 槽（未 graft） | grafted 槽（graft 后） |
+|---|---|---|
+| 槽 ELF size | 6,037,032 B | 5,495,136 B |
+| DT_INIT_ARRAY | **无**（坏形） | **0x3b63b8 / INIT_ARRAYSZ 8B** |
+| .init_array 内容 | — | R_AARCH64_RELATIVE addend **0x24fcfc**（shim ctor，静态函数不在 dynsym，B2 shim 设计一致） |
+| R_AARCH64_TLSDESC | 11 | **11（保留，非消解——B2 实证 shim ctor 就位后同形零崩）** |
+| 槽 sha256 | 028eaf46… | **de06c780a23ef8bdff481e34668db3e89437604605d8b8cbc11c959bc1cede5f** = graft lib 逐字节 |
+- 槽外断言（press-v2.sh 重跑输出）：prefix/suffix 0B drift、总长不变、sg<=so。
+- 对照说明：外层 ELF readelf（bump/grafted 同为 0 TLSDESC、INIT_ARRAY 0x538d8d0/24B）不反映
+  内嵌槽——task-5 定位的 11×TLSDESC/无 ctor 是**内嵌 libopentui**形态，断言必须做在槽级。
+- 前轮遗产 grafted 件（sha 392c79a4…）与本轮断言兼容，复用未重做手术。
+
+## press2（upx -4，本机 UPX 5.2.1，B2/RC5/press1 同参数系）
+- 136,312,480 → **47,320,600 B（34.71%）**，sha256 1d5bcbe94168bc202935288378f9f9fb46fbc0ce0901c48ecc4ae71afe77aeba
+- **size 对照 press1**：press1 = 47,460,960 B（34.82%）→ press2 **小 140,360 B**（graft lib 比原
+  内嵌 lib 小 541,896 B，UPX 压后差收敛到 ~0.3%）
+- upx -t 通过；df 闸：前置 2347MB（≥800）→ 过程最低 2331MB（≥300）
+- pty graft 探针：ctypes 符号 **8/8**；shim canary DT_NEEDED 实载 `shim loaded, pid=16961`
+- --version 双路：launcher = `1.18.32`，压件直跑 = `1.18.32` → PASS
+
+## 本机 TUI 冒烟（task-3-smoke.sh 同 harness 同判据，launcher 链路，3 跑）
+判据四门：TOTAL≥5KB / ANSI≥1 / DELTA_keys>0 / 无崩溃关键字
+| run | rc | TOTAL | ANSI | DELTA_keys | crash | verdict |
+|---|---|---|---|---|---|---|
+| press2-run1 | 124 | 44,203 | 13 | 4096（'z' 窗） | 0 | GREEN |
+| press2-run2 | 124 | 44,034 | 11 | 4096（'z' 窗） | 0 | GREEN |
+| press2-run3 | 124 | 46,494 | 22 | 4096（方向键窗） | 0 | GREEN |
+- 3/3 GREEN，渲染/键入正常，无 bun.report/SIGSEGV。rc=124 与 press1 同因（harness 50s 超时
+  窗收尾 + UPX boot 延迟，press1 已裁决非阻塞，GREEN 四门不含 rc）。
+- 原始捕获留档：task-3-capture-press2-run{1,2,3}.tsv.gz。
+- 前轮残留 task-3-capture-press2-pressed.tsv.gz（1.7KB，网络中断致插件解析失败、TUI 未渲染）
+  为废跑，本轮 3 跑取代之。
+
+## kit 布局（beta103-press2/，命名与 task-4 kit 同规范）
+opencode（launcher）/ runtime/opencode-v1-1.18.32-beta103-press2 / pty/{patched.so,shim.so} /
+epoll/libepoll-compat.so / MANIFEST.txt（size/sha256/graft 断言数字全记录）
+
+## 禁令遵守
+- 未 push；未上 oscar（3.18 重验留待用户备好的纯净 pacman 环境）；beta83/beta103-bump 原件
+  与 beta103-press（前轮 kit）未动，留对照。
+- /data 磁闸遵守（全程 ≥2331MB）。
+
+## task-7/下轮交接段（oscar A4 重验）
+- 上机件 = beta103-press2/ kit 整目录（tgz 传输后校 MANIFEST sha）。
+- harness = tools/a2/oscar-gate.sh（todo5 已就位，本轮回归未动）。
+- 重验判据 = task-5 三段（渲染帧/键入窗/LLM 往返 + 5min 冻结窗）；TLSDESC 崩若再现
+  （~4.6s SIGSEGV@0x0 La134cbb9a 签名）即 graft 不对症，回 B2 复核。
+- oscar /mnt/sdcard_ext4/apps/a2todo5/ 旧件仍在（press1/baseline/bump），勿混用，重验建议
+  新沙盒目录（用户已备纯净 pacman 环境）。

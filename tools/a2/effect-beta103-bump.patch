@@ -1,0 +1,482 @@
+diff --git a/package.json b/package.json
+index a3f9544..12183fd 100644
+--- a/package.json
++++ b/package.json
+@@ -31,9 +31,9 @@
+       "packages/slack"
+     ],
+     "catalog": {
+-      "@effect/opentelemetry": "4.0.0-beta.83",
+-      "@effect/platform-node": "4.0.0-beta.83",
+-      "@effect/sql-sqlite-bun": "4.0.0-beta.83",
++      "@effect/opentelemetry": "4.0.0-beta.103",
++      "@effect/platform-node": "4.0.0-beta.103",
++      "@effect/sql-sqlite-bun": "4.0.0-beta.103",
+       "@npmcli/arborist": "9.4.0",
+       "@types/bun": "1.3.13",
+       "@types/cross-spawn": "6.0.6",
+@@ -63,7 +63,7 @@
+       "dompurify": "3.3.1",
+       "drizzle-kit": "1.0.0-rc.2",
+       "drizzle-orm": "1.0.0-rc.2",
+-      "effect": "4.0.0-beta.83",
++      "effect": "4.0.0-beta.103",
+       "ai": "6.0.168",
+       "cross-spawn": "7.0.6",
+       "hono": "4.10.7",
+@@ -92,7 +92,8 @@
+       "solid-js": "1.9.10",
+       "solid-sonner": "0.3.1",
+       "vite-plugin-solid": "2.11.10",
+-      "@lydell/node-pty": "1.2.0-beta.12"
++      "@lydell/node-pty": "1.2.0-beta.12",
++      "@effect/platform-node-shared": "4.0.0-beta.103"
+     }
+   },
+   "devDependencies": {
+@@ -142,7 +143,8 @@
+     "@opentui/keymap": "catalog:",
+     "@opentui/solid": "catalog:",
+     "@types/bun": "catalog:",
+-    "@types/node": "catalog:"
++    "@types/node": "catalog:",
++    "@effect/platform-node-shared": "4.0.0-beta.103"
+   },
+   "patchedDependencies": {
+     "@dnd-kit/dom@0.5.0": "patches/@dnd-kit%2Fdom@0.5.0.patch",
+@@ -157,7 +159,7 @@
+     "@ai-sdk/google@3.0.73": "patches/@ai-sdk%2Fgoogle@3.0.73.patch",
+     "@pierre/trees@1.0.0-beta.4": "patches/@pierre%2Ftrees@1.0.0-beta.4.patch",
+     "@modelcontextprotocol/sdk@1.29.0": "patches/@modelcontextprotocol%2Fsdk@1.29.0.patch",
+-    "effect@4.0.0-beta.83": "patches/effect@4.0.0-beta.83.patch",
++    "effect@4.0.0-beta.103": "patches/effect@4.0.0-beta.103.patch",
+     "@tanstack/virtual-core@3.17.3": "patches/@tanstack%2Fvirtual-core@3.17.3.patch",
+     "@ai-sdk/openai-compatible@2.0.41": "patches/@ai-sdk%2Fopenai-compatible@2.0.41.patch",
+     "@ai-sdk/groq@3.0.31": "patches/@ai-sdk%2Fgroq@3.0.31.patch",
+diff --git a/packages/app/package.json b/packages/app/package.json
+index c651d9a..7759591 100644
+--- a/packages/app/package.json
++++ b/packages/app/package.json
+@@ -83,7 +83,6 @@
+     "diff": "catalog:",
+     "effect": "catalog:",
+     "fuzzysort": "catalog:",
+-    "ghostty-web": "github:anomalyco/ghostty-web#83c0a07b8628b748aed073b232cb4b52a6ca11c1",
+     "luxon": "catalog:",
+     "marked": "catalog:",
+     "marked-shiki": "catalog:",
+diff --git a/packages/cli/src/services/daemon.ts b/packages/cli/src/services/daemon.ts
+index bd30656..272ffc5 100644
+--- a/packages/cli/src/services/daemon.ts
++++ b/packages/cli/src/services/daemon.ts
+@@ -94,7 +94,7 @@ export const layer = Layer.effect(
+ 
+       yield* signal(info.pid, "SIGTERM")
+       const stopped = yield* awaitStopped(info.pid).pipe(
+-        Effect.retry(Schedule.spaced("50 millis").pipe(Schedule.both(Schedule.recurs(100)))),
++        Effect.retry(Schedule.max([Schedule.spaced("50 millis"), Schedule.recurs(100)])),
+         Effect.option,
+       )
+       if (Option.isSome(stopped)) return
+@@ -103,7 +103,7 @@ export const layer = Layer.effect(
+       if (Option.isNone(latest) || !sameRegistration(latest.value, info)) return
+       yield* signal(info.pid, "SIGKILL")
+       yield* awaitStopped(info.pid).pipe(
+-        Effect.retry(Schedule.spaced("50 millis").pipe(Schedule.both(Schedule.recurs(100)))),
++        Effect.retry(Schedule.max([Schedule.spaced("50 millis"), Schedule.recurs(100)])),
+       )
+     })
+ 
+@@ -128,7 +128,7 @@ export const layer = Layer.effect(
+       })
+ 
+       return yield* compatible().pipe(
+-        Effect.retry(Schedule.spaced("50 millis").pipe(Schedule.both(Schedule.recurs(100)))),
++        Effect.retry(Schedule.max([Schedule.spaced("50 millis"), Schedule.recurs(100)])),
+         Effect.map((info) => info.url),
+         Effect.mapError(() => new Error("Failed to start server")),
+       )
+diff --git a/packages/codemode/src/openapi/runtime.ts b/packages/codemode/src/openapi/runtime.ts
+index 2515621..4c33720 100644
+--- a/packages/codemode/src/openapi/runtime.ts
++++ b/packages/codemode/src/openapi/runtime.ts
+@@ -4,7 +4,7 @@ import { ToolError, toolError } from "../tool-error.js"
+ import { isRecord, own } from "./spec.js"
+ import type { AppliedAuth, Credential, Plan, SecurityScheme } from "./types.js"
+ 
+-const decodeJson = Schema.decodeUnknownOption(Schema.UnknownFromJsonString)
++const decodeJson = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Unknown))
+ const maxErrorBodyChars = 1_024
+ const maxResponseBodyBytes = 50 * 1024 * 1024
+ 
+diff --git a/packages/core/src/database/sqlite.bun.ts b/packages/core/src/database/sqlite.bun.ts
+index e15f4c1..d963fc0 100644
+--- a/packages/core/src/database/sqlite.bun.ts
++++ b/packages/core/src/database/sqlite.bun.ts
+@@ -95,6 +95,9 @@ const make = (options: Config) =>
+       executeValues(query, params) {
+         return runValues(query, params)
+       },
++      executeValuesUnprepared(query, params) {
++        return runValues(query, params)
++      },
+       executeUnprepared(query, params, transformRows) {
+         return this.execute(query, params, transformRows)
+       },
+diff --git a/packages/core/src/fs-util.ts b/packages/core/src/fs-util.ts
+index 93a551c..df6261f 100644
+--- a/packages/core/src/fs-util.ts
++++ b/packages/core/src/fs-util.ts
+@@ -4,7 +4,7 @@ import { realpathSync } from "fs"
+ import * as NFS from "fs/promises"
+ import { lookup } from "mime-types"
+ import { Context, Effect, FileSystem, Layer, Schema } from "effect"
+-import type { PlatformError } from "effect/PlatformError"
++import { PlatformError, systemError } from "effect/PlatformError"
+ import { Glob } from "./util/glob"
+ import { serviceUse } from "./effect/service-use"
+ import { makeGlobalNode } from "./effect/app-node"
+@@ -42,7 +42,10 @@ export namespace FSUtil {
+     readonly findUp: (target: string, start: string, stop?: string) => Effect.Effect<string[], Error>
+     readonly up: (options: { targets: string[]; start: string; stop?: string }) => Effect.Effect<string[], Error>
+     readonly globUp: (pattern: string, start: string, stop?: string) => Effect.Effect<string[], Error>
+-    readonly glob: (pattern: string, options?: Glob.Options) => Effect.Effect<string[], Error>
++    readonly glob: (
++      pattern: string,
++      options?: Glob.Options | { readonly root?: string; readonly exclude?: readonly string[] },
++    ) => Effect.Effect<string[], PlatformError>
+     readonly globMatch: (pattern: string, filepath: string) => boolean
+   }
+ 
+@@ -144,11 +147,34 @@ export namespace FSUtil {
+         if (mode) yield* fs.chmod(path, mode)
+       })
+ 
+-      const glob = Effect.fn("FileSystem.glob")(function* (pattern: string, options?: Glob.Options) {
+-        return yield* Effect.tryPromise({
+-          try: () => Glob.scan(pattern, options),
+-          catch: (cause) => new FileSystemError({ method: "glob", cause }),
++      // Accept both our Glob.Options shape and the effect FileSystem base
++      // shape ({ root, exclude }) — the latter was added upstream in
++      // effect 4.0.0-beta.103 and must stay assignable from Interface.
++      const glob = Effect.fn("FileSystem.glob")(function* (
++        pattern: string,
++        options?: Glob.Options | { readonly root?: string; readonly exclude?: readonly string[] },
++      ) {
++        const opts = options ?? {}
++        const converted: Glob.Options =
++          "root" in opts && !("cwd" in opts) ? { cwd: opts.root } : (opts as Glob.Options)
++        const exclude = "exclude" in opts ? opts.exclude : undefined
++        let results = yield* Effect.tryPromise({
++          try: () => Glob.scan(pattern, converted),
++          catch: (cause) =>
++            // Must fail with PlatformError: the member overrides the glob
++            // declared by effect's FileSystem.FileSystem (beta.103 added it).
++            systemError({
++              _tag: "Unknown",
++              module: "FileSystem",
++              method: "glob",
++              cause,
++            }),
+         })
++        if (exclude?.length) {
++          const excluded = new Set(exclude)
++          results = results.filter((item) => !excluded.has(item))
++        }
++        return results
+       })
+ 
+       const findUp = Effect.fn("FileSystem.findUp")(function* (target: string, start: string, stop?: string) {
+diff --git a/packages/core/src/observability.ts b/packages/core/src/observability.ts
+index 2228597..10f1187 100644
+--- a/packages/core/src/observability.ts
++++ b/packages/core/src/observability.ts
+@@ -4,7 +4,7 @@ import { NodeFileSystem } from "@effect/platform-node"
+ import { LayerNode } from "./effect/layer-node"
+ import { Effect, Layer, Logger, References } from "effect"
+ import { FetchHttpClient } from "effect/unstable/http"
+-import { OtlpSerialization } from "effect/unstable/observability"
++import { OtlpExporter, OtlpSerialization } from "effect/unstable/observability"
+ import { Logging } from "./observability/logging"
+ import { Otlp } from "./observability/otlp"
+ 
+@@ -14,6 +14,7 @@ export const layer = Layer.unwrap(
+       Layer.provide(NodeFileSystem.layer),
+       Layer.provide(OtlpSerialization.layerJson),
+       Layer.provide(FetchHttpClient.layer),
++      Layer.provide(OtlpExporter.layerFlusher),
+       Layer.orDie,
+       Layer.merge(Layer.succeed(References.MinimumLogLevel, Logging.minimumLogLevel())),
+     )
+diff --git a/packages/core/src/plugin/provider/cloudflare-ai-gateway.ts b/packages/core/src/plugin/provider/cloudflare-ai-gateway.ts
+index 2803cb7..3d9d510 100644
+--- a/packages/core/src/plugin/provider/cloudflare-ai-gateway.ts
++++ b/packages/core/src/plugin/provider/cloudflare-ai-gateway.ts
+@@ -47,7 +47,7 @@ type GatewayConfig = {
+   apiKey: string
+ }
+ 
+-const decodeJson = Schema.decodeUnknownOption(Schema.UnknownFromJsonString)
++const decodeJson = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Unknown))
+ 
+ function gatewayConfig(options: Record<string, unknown>): GatewayConfig | undefined {
+   const accountId = process.env.CLOUDFLARE_ACCOUNT_ID ?? stringOption(options, "accountId")
+diff --git a/packages/core/src/util/effect-flock.ts b/packages/core/src/util/effect-flock.ts
+index b859001..5187aca 100644
+--- a/packages/core/src/util/effect-flock.ts
++++ b/packages/core/src/util/effect-flock.ts
+@@ -46,8 +46,10 @@ export namespace EffectFlock {
+   const MAX_DELAY_MS = 2_000
+   const HEARTBEAT_MS = Math.max(100, Math.floor(STALE_MS / 3))
+ 
+-  const retrySchedule = Schedule.exponential(BASE_DELAY_MS, 1.7).pipe(
+-    Schedule.either(Schedule.spaced(MAX_DELAY_MS)),
++  const retrySchedule = Schedule.min([
++    Schedule.exponential(BASE_DELAY_MS, 1.7),
++    Schedule.spaced(MAX_DELAY_MS),
++  ]).pipe(
+     Schedule.jittered,
+     Schedule.while((meta) => meta.elapsed < TIMEOUT_MS),
+   )
+diff --git a/packages/http-recorder/package.json b/packages/http-recorder/package.json
+index 5f6ec74..6cbbf20 100644
+--- a/packages/http-recorder/package.json
++++ b/packages/http-recorder/package.json
+@@ -52,7 +52,7 @@
+   },
+   "dependencies": {
+     "@effect/platform-node": "4.0.0-beta.83",
+-    "@effect/platform-node-shared": "4.0.0-beta.83"
++    "@effect/platform-node-shared": "catalog:"
+   },
+   "peerDependencies": {
+     "effect": "4.0.0-beta.83"
+diff --git a/packages/httpapi-codegen/src/index.ts b/packages/httpapi-codegen/src/index.ts
+index 298a121..47008ca 100644
+--- a/packages/httpapi-codegen/src/index.ts
++++ b/packages/httpapi-codegen/src/index.ts
+@@ -73,7 +73,7 @@ const resolveContentSchema = SchemaAST.resolveAt<SchemaAST.AST>("contentSchema")
+ const Manifest = Schema.fromJsonString(Schema.Array(Schema.String))
+ const manifestName = ".httpapi-codegen.json"
+ 
+-export function compile<Id extends string, Groups extends HttpApiGroup.Any>(
++export function compile<Id extends string, Groups extends HttpApiGroup.Constraint>(
+   api: HttpApi.HttpApi<Id, Groups>,
+   options?: {
+     readonly groupNames?: Readonly<Record<string, string>>
+@@ -768,7 +768,7 @@ function isSafeOutputPath(path: string) {
+   return path !== manifestName && !isAbsolute(path) && path !== "." && path !== ".." && !/[\\/]/.test(path)
+ }
+ 
+-export function generate<Id extends string, Groups extends HttpApiGroup.Any>(
++export function generate<Id extends string, Groups extends HttpApiGroup.Constraint>(
+   api: HttpApi.HttpApi<Id, Groups>,
+   options: { readonly directory: string },
+ ): Effect.Effect<void, GenerationError | PlatformError.PlatformError, FileSystem.FileSystem> {
+diff --git a/packages/httpapi-codegen/test/generate.test.ts b/packages/httpapi-codegen/test/generate.test.ts
+index 6e076b7..9748283 100644
+--- a/packages/httpapi-codegen/test/generate.test.ts
++++ b/packages/httpapi-codegen/test/generate.test.ts
+@@ -16,11 +16,11 @@ import {
+ import { it } from "./effect"
+ import { Api as FixtureApi, Missing } from "./fixture"
+ 
+-function api(endpoint: HttpApiEndpoint.Any) {
++function api(endpoint: HttpApiEndpoint.Constraint) {
+   return HttpApi.make("test").add(HttpApiGroup.make("session").add(endpoint))
+ }
+ 
+-function compile<Id extends string, Groups extends HttpApiGroup.Any>(source: HttpApi.HttpApi<Id, Groups>) {
++function compile<Id extends string, Groups extends HttpApiGroup.Constraint>(source: HttpApi.HttpApi<Id, Groups>) {
+   return emitEffect(compileContract(source))
+ }
+ 
+diff --git a/packages/llm/src/protocols/shared.ts b/packages/llm/src/protocols/shared.ts
+index 173dc51..8099070 100644
+--- a/packages/llm/src/protocols/shared.ts
++++ b/packages/llm/src/protocols/shared.ts
+@@ -244,6 +244,16 @@ export const sseFraming = (bytes: Stream.Stream<Uint8Array, LLMError>): Stream.S
+     Stream.decodeText(),
+     Stream.pipeThroughChannel(Sse.decode()),
+     Stream.catchTag("Retry", () => Stream.empty),
++    // effect beta.103 added SseError to the Sse.decode error channel; fold it
++    // back into LLMError so the public error channel stays LLMError.
++    Stream.catchTag("SseError", (error) =>
++      Stream.fail(
++        new LLMError({
++          module: "ProviderShared",
++          method: "stream",
++          reason: new InvalidProviderOutputReason({ route: "sse", message: error.message }),
++        }),
++      )),
+     Stream.filter((event) => event.data.length > 0 && event.data !== "[DONE]"),
+     Stream.map((event) => event.data),
+   )
+diff --git a/packages/opencode/src/agent/agent.ts b/packages/opencode/src/agent/agent.ts
+index 536a642..c41d1d3 100644
+--- a/packages/opencode/src/agent/agent.ts
++++ b/packages/opencode/src/agent/agent.ts
+@@ -23,7 +23,7 @@ import { Skill } from "../skill"
+ import { Effect, Context, Layer, Schema } from "effect"
+ import { InstanceState } from "@/effect/instance-state"
+ import * as Option from "effect/Option"
+-import * as OtelTracer from "@effect/opentelemetry/Tracer"
++import * as OtelTracer from "@effect/opentelemetry/OtelTracer"
+ import { AbsolutePath, type DeepMutable } from "@opencode-ai/core/schema"
+ import { ProviderV2 } from "@opencode-ai/core/provider"
+ import { ModelV2 } from "@opencode-ai/core/model"
+diff --git a/packages/opencode/src/effect/bridge.ts b/packages/opencode/src/effect/bridge.ts
+index a51c293..852e116 100644
+--- a/packages/opencode/src/effect/bridge.ts
++++ b/packages/opencode/src/effect/bridge.ts
+@@ -18,9 +18,9 @@ function restoreWorkspace<R>(workspace: WorkspaceV2.ID | undefined, fn: () => R)
+ 
+ function captureSync() {
+   const fiber = Fiber.getCurrent()
+-  const instance = fiber ? Context.getReferenceUnsafe(fiber.context, InstanceRef) : undefined
++  const instance = fiber ? Context.getUnsafe(fiber.context, InstanceRef) : undefined
+   const workspace =
+-    (fiber ? Context.getReferenceUnsafe(fiber.context, WorkspaceRef) : undefined) ?? WorkspaceContext.workspaceID
++    (fiber ? Context.getUnsafe(fiber.context, WorkspaceRef) : undefined) ?? WorkspaceContext.workspaceID
+   return { instance, workspace }
+ }
+ 
+diff --git a/packages/opencode/src/effect/run-service.ts b/packages/opencode/src/effect/run-service.ts
+index cfcc500..6bf363a 100644
+--- a/packages/opencode/src/effect/run-service.ts
++++ b/packages/opencode/src/effect/run-service.ts
+@@ -25,8 +25,8 @@ export function attach<A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A
+   const workspace = WorkspaceContext.workspaceID
+   const fiber = Fiber.getCurrent()
+   return attachWith(effect, {
+-    instance: fiber ? Context.getReferenceUnsafe(fiber.context, InstanceRef) : undefined,
+-    workspace: workspace ?? (fiber ? Context.getReferenceUnsafe(fiber.context, WorkspaceRef) : undefined),
++    instance: fiber ? Context.getUnsafe(fiber.context, InstanceRef) : undefined,
++    workspace: workspace ?? (fiber ? Context.getUnsafe(fiber.context, WorkspaceRef) : undefined),
+   })
+ }
+ 
+diff --git a/packages/opencode/src/server/routes/instance/httpapi/groups/experimental.ts b/packages/opencode/src/server/routes/instance/httpapi/groups/experimental.ts
+index 52c714a..f7886ee 100644
+--- a/packages/opencode/src/server/routes/instance/httpapi/groups/experimental.ts
++++ b/packages/opencode/src/server/routes/instance/httpapi/groups/experimental.ts
+@@ -185,7 +185,6 @@ export const ExperimentalApi = HttpApi.make("experimental")
+           }),
+         ),
+         HttpApiEndpoint.post("worktreeCreate", ExperimentalPaths.worktree, {
+-          disableCodecs: true,
+           query: WorkspaceRoutingQuery,
+           payload: [HttpApiSchema.NoContent, Worktree.CreateInput],
+           success: described(Worktree.Info, "Worktree created"),
+diff --git a/packages/opencode/src/session/llm.ts b/packages/opencode/src/session/llm.ts
+index a99f8ac..66215bd 100644
+--- a/packages/opencode/src/session/llm.ts
++++ b/packages/opencode/src/session/llm.ts
+@@ -25,7 +25,7 @@ import { Auth } from "@/auth"
+ import { EffectBridge } from "@/effect/bridge"
+ import { RuntimeFlags } from "@/effect/runtime-flags"
+ import * as Option from "effect/Option"
+-import * as OtelTracer from "@effect/opentelemetry/Tracer"
++import * as OtelTracer from "@effect/opentelemetry/OtelTracer"
+ import { LLMAISDK } from "./llm/ai-sdk"
+ import { LLMNativeRuntime } from "./llm/native-runtime"
+ import { LLMRequestPrep } from "./llm/request"
+diff --git a/packages/opencode/test/lib/cli-process.ts b/packages/opencode/test/lib/cli-process.ts
+index a4d3b36..b5c3e1b 100644
+--- a/packages/opencode/test/lib/cli-process.ts
++++ b/packages/opencode/test/lib/cli-process.ts
+@@ -198,7 +198,7 @@ export function withCliFixture<A, E>(
+     yield* Effect.addFinalizer(() =>
+       fs
+         .remove(home, { recursive: true })
+-        .pipe(Effect.retry(Schedule.spaced("50 millis").pipe(Schedule.both(Schedule.recurs(20)))), Effect.ignore),
++        .pipe(Effect.retry(Schedule.max([Schedule.spaced("50 millis"), Schedule.recurs(20)])), Effect.ignore),
+     )
+ 
+     const configJson = JSON.stringify(testProviderConfig(llm.url))
+diff --git a/packages/opencode/test/storage/storage.test.ts b/packages/opencode/test/storage/storage.test.ts
+index a3f3aef..2bd1d06 100644
+--- a/packages/opencode/test/storage/storage.test.ts
++++ b/packages/opencode/test/storage/storage.test.ts
+@@ -48,7 +48,12 @@ function remappedFs(root: string) {
+         readFileString: (file) => fs.readFileString(remap(root, file)),
+         remove: (file) => fs.remove(remap(root, file)),
+         glob: (pattern, options) =>
+-          fs.glob(pattern, options?.cwd ? { ...options, cwd: remap(root, options.cwd) } : options),
++          fs.glob(
++            pattern,
++            options && "cwd" in options && options.cwd !== undefined
++              ? { ...options, cwd: remap(root, options.cwd) }
++              : options,
++          ),
+       })
+     }),
+   ).pipe(Layer.provide(LayerNode.compile(FSUtil.node)))
+diff --git a/packages/protocol/src/api.ts b/packages/protocol/src/api.ts
+index 7b422d0..3d271bb 100644
+--- a/packages/protocol/src/api.ts
++++ b/packages/protocol/src/api.ts
+@@ -24,7 +24,7 @@ import { ProjectCopyGroup } from "./groups/project-copy"
+ 
+ // Protocol owns middleware placement, while Server injects concrete keys so Core service identities stay downstream.
+ const makeApiFromGroup = <
+-  const Group extends HttpApiGroup.Any,
++  const Group extends HttpApiGroup.Constraint,
+   LocationId extends HttpApiMiddleware.AnyId,
+   LocationService,
+   SessionLocationId extends HttpApiMiddleware.AnyId,
+
+# ── effect-beta103-bump.patch ────────────────────────────────────────────
+# A2 todo2: effect 4.0.0-beta.83 -> 4.0.0-beta.103 (opencode v1.18.32 tree)
+#
+# Reproduce (in the v1 source tree, a git repo):
+#   1. git apply this patch
+#   2. mv patches/effect@4.0.0-beta.83.patch patches/effect@4.0.0-beta.103.patch
+#      (content unchanged: still applies to beta.103 — js exact, ts offset -3)
+#   3. bun install --force --ignore-scripts   (regenerates bun.lock)
+#   4. TAG=beta103-bump EFFECT_VER=4.0.0-beta.103 tools/a2/build-v1.sh
+#
+# Migration notes:
+#   - TaggedErrorClass: NO rename needed. beta.103 still exports
+#     Schema.TaggedErrorClass (Schema.d.ts:9749, no @deprecated). All 193
+#     occurrences in this tree are Schema.TaggedErrorClass — the
+#     eval-transition "192 sites -> TaggedError" premise does not apply.
+#   - Schedule.both -> Schedule.max([...])  (all-continue + max delay)
+#   - Schedule.either -> Schedule.min([...]) (any-continue + min delay)
+#     Signature changed from pipe-2-arg to array-1-arg in beta.103.
+#
+# Compile-error fixes (beta.83 -> beta.103 API diffs):
+#   - Context.getReferenceUnsafe removed -> Context.getUnsafe (absorbs
+#     Reference default-value fallback; bridge.ts, run-service.ts)
+#   - @effect/opentelemetry/Tracer -> /OtelTracer (dist file rename;
+#     llm.ts, agent.ts)
+#   - HttpApiGroup.Any / HttpApiEndpoint.Any -> Constraint (protocol api.ts,
+#     httpapi-codegen)
+#   - disableCodecs:true no longer accepts Struct query (raw QueryConstraint
+#     only) -> dropped from worktreeCreate endpoint; optional-String query is
+#     identity-coded and middleware reads raw searchParams, behavior neutral
+#   - Logger.layer R now includes OtlpExporter.Flusher -> provide
+#     OtlpExporter.layerFlusher in observability.ts
+#   - Schema.UnknownFromJsonString -> Schema.fromJsonString(Schema.Unknown)
+#   - SqliteConnection gained required executeValuesUnprepared -> mirror
+#     upstream SqliteClient (same as executeValues)
+#   - FileSystem.FileSystem gained glob({root,exclude}) -> fs-util Interface
+#     widened (union options, PlatformError return via systemError)
+#   - Sse.decode error channel gained SseError -> folded back into LLMError
+#
+# Dependency-graph fixes (bundling failed without them):
+#   - @effect/platform-node-shared: platform-node@beta.103 has range dep
+#     "^4.0.0-beta.103" which semver-resolves to rc.118 -> catalog entry +
+#     overrides pin to 4.0.0-beta.103; http-recorder direct pin -> catalog:
+#   - ghostty-web (github tarball, packages/app only) removed: bun TLS
+#     verification fails against github (curl works; bun UNKNOWN_CERTIFICATE_
+#     VERIFICATION_ERROR) and the shipped warm node_modules already had a
+#     dangling symlink. packages/app is NOT in the packages/opencode build
+#     dependency chain.
+#
+# Verification:
+#   - node_modules effect version gate = 4.0.0-beta.103 (asserted in script)
+#   - tsc --noEmit error set identical to beta.83 baseline (12 pre-existing
+#     upstream errors in tui/dialog-move-session.tsx, present on beta.83 too)
+#   - artifact: opencode-v1-1.18.32-beta103-bump, 136312480 B (+0.05% vs
+#     baseline 136246944), --version smoke + TUI smoke PASS

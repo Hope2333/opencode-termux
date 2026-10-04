@@ -1,0 +1,84 @@
+--- a/packages/native/build.zig
++++ b/packages/native/build.zig
+@@ -183,7 +183,7 @@
+             flags[3] = macos_sdk_path.?;
+             break :blk flags;
+         },
+-        else => &.{"-std=c99"},
++        else => remapFlags(b, &.{"-std=c99"}),
+     };
+ 
+     module.addIncludePath(b.path("src"));
+@@ -201,10 +201,28 @@
+     return flags;
+ }
+ 
++/// A2 todo8 (hermetic home): prepend flags from the OPENTUI_C_REMAP env var
++/// (space-separated, e.g. two -ffile-prefix-map entries) to every C/CXX
++/// compile set, so vendored sources (libwebp/lcms2/stb/miniaudio/yoga) bake
++/// remapped assert/__FILE__ paths instead of the build machine's absolute
++/// home path. No-op when the env var is unset.
++fn remapFlags(b: *std.Build, base: []const []const u8) []const []const u8 {
++    const raw = b.graph.environ_map.get("OPENTUI_C_REMAP") orelse return base;
++    var n: usize = 0;
++    var it = std.mem.tokenizeScalar(u8, raw, ' ');
++    while (it.next()) |_| n += 1;
++    const out = b.allocator.alloc([]const u8, n + base.len) catch @panic("OOM");
++    var i: usize = 0;
++    it.reset();
++    while (it.next()) |tok| : (i += 1) out[i] = tok;
++    @memcpy(out[n..], base);
++    return out;
++}
++
+ fn addImageShim(b: *std.Build, module: *std.Build.Module, target: std.Build.ResolvedTarget, macos_sdk_path: ?[]const u8) void {
+     const flags: []const []const u8 = switch (target.result.os.tag) {
+         .macos => &.{ "-std=c99", "-ffp-contract=off", "-fvisibility=hidden", "-isysroot", macos_sdk_path.? },
+-        else => &.{ "-std=c99", "-ffp-contract=off", "-fvisibility=hidden" },
++        else => remapFlags(b, &.{ "-std=c99", "-ffp-contract=off", "-fvisibility=hidden" }),
+     };
+ 
+     module.addCSourceFile(.{
+@@ -228,7 +246,7 @@
+     // is separate from our coefficient-copy alignment patch. See vendor/stb/README.md.
+     const resize_flags: []const []const u8 = switch (target.result.os.tag) {
+         .macos => &.{ "-std=c99", "-ffp-contract=off", "-fvisibility=hidden", "-fno-sanitize=bounds", "-isysroot", macos_sdk_path.? },
+-        else => &.{ "-std=c99", "-ffp-contract=off", "-fvisibility=hidden", "-fno-sanitize=bounds" },
++        else => remapFlags(b, &.{ "-std=c99", "-ffp-contract=off", "-fvisibility=hidden", "-fno-sanitize=bounds" }),
+     };
+     module.addCSourceFile(.{
+         .file = b.path("src/image-resize-shim.c"),
+@@ -237,7 +255,7 @@
+ 
+     const webp_flags: []const []const u8 = switch (target.result.os.tag) {
+         .macos => &.{ "-std=c99", "-fvisibility=hidden", "-DWEBP_EXTERN=extern", "-isysroot", macos_sdk_path.? },
+-        else => &.{ "-std=c99", "-fvisibility=hidden", "-DWEBP_EXTERN=extern" },
++        else => remapFlags(b, &.{ "-std=c99", "-fvisibility=hidden", "-DWEBP_EXTERN=extern" }),
+     };
+     const webp_dispatch_flags = if (target.result.cpu.arch == .x86_64)
+         appendCFlags(b, webp_flags, &.{ "-DWEBP_HAVE_SSE2", "-DWEBP_HAVE_SSE41", "-DWEBP_HAVE_AVX2" })
+@@ -404,7 +422,7 @@
+     module.addCSourceFiles(.{
+         .root = yoga_dep.path(""),
+         .files = &YOGA_CXX_SOURCES,
+-        .flags = &YOGA_CXX_FLAGS,
++        .flags = remapFlags(b, &YOGA_CXX_FLAGS),
+     });
+ }
+ 
+@@ -431,6 +449,7 @@
+         .root_source_file = b.path("src/vendor/miniaudio/miniaudio.h"),
+         .target = target,
+         .optimize = optimize,
++        .flags = remapFlags(b, &.{}),
+     });
+     miniaudio_translate.addIncludePath(b.path("src"));
+     module.addImport("miniaudio", miniaudio_translate.createModule());
+@@ -440,6 +459,7 @@
+         .root_source_file = yoga_dep.path("yoga/Yoga.h"),
+         .target = target,
+         .optimize = optimize,
++        .flags = remapFlags(b, &.{}),
+     });
+     yoga_translate.addIncludePath(yoga_dep.path(""));
+     if (target.result.abi.isAndroid()) { // zig bundles no bionic headers

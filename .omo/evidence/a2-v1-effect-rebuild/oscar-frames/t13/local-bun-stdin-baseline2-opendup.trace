@@ -1,0 +1,296 @@
+16765 openat(AT_FDCWD, "/dev/__properties__/property_info", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 3
+16765 openat(AT_FDCWD, "/dev/__properties__/properties_serial", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 3
+16765 openat(AT_FDCWD, "/dev/__properties__/u:object_r:debug_prop:s0", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 3
+16765 openat(AT_FDCWD, "/proc/self/exe", O_RDONLY|O_CLOEXEC|O_PATH) = 3
+16765 openat(AT_FDCWD, "/dev/__properties__/u:object_r:arm64_memtag_prop:s0", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 3
+16765 openat(AT_FDCWD, "/dev/__properties__/u:object_r:device_config_memory_safety_native_prop:s0", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 3
+16765 openat(AT_FDCWD, "/linkerconfig/ld.config.txt", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 3
+16765 read(3, "dir.system = /system/bin/\ndir.sy"..., 4096) = 4096
+16765 read(3, "iv-app\nnamespace.default.asan.pe"..., 4096) = 4096
+16765 read(3, "itted.paths += /system_ext/priv-"..., 4096) = 4096
+16765 read(3, "IB}/hwasan\nnamespace.com_android"..., 4096) = 4096
+16765 read(3, "mespace.com_android_appsearch.hw"..., 4096) = 4096
+16765 read(3, ".search.paths = /apex/com.androi"..., 4096) = 4096
+16765 read(3, "com.android.i18n/${LIB}\nnamespac"..., 4096) = 4096
+16765 read(3, "hs += /data/asan/system/${LIB}\nn"..., 4096) = 4096
+16765 read(3, "x/com.android.ondevicepersonaliz"..., 4096) = 4096
+16765 read(3, "uprobestats.shared_libs = libupr"..., 4096) = 4096
+16765 read(3, "ace.com_android_tethering.isolat"..., 4096) = 4096
+16765 read(3, "rt.hwasan-aarch64-android.so:lib"..., 4096) = 4096
+16765 read(3, "ndroid_art.shared_libs = libnati"..., 4096) = 4096
+16765 read(3, "aths += /vendor/${LIB}/vndk-sp\nn"..., 4096) = 4096
+16765 read(3, "hal.hwasan.search.paths += /odm/"..., 4096) = 4096
+16765 read(3, "wasan.permitted.paths += /vendor"..., 4096) = 4096
+16765 read(3, "B}/hwasan\nnamespace.com_android_"..., 4096) = 4096
+16765 read(3, ".com_android_media.asan.permitte"..., 4096) = 4096
+16765 read(3, "paths = /apex/com.android.os.sta"..., 4096) = 4096
+16765 read(3, "e.com_android_runtime.asan.searc"..., 4096) = 4096
+16765 read(3, "d.paths += /system_ext/${LIB}\nna"..., 4096) = 4096
+16765 read(3, "s += /vendor/${LIB}/vndk-sp\nname"..., 4096) = 4096
+16765 read(3, "itted.paths += /odm/priv-app\nnam"..., 4096) = 4096
+16765 read(3, "system/${LIB}/hwasan\nnamespace.s"..., 4096) = 4096
+16765 read(3, "amespace.system.link.com_android"..., 4096) = 4096
+16765 read(3, "64-android.so:libclang_rt.ubsan_"..., 4096) = 4096
+16765 read(3, "18n.hwasan.permitted.paths += /s"..., 4096) = 4096
+16765 read(3, "itted.paths += /system/${LIB}/hw"..., 4096) = 4096
+16765 read(3, "ths += /system/${LIB}/hwasan\nnam"..., 4096) = 4096
+16765 read(3, "ermitted.paths += /system/${LIB}"..., 4096) = 4096
+16765 read(3, "d.virt/${LIB}\nnamespace.com_andr"..., 4096) = 4096
+16765 read(3, "stem_ext/app\nnamespace.system.as"..., 4096) = 4096
+16765 read(3, "mitted.paths += /vendor/priv-app"..., 4096) = 4096
+16765 read(3, "san.search.paths += /data/asan/p"..., 4096) = 4096
+16765 read(3, "ce.com_android_adservices.asan.p"..., 4096) = 4096
+16765 read(3, "= /data/asan/system/${LIB}\nnames"..., 4096) = 4096
+16765 read(3, "h64-android.so:libclang_rt.ubsan"..., 4096) = 4096
+16765 read(3, "dia/${LIB}\nnamespace.com_android"..., 4096) = 4096
+16765 read(3, "solated = true\nnamespace.com_and"..., 4096) = 4096
+16765 read(3, "d.paths += /system_ext/${LIB}/hw"..., 4096) = 4096
+16765 read(3, "ault,com_android_tethering,com_a"..., 4096) = 4096
+16765 read(3, "ed.paths += /system_ext/${LIB}\nn"..., 4096) = 4096
+16765 read(3, "LIB}/hwasan\nnamespace.com_androi"..., 4096) = 4096
+16765 read(3, "asan.permitted.paths += /system_"..., 4096) = 4096
+16765 read(3, "odm/${LIB}\nnamespace.sphal.asan."..., 4096) = 4096
+16765 read(3, "id_media,com_android_mediaprovid"..., 4096) = 4096
+16765 read(3, "id.so:libclang_rt.ubsan_standalo"..., 4096) = 4096
+16765 read(3, "com.android.art/javalib\nnamespac"..., 4096) = 4096
+16765 read(3, "apex/com.android.extservices/${L"..., 4096) = 4096
+16765 read(3, "edia.links = system,com_android_"..., 4096) = 4096
+16765 read(3, "B}\nnamespace.com_android_neuraln"..., 4096) = 4096
+16765 read(3, "s_statsd.asan.permitted.paths +="..., 4096) = 4096
+16765 read(3, "amespace.com_android_runtime.asa"..., 4096) = 4096
+16765 read(3, ".paths += /system/${LIB}\nnamespa"..., 4096) = 4096
+16765 read(3, "virt.hwasan.search.paths += /ape"..., 4096) = 4096
+16765 read(3, ".permitted.paths += /system/vend"..., 4096) = 4096
+16765 read(3, ".permitted.paths += /data/asan/s"..., 4096) = 4096
+16765 read(3, "libadb_pairing_connection.so:lib"..., 4096) = 748
+16765 read(3, "", 4096)                 = 0
+16765 openat(AT_FDCWD, "/odm/bin", O_RDONLY|O_CLOEXEC|O_PATH) = 3
+16765 openat(AT_FDCWD, "/dev/__properties__/u:object_r:vndk_prop:s0", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 3
+16765 openat(AT_FDCWD, "/odm/lib64/vndk-sp", O_RDONLY|O_CLOEXEC|O_PATH) = -1 ENOENT (No such file or directory)
+16765 openat(AT_FDCWD, "/vendor/lib64/vndk-sp", O_RDONLY|O_CLOEXEC|O_PATH) = -1 ENOENT (No such file or directory)
+16765 openat(AT_FDCWD, "/odm/lib64", O_RDONLY|O_CLOEXEC|O_PATH) = 3
+16765 openat(AT_FDCWD, "/vendor/lib64", O_RDONLY|O_CLOEXEC|O_PATH) = 3
+16765 openat(AT_FDCWD, "/product/lib64", O_RDONLY|O_CLOEXEC|O_PATH) = 3
+16765 openat(AT_FDCWD, "/apex/com.android.virt/lib64", O_RDONLY|O_CLOEXEC|O_PATH) = 3
+16765 openat(AT_FDCWD, "/apex/com.android.tethering/lib64", O_RDONLY|O_CLOEXEC|O_PATH) = 3
+16765 openat(AT_FDCWD, "/apex/com.android.runtime/lib64", O_RDONLY|O_CLOEXEC|O_PATH) = 3
+16765 openat(AT_FDCWD, "/apex/com.android.os.statsd/lib64", O_RDONLY|O_CLOEXEC|O_PATH) = 3
+16765 openat(AT_FDCWD, "/apex/com.android.wifi/lib64", O_RDONLY|O_CLOEXEC|O_PATH) = 3
+16765 openat(AT_FDCWD, "/apex/com.android.uwb/lib64", O_RDONLY|O_CLOEXEC|O_PATH) = 3
+16765 openat(AT_FDCWD, "/apex/com.android.ondevicepersonalization/lib64", O_RDONLY|O_CLOEXEC|O_PATH) = 3
+16765 openat(AT_FDCWD, "/apex/com.android.media/lib64", O_RDONLY|O_CLOEXEC|O_PATH) = 3
+16765 openat(AT_FDCWD, "/apex/com.android.mediaprovider/lib64", O_RDONLY|O_CLOEXEC|O_PATH) = 3
+16765 openat(AT_FDCWD, "/vendor/lib64/egl", O_RDONLY|O_CLOEXEC|O_PATH) = 3
+16765 openat(AT_FDCWD, "/vendor/lib64/hw", O_RDONLY|O_CLOEXEC|O_PATH) = 3
+16765 openat(AT_FDCWD, "/apex/com.android.uprobestats/lib64", O_RDONLY|O_CLOEXEC|O_PATH) = 3
+16765 openat(AT_FDCWD, "/apex/com.android.neuralnetworks/lib64", O_RDONLY|O_CLOEXEC|O_PATH) = 3
+16765 openat(AT_FDCWD, "/apex/com.android.i18n/lib64", O_RDONLY|O_CLOEXEC|O_PATH) = 3
+16765 openat(AT_FDCWD, "/apex/com.android.extservices/lib64", O_RDONLY|O_CLOEXEC|O_PATH) = 3
+16765 openat(AT_FDCWD, "/apex/com.android.conscrypt/lib64", O_RDONLY|O_CLOEXEC|O_PATH) = 3
+16765 openat(AT_FDCWD, "/apex/com.android.resolv/lib64", O_RDONLY|O_CLOEXEC|O_PATH) = 3
+16765 openat(AT_FDCWD, "/apex/com.android.art/lib64", O_RDONLY|O_CLOEXEC|O_PATH) = 3
+16765 openat(AT_FDCWD, "/apex/com.android.appsearch/lib64", O_RDONLY|O_CLOEXEC|O_PATH) = 3
+16765 openat(AT_FDCWD, "/apex/com.android.adservices/lib64", O_RDONLY|O_CLOEXEC|O_PATH) = 3
+16765 openat(AT_FDCWD, "/apex/com.android.adbd/lib64", O_RDONLY|O_CLOEXEC|O_PATH) = 3
+16765 openat(AT_FDCWD, "/system/lib64", O_RDONLY|O_CLOEXEC|O_PATH) = 3
+16765 openat(AT_FDCWD, "/system_ext/lib64", O_RDONLY|O_CLOEXEC|O_PATH) = 3
+16765 openat(AT_FDCWD, "/data/data/com.termux/files/usr/lib/libtermux-exec-ld-preload.so", O_RDONLY|O_CLOEXEC) = 3
+16765 openat(AT_FDCWD, "/sys/kernel/mm/pgsize_migration/enabled", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 4
+16765 read(4, "1\n", 4096)              = 2
+16765 read(4, "", 4096)                 = 0
+16765 openat(AT_FDCWD, "/data/data/com.termux/files/usr/lib", O_RDONLY|O_CLOEXEC|O_PATH) = 4
+16765 openat(AT_FDCWD, "/system/lib64/libc.so", O_RDONLY|O_CLOEXEC) = 4
+16765 openat(AT_FDCWD, "/system/lib64/libm.so", O_RDONLY|O_CLOEXEC) = 5
+16765 openat(AT_FDCWD, "/system/lib64/libdl.so", O_RDONLY|O_CLOEXEC) = 6
+16765 openat(AT_FDCWD, "/sys/kernel/mm/transparent_hugepage/enabled", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 7
+16765 read(7, "always madvise [never]\n", 4096) = 23
+16765 read(7, "", 4096)                 = 0
+16765 openat(AT_FDCWD, "/data/data/com.termux/files/usr/lib", O_RDONLY|O_CLOEXEC|O_PATH) = 7
+16765 openat(AT_FDCWD, "/dev/__properties__/property_info", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 3
+16765 openat(AT_FDCWD, "/dev/__properties__/properties_serial", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 3
+16765 openat(AT_FDCWD, "/dev/__properties__/u:object_r:debug_prop:s0", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 3
+16765 openat(AT_FDCWD, "/sys/devices/system/cpu/online", O_RDONLY|O_CLOEXEC) = 3
+16765 read(3, "0-7\n", 4096)            = 4
+16765 openat(AT_FDCWD, "/dev/__properties__/u:object_r:gwp_asan_prop:s0", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 3
+16765 openat(AT_FDCWD, "/dev/__properties__/u:object_r:libc_debug_prop:s0", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 3
+16765 openat(AT_FDCWD, "/dev/__properties__/u:object_r:heapprofd_prop:s0", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 3
+16765 openat(AT_FDCWD, "/system/lib64/libnetd_client.so", O_RDONLY|O_CLOEXEC) = 3
+16765 openat(AT_FDCWD, "/system/lib64/libc++.so", O_RDONLY|O_CLOEXEC) = 4
+16765 openat(AT_FDCWD, "/dev/__properties__/u:object_r:build_prop:s0", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 3
+16765 openat(AT_FDCWD, "/dev/__properties__/u:object_r:exported_default_prop:s0", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 3
+16765 openat(AT_FDCWD, "/dev/__properties__/u:object_r:vendor_socket_hook_prop:s0", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 3
+16765 openat(AT_FDCWD, "/proc/sys/vm/overcommit_memory", O_RDONLY) = -1 EACCES (Permission denied)
+16765 openat(AT_FDCWD, "/sys/kernel/mm/transparent_hugepage/enabled", O_RDONLY) = 3
+16765 read(3, "always madvise [never]\n", 32) = 23
+16765 ioctl(0, TCGETS, {c_iflag=ICRNL|IXON, c_oflag=NL0|CR0|TAB0|BS0|VT0|FF0|OPOST|ONLCR, c_cflag=B38400|CS8|CREAD, c_lflag=ISIG|ICANON|ECHO|ECHOE|ECHOK|IEXTEN|ECHOCTL|ECHOKE, ...}) = 0
+16765 ioctl(0, TCGETS, {c_iflag=ICRNL|IXON, c_oflag=NL0|CR0|TAB0|BS0|VT0|FF0|OPOST|ONLCR, c_cflag=B38400|CS8|CREAD, c_lflag=ISIG|ICANON|ECHO|ECHOE|ECHOK|IEXTEN|ECHOCTL|ECHOKE, ...}) = 0
+16765 ioctl(1, TCGETS, {c_iflag=ICRNL|IXON, c_oflag=NL0|CR0|TAB0|BS0|VT0|FF0|OPOST|ONLCR, c_cflag=B38400|CS8|CREAD, c_lflag=ISIG|ICANON|ECHO|ECHOE|ECHOK|IEXTEN|ECHOCTL|ECHOKE, ...}) = 0
+16765 ioctl(1, TCGETS, {c_iflag=ICRNL|IXON, c_oflag=NL0|CR0|TAB0|BS0|VT0|FF0|OPOST|ONLCR, c_cflag=B38400|CS8|CREAD, c_lflag=ISIG|ICANON|ECHO|ECHOE|ECHOK|IEXTEN|ECHOCTL|ECHOKE, ...}) = 0
+16765 ioctl(2, TCGETS, {c_iflag=ICRNL|IXON, c_oflag=NL0|CR0|TAB0|BS0|VT0|FF0|OPOST|ONLCR, c_cflag=B38400|CS8|CREAD, c_lflag=ISIG|ICANON|ECHO|ECHOE|ECHOK|IEXTEN|ECHOCTL|ECHOKE, ...}) = 0
+16765 ioctl(2, TCGETS, {c_iflag=ICRNL|IXON, c_oflag=NL0|CR0|TAB0|BS0|VT0|FF0|OPOST|ONLCR, c_cflag=B38400|CS8|CREAD, c_lflag=ISIG|ICANON|ECHO|ECHOE|ECHOK|IEXTEN|ECHOCTL|ECHOKE, ...}) = 0
+16765 openat(AT_FDCWD, "/proc/self/stat", O_RDONLY|O_CLOEXEC) = 3
+16765 read(3, "16765 (bun) R 16763 16763 16763 "..., 1024) = 307
+16765 openat(AT_FDCWD, "/proc/self/maps", O_RDONLY|O_CLOEXEC) = 3
+16765 read(3, "62bf1a0000-62c45a4000 r-xp 00000"..., 1024) = 1024
+16765 read(3, "3 29480896                      "..., 1024) = 1024
+16765 read(3, "adf2e000 r--p 000f6000 fe:33 294"..., 1024) = 1024
+16765 read(3, " 00000000 00:00 0               "..., 1024) = 1024
+16765 read(3, "0 ---p 00000000 00:00 0         "..., 1024) = 1024
+16765 read(3, "e:6b 2885370                    "..., 1024) = 1024
+16765 read(3, "                      [anon:.bss"..., 1024) = 1024
+16765 read(3, "000-77ae8ec000 rw-p 00000000 00:"..., 1024) = 1024
+16765 read(3, "         /dev/__properties__/u:o"..., 1024) = 1024
+16765 read(3, "fb26000 ---p 00000000 00:00 0 \n7"..., 1024) = 1024
+16765 read(3, "                    [anon:arc4ra"..., 1024) = 491
+16765 openat(AT_FDCWD, "/data/data/com.termux/files/home/develop/opencode-termux/bunfig.toml", O_RDONLY) = -1 ENOENT (No such file or directory)
+16765 openat(AT_FDCWD, "bunfig.toml", O_RDONLY) = -1 ENOENT (No such file or directory)
+16765 openat(AT_FDCWD, "/proc/sys/vm/mmap_min_addr", O_RDONLY) = -1 EACCES (Permission denied)
+16765 openat(AT_FDCWD, "/dev/urandom", O_RDONLY) = 3
+16765 read(3, "A\31\377\216\21\335\10\336\3769\2\17\310\230\20\250\321\202\274-\257/\17\26\336\177\364z~\271fX"..., 128) = 128
+16765 openat(AT_FDCWD, "/proc/self/stat", O_RDONLY|O_CLOEXEC) = 4
+16765 read(4, "16765 (bun) R 16763 16763 16763 "..., 1024) = 309
+16765 openat(AT_FDCWD, "/proc/self/maps", O_RDONLY|O_CLOEXEC) = 4
+16765 read(4, "5000000000-5ffcd7c000 rw-p 00000"..., 1024) = 1024
+16765 read(4, "0 rw-p 00000000 00:00 0         "..., 1024) = 1024
+16765 read(4, "    [page size compat]\n77adddc00"..., 1024) = 1024
+16765 read(4, "0 r--s 00000000 00:12 379       "..., 1024) = 1024
+16765 read(4, "                     /apex/com.a"..., 1024) = 1024
+16765 read(4, "323                        /apex"..., 1024) = 1024
+16765 read(4, "p 00000000 00:00 0              "..., 1024) = 1024
+16765 read(4, "              /dev/__properties_"..., 1024) = 1024
+16765 read(4, "77ae8ed000 rw-p 00000000 00:00 0"..., 1024) = 1024
+16765 read(4, "         /dev/__properties__/u:o"..., 1024) = 1024
+16765 read(4, "fb26000 ---p 00000000 00:00 0 \n7"..., 1024) = 1024
+16765 read(4, " /apex/com.android.runtime/bin/l"..., 1024) = 584
+16765 openat(AT_FDCWD, "/sys/devices/system/cpu/online", O_RDONLY|O_CLOEXEC) = 4
+16765 read(4, "0-7\n", 4096)            = 4
+16765 openat(AT_FDCWD, "/proc/self/cgroup", O_RDONLY|O_CLOEXEC) = 4
+16765 read(4, "5:freezer:/\n4:memory:/apps/com.t"..., 1023) = 115
+16765 openat(AT_FDCWD, "/sys/fs/cgroup/cpu/foreground/cpu.cfs_quota_us", O_RDONLY|O_CLOEXEC) = -1 ENOENT (No such file or directory)
+16765 openat(AT_FDCWD, "/", O_RDONLY|O_CLOEXEC|O_DIRECTORY) = -1 EACCES (Permission denied)
+16765 openat(AT_FDCWD, "/sys/kernel/debug/tracing/trace_marker", O_WRONLY) = -1 ENOENT (No such file or directory)
+16765 epoll_create1(EPOLL_CLOEXEC)      = 4
+16765 eventfd2(0, EFD_CLOEXEC|EFD_NONBLOCK) = 6
+16765 epoll_ctl(4, EPOLL_CTL_ADD, 6, {events=EPOLLIN, data=0x76edbb00c0}) = 0
+16765 epoll_ctl(4, EPOLL_CTL_MOD, 6, {events=EPOLLIN|EPOLLET, data=0x76edbb00c0}) = 0
+16765 openat(AT_FDCWD, "/apex/com.android.tzdata/etc/tz/tzdata", O_RDONLY|O_CLOEXEC) = 7
+16765 read(7, "tzdata2025a\0\0\0\0\30\0\0y(\0\0067/", 24) = 24
+16765 read(7, "Africa/Abidjan\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"..., 30992) = 30992
+16765 read(7, "TZif2\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"..., 111) = 111
+16765 epoll_ctl(4, EPOLL_CTL_ADD, 8, {events=EPOLLIN, data=0x76ef570050}) = 0
+16765 openat(AT_FDCWD, "/dev/urandom", O_RDONLY) = 9
+16765 read(9, "\323\233d\272\377\253B]d\375E\353\307pb\2000\272\"\27\2\342%\t^.\354\205l\240\344\276"..., 128) = 128
+16765 openat(AT_FDCWD, "/proc/self/cgroup", O_RDONLY|O_CLOEXEC) = 10
+16765 read(10, "5:freezer:/\n4:memory:/apps/com.t"..., 1023) = 115
+16765 openat(AT_FDCWD, "/sys/fs/cgroup/memory/apps/com.termux/memory.soft_limit_in_bytes", O_RDONLY|O_CLOEXEC) = -1 ENOENT (No such file or directory)
+16765 openat(AT_FDCWD, "/sys/fs/cgroup/memory/apps/com.termux/memory.limit_in_bytes", O_RDONLY|O_CLOEXEC) = -1 ENOENT (No such file or directory)
+16765 openat(AT_FDCWD, "/sys/fs/cgroup/memory/memory.soft_limit_in_bytes", O_RDONLY|O_CLOEXEC) = -1 ENOENT (No such file or directory)
+16765 openat(AT_FDCWD, "/sys/fs/cgroup/memory/memory.limit_in_bytes", O_RDONLY|O_CLOEXEC) = -1 ENOENT (No such file or directory)
+16765 openat(AT_FDCWD, "/dev/__properties__/u:object_r:timezone_prop:s0", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 10
+16765 openat(AT_FDCWD, "/apex/com.android.tzdata/etc/tz/tzdata", O_RDONLY|O_CLOEXEC) = 10
+16765 read(10, "tzdata2025a\0\0\0\0\30\0\0y(\0\0067/", 24) = 24
+16765 read(10, "Africa/Abidjan\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"..., 30992) = 30992
+16765 read(10, "TZif2\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"..., 393) = 393
+16765 openat(AT_FDCWD, "/proc/self/statm", O_RDONLY|O_CLOEXEC) = 10
+16765 openat(AT_FDCWD, "/proc/self/stat", O_RDONLY|O_CLOEXEC) = 11
+16765 read(11, "16765 (bun) R 16763 16763 16763 "..., 1024) = 309
+16765 openat(AT_FDCWD, "/proc/self/maps", O_RDONLY|O_CLOEXEC) = 11
+16765 read(11, "5000000000-5ffcd7c000 rw-p 00000"..., 1024) = 1024
+16765 read(11, "loc]\n76c284a000-76c284b000 ---p "..., 1024) = 1024
+16765 read(11, "         [anon:cfi shadow]\n772e0"..., 1024) = 1024
+16765 read(11, "ev/__properties__/u:object_r:bui"..., 1024) = 1024
+16765 read(11, "000-77ae400000 rw-p 00000000 00:"..., 1024) = 1024
+16765 read(11, "0040000 07:148 128330           "..., 1024) = 1024
+16765 read(11, "          /data/data/com.termux/"..., 1024) = 1024
+16765 read(11, "7ae720000-77ae721000 rw-p 001140"..., 1024) = 1024
+16765 read(11, "object_r:vndk_prop:s0\n77ae8c1000"..., 1024) = 1024
+16765 read(11, "  [anon:System property context "..., 1024) = 1024
+16765 read(11, "  /dev/__properties__/properties"..., 1024) = 1024
+16765 read(11, "tMalloc]\n77afb33000-77afb34000 r"..., 1024) = 1024
+16765 read(11, "7afcd0000 rw-p 00000000 00:00 0 "..., 1024) = 324
+16765 openat(AT_FDCWD, "/data/", O_RDONLY|O_CLOEXEC|O_DIRECTORY) = -1 EACCES (Permission denied)
+16765 openat(AT_FDCWD, "/data/data/", O_RDONLY|O_CLOEXEC|O_DIRECTORY) = -1 EACCES (Permission denied)
+16765 ioctl(0, TCGETS, {c_iflag=ICRNL|IXON, c_oflag=NL0|CR0|TAB0|BS0|VT0|FF0|OPOST|ONLCR, c_cflag=B38400|CS8|CREAD, c_lflag=ISIG|ICANON|ECHO|ECHOE|ECHOK|IEXTEN|ECHOCTL|ECHOKE, ...}) = 0
+16765 ioctl(0, TCGETS, {c_iflag=ICRNL|IXON, c_oflag=NL0|CR0|TAB0|BS0|VT0|FF0|OPOST|ONLCR, c_cflag=B38400|CS8|CREAD, c_lflag=ISIG|ICANON|ECHO|ECHOE|ECHOK|IEXTEN|ECHOCTL|ECHOKE, ...}) = 0
+16765 ioctl(0, TIOCGPTN, 0x7fdbfd44ec)  = -1 EACCES (Permission denied)
+16765 ioctl(0, TCGETS, {c_iflag=ICRNL|IXON, c_oflag=NL0|CR0|TAB0|BS0|VT0|FF0|OPOST|ONLCR, c_cflag=B38400|CS8|CREAD, c_lflag=ISIG|ICANON|ECHO|ECHOE|ECHOK|IEXTEN|ECHOCTL|ECHOKE, ...}) = 0
+16765 openat(AT_FDCWD, "/dev/pts/15", O_RDONLY|O_NOCTTY|O_NONBLOCK|O_CLOEXEC) = 11
+16765 epoll_ctl(4, EPOLL_CTL_ADD, 11, {events=EPOLLIN|EPOLLHUP|EPOLLONESHOT, data=0x8000076f1a20010}) = 0
+16765 openat(AT_FDCWD, "/proc/self/statm", O_RDONLY) = 12
+16765 read(12, "19128510 11632 8616 21508 0 1852"..., 1024) = 39
+16765 epoll_ctl(4, EPOLL_CTL_ADD, 7, {events=EPOLLIN, data=0x76ef570000}) = 0
+16765 read(11, "hello\n", 262144)       = 6
+16765 read(11, 0x76eec80006, 262138)    = -1 EAGAIN (Try again)
+16765 epoll_ctl(4, EPOLL_CTL_MOD, 11, {events=EPOLLIN|EPOLLHUP|EPOLLONESHOT, data=0x8000076f1a20010}) = 0
+16765 read(7, "\1\0\0\0\0\0\0\0", 8)    = 8
+16765 epoll_ctl(4, EPOLL_CTL_ADD, 7, {events=EPOLLIN, data=0x76ef570000}) = -1 EEXIST (File exists)
+16765 read(7, "\1\0\0\0\0\0\0\0", 8)    = 8
+16765 epoll_ctl(4, EPOLL_CTL_ADD, 7, {events=EPOLLIN, data=0x76ef570000}) = -1 EEXIST (File exists)
+16765 read(7, "\1\0\0\0\0\0\0\0", 8)    = 8
+16765 read(11, "", 262144)              = 0
+16765 epoll_ctl(4, EPOLL_CTL_DEL, 11, NULL) = 0
+16765 epoll_ctl(4, EPOLL_CTL_ADD, 7, {events=EPOLLIN, data=0x76ef570000}) = -1 EEXIST (File exists)
+16765 read(7, "\1\0\0\0\0\0\0\0", 8)    = 8
+16765 epoll_ctl(4, EPOLL_CTL_ADD, 7, {events=EPOLLIN, data=0x76ef570000}) = -1 EEXIST (File exists)
+16765 read(7, "\1\0\0\0\0\0\0\0", 8)    = 8
+16765 epoll_ctl(4, EPOLL_CTL_ADD, 7, {events=EPOLLIN, data=0x76ef570000}) = -1 EEXIST (File exists)
+16765 read(7, "\1\0\0\0\0\0\0\0", 8)    = 8
+16765 epoll_ctl(4, EPOLL_CTL_ADD, 7, {events=EPOLLIN, data=0x76ef570000}) = -1 EEXIST (File exists)
+16765 read(7, "\1\0\0\0\0\0\0\0", 8)    = 8
+16765 epoll_ctl(4, EPOLL_CTL_ADD, 7, {events=EPOLLIN, data=0x76ef570000}) = -1 EEXIST (File exists)
+16765 read(7, "\1\0\0\0\0\0\0\0", 8)    = 8
+16765 epoll_ctl(4, EPOLL_CTL_ADD, 7, {events=EPOLLIN, data=0x76ef570000}) = -1 EEXIST (File exists)
+16765 read(7, "\1\0\0\0\0\0\0\0", 8)    = 8
+16765 epoll_ctl(4, EPOLL_CTL_ADD, 7, {events=EPOLLIN, data=0x76ef570000}) = -1 EEXIST (File exists)
+16773 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16765, si_uid=10450} ---
+16773 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16765, si_uid=10450} ---
+16771 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16765, si_uid=10450} ---
+16771 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16765, si_uid=10450} ---
+16765 read(7, "\1\0\0\0\0\0\0\0", 8)    = 8
+16775 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16765, si_uid=10450} ---
+16775 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16765, si_uid=10450} ---
+16773 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16765, si_uid=10450} ---
+16773 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16765, si_uid=10450} ---
+16768 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16765, si_uid=10450} ---
+16768 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16765, si_uid=10450} ---
+16771 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16765, si_uid=10450} ---
+16771 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16765, si_uid=10450} ---
+16769 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16765, si_uid=10450} ---
+16769 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16765, si_uid=10450} ---
+16770 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16765, si_uid=10450} ---
+16770 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16765, si_uid=10450} ---
+16775 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16765, si_uid=10450} ---
+16775 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16765, si_uid=10450} ---
+16768 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16765, si_uid=10450} ---
+16768 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16765, si_uid=10450} ---
+16769 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16765, si_uid=10450} ---
+16769 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16765, si_uid=10450} ---
+16770 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16765, si_uid=10450} ---
+16770 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16765, si_uid=10450} ---
+16765 read(8, "\1\0\0\0\0\0\0\0", 8)    = 8
+16774 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16765, si_uid=10450} ---
+16774 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16765, si_uid=10450} ---
+16774 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16765, si_uid=10450} ---
+16774 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16765, si_uid=10450} ---
+16772 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16765, si_uid=10450} ---
+16772 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16765, si_uid=10450} ---
+16767 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16765, si_uid=10450} ---
+16767 --- SIGPWR {si_signo=SIGPWR, si_code=SI_TKILL, si_pid=16765, si_uid=10450} ---
+16765 read(8, "\1\0\0\0\0\0\0\0", 8)    = 8
+16765 read(8, "\1\0\0\0\0\0\0\0", 8)    = 8
+16765 ioctl(0, TCSETS, {c_iflag=ICRNL|IXON, c_oflag=NL0|CR0|TAB0|BS0|VT0|FF0|OPOST|ONLCR, c_cflag=B38400|CS8|CREAD, c_lflag=ISIG|ICANON|ECHO|ECHOE|ECHOK|IEXTEN|ECHOCTL|ECHOKE, ...}) = 0
+16765 ioctl(1, TCSETS, {c_iflag=ICRNL|IXON, c_oflag=NL0|CR0|TAB0|BS0|VT0|FF0|OPOST|ONLCR, c_cflag=B38400|CS8|CREAD, c_lflag=ISIG|ICANON|ECHO|ECHOE|ECHOK|IEXTEN|ECHOCTL|ECHOKE, ...}) = 0
+16765 ioctl(2, TCSETS, {c_iflag=ICRNL|IXON, c_oflag=NL0|CR0|TAB0|BS0|VT0|FF0|OPOST|ONLCR, c_cflag=B38400|CS8|CREAD, c_lflag=ISIG|ICANON|ECHO|ECHOE|ECHOK|IEXTEN|ECHOCTL|ECHOKE, ...}) = 0
+16777 +++ exited with 0 +++
+16776 +++ exited with 0 +++
+16774 +++ exited with 0 +++
+16773 +++ exited with 0 +++
+16772 +++ exited with 0 +++
+16770 +++ exited with 0 +++
+16771 +++ exited with 0 +++
+16768 +++ exited with 0 +++
+16775 +++ exited with 0 +++
+16767 +++ exited with 0 +++
+16769 +++ exited with 0 +++
+16766 +++ exited with 0 +++
+16765 +++ exited with 0 +++
