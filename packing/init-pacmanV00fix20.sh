@@ -17,6 +17,10 @@ set -e
 #      叠影目录定位按「原 RootDir」动态推导（fix19 只查 $PREFIX/data/data，
 #      而 RootDir = $PREFIX 上级时叠影实际落在 $PREFIX/../data —— 受影响机
 #      实证 /data/data/com.termux/files/data/，fix20 双候选全覆盖）。
+#      判据（2026-10-04 订正）：递归子树 data/com.termux/files/usr 非空
+#      （有实体文件才算病，空壳不算）；与 mirrorlist 包自带的
+#      repair-doubled.sh 自动修复同语义（本脚本保留为手动/兜底路径，
+#      hook 自动修复失败或离线场景使用）。
 #   4. 步骤总数 18 → 20；fix19 其余能力原样保留：
 #      RootDir 规范化 / 源解锁 / keyring / 镜像自愈（ftp.agdsn.de）/ db 升级 /
 #      缓存迁移 / apt 移除 / strace 落点自检。
@@ -257,16 +261,24 @@ RED='\033[31m'; GREEN='\033[32m'; NC='\033[0m'
 #   A. RootDir = $PREFIX 上级（/data/data/com.termux/files）→ 叠影在
 #      $PREFIX/../data（受影响机实证路径）；
 #   B. RootDir = $PREFIX 本身 → 叠影在 $PREFIX/data（fix19 原检查点）。
-# 再叠加原 RootDir 动态候选兜底。判定须含完整结构 data/com.termux/files/usr。
+# 再叠加原 RootDir 动态候选兜底。
+# 判病判据（用户订正 2026-10-04）：递归检出
+# <顶层>/data/com.termux/files/usr 子树存在且非空——空壳不算病，
+# 子树内存在实体文件才算（与 mirrorlist 包 repair-doubled.sh 同语义）。
 shadow_tops() {
     local c root_data
     root_data=$(cd "$PREFIX/.." 2>/dev/null && pwd)/data
     for c in "$root_data" "$PREFIX/data"; do
-        [ -d "$c/data/com.termux/files/usr" ] && echo "$c"
+        if [ -d "$c/data/com.termux/files/usr" ] && \
+           [ -n "$(find "$c/data/com.termux/files/usr" -type f -print -quit 2>/dev/null)" ]; then
+            echo "$c"
+        fi
     done
     if [ -n "$ORIG_ROOTDIR" ] && [ "$ORIG_ROOTDIR" != "/" ]; then
         c="$ORIG_ROOTDIR/data"
-        if [ -d "$c/data/com.termux/files/usr" ] && [ "$c" != "$root_data" ] && [ "$c" != "$PREFIX/data" ]; then
+        if [ -d "$c/data/com.termux/files/usr" ] && \
+           [ -n "$(find "$c/data/com.termux/files/usr" -type f -print -quit 2>/dev/null)" ] && \
+           [ "$c" != "$root_data" ] && [ "$c" != "$PREFIX/data" ]; then
             echo "$c"
         fi
     fi
