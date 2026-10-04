@@ -49,3 +49,5 @@ packing/Packages.gz
 packing/SHA256SUMS.txt
 packing/deb-compressed/
 tools/__pycache__/
+# Node modules (local install only)
+node_modules/

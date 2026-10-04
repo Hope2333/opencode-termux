@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "@opencode-ai/pty-linux-arm64-musl": "0.1.13"
+  }
+}
