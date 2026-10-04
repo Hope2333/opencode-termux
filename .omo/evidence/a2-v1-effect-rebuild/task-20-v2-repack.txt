@@ -1,0 +1,166 @@
+task-20 — v2 repack: opencode-compressed 2.0.12-3 (absolute-path convention)
+date: 2026-10-04  branch: native-android
+status: PACKAGE BUILT + ALL ASSERTIONS PASS / OSCAR REINSTALL BLOCKED (network down)
+
+=====================================================================
+1. PAYLOAD PROVENANCE — byte-exact, no version drift
+=====================================================================
+oscar's live v2 runtime (282M, Oct 2 18:08) is the payload of the existing
+relative-convention package opencode-compressed-2.0.12-2. Extracted from it
+rather than rebuilt, so the repack cannot change a single runtime byte:
+
+  source   packing/pacman/opencode-compressed-2.0.12-2-aarch64.pkg.tar.gz
+           member usr/lib/opencode/runtime/opencode
+  size     282130080 bytes  (matches oscar in-place 282M)
+  sha256   8eca81f014327016af1e401aa2536d74b2b24f1b47631b792a248e4673ea76c2
+  ->      artifacts/transplant/2.0.12/opencode-native-revived-upx
+
+Every non-payload member was proven to have a byte-identical local source
+(no asset drift; the build did not silently pick up a newer shim):
+
+  usr/bin/opencode                        ee345a5a59db1e36e187f8c79b531fb6f239301d575e979266c156667f58acbe
+    == scripts/opencode-launcher.sh        ee345a5a59db1e...  MATCH
+  libopencode-crhandler.so                 ebf59e44e737f2ed4624d6625ca207cd1090facf24a2c9717c6eab0a643a2fc6
+    == artifacts/transplant/2.0.18/...so   ebf59e44e737f2ed...  MATCH
+  pty/librust_pty_arm64_musl_patched.so    1047d3e2b55580918b01256e992817ff46e5a2521c7421fa04235f5799f21a0d
+    == tools/bun-pty-splice/dist/...so     1047d3e2b5558091...  MATCH
+  pty/shim.so                              babfea63c10282730fa8fda35ed41e67192ccb55ab10459d428a87483df5d2e9
+    == tools/bun-pty-splice/dist/shim.so  babfea63c1028273...  MATCH
+
+=====================================================================
+2. BUILD
+=====================================================================
+  OPENCODE_COMPRESSED_BIN=$PWD/artifacts/transplant/2.0.12/opencode-native-revived-upx \
+  OPENCODE_CRHANDLER_SO=$PWD/artifacts/transplant/2.0.18/libopencode-crhandler.so \
+  make pacman-compressed VER=2.0.12 PKGREL=3 OCOMP_FAMILY=opencode
+
+  product  packing/pacman/opencode-compressed-2.0.12-3-aarch64.pkg.tar.gz  (94M)
+  sha256   585ef0c6b601aa7da050ebd7ff81a5cf39fd6330fa3a49ce4ae4f2ca2ab69179
+
+Generator self-reported guards (NOT trusted on their own — recomputed in §3):
+  Convention guard: OK / payload guard: OK / launcher guard: OK
+  crhandler guard: OK / pty splice guard: OK
+  Makefile fallback: SKIP (already absolute convention — nothing to repack)
+
+members (all absolute, no relative usr/ anywhere):
+  data/data/com.termux/files/usr/bin/opencode                              1787
+  data/data/com.termux/files/usr/lib/opencode/libopencode-crhandler.so     8104
+  data/data/com.termux/files/usr/lib/opencode/pty/librust_pty_arm64_musl_patched.so  541400
+  data/data/com.termux/files/usr/lib/opencode/pty/shim.so                 14240
+  data/data/com.termux/files/usr/lib/opencode/runtime/opencode      282130080
+  + .BUILDINFO .INSTALL .MTREE .PKGINFO
+
+=====================================================================
+3. INDEPENDENT RECOMPUTATION — 7 assertions, generator output not trusted
+=====================================================================
+script: usr/tmp/v2repack/verify_v2_3.sh + mtree_check.sh (re-derives every
+claim from the finished archive, not from generator logs)
+
+  A1 OK  0 relative usr/ members
+  A2 OK  all 5 absolute members present (launcher+runtime+crhandler+2 pty)
+  A3 OK  payload sha256 8eca81f014327016af1e401aa2536d74b2b24f1b47631b792a248e4673ea76c2
+  A4 OK  8 .MTREE file entries, every one size+sha256 verified (NON-VACUOUS)
+  A5 OK  all .so members live under data/data/com.termux/files/usr (none escape)
+  A6 OK  payload byte-identical to the -2 package runtime (oscar live-runtime source)
+  A7 OK  pkgver round-trips as 2.0.12-3
+
+  METHODOLOGY NOTE (a real trap, worth keeping): the first A4 run reported
+  "0 entries checked" and still printed A4 OK. Cause: this makepkg 7.1.0 emits
+  .MTREE GZIPPED, and the check did `gzip -dc` into a file, then re-read the
+  file with a second `gzip -dc` — the second pass failed ("not in gzip format"),
+  the process-substitution yielded nothing, and the loop body never ran. A
+  vacuous pass on a zero-iteration check. Fixed by sniffing the 1f8b magic
+  instead of blind-gzipping, and by adding a hard floor `N >= 6` so an empty
+  iteration set can never report OK again. Any mtree check in this repo that
+  lacks such a floor is suspect.
+
+  .MTREE verbatim (8 file entries, all verified):
+    .BUILDINFO    21665  65d43753f36d786717c2ed3c0f8e02e034d57e4da65cd5a49e8e1d1fb2368757
+    .INSTALL       1734  d9ff5346cfcc1573cd788a69749a87bba137a45367ef470609a99930b56b6493
+    .PKGINFO        506  11a191418e874c3a18146cb83956091f2d89ada1d6c6eb1d2a8c942bf4de23f6
+    bin/opencode   1787  ee345a5a59db1e36e187f8c79b531fb6f239301d575e979266c156667f58acbe
+    crhandler.so   8104  ebf59e44e737f2ed4624d6625ca207cd1090facf24a2c9717c6eab0a643a2fc6
+    pty/...patched 541400 1047d3e2b55580918b01256e992817ff46e5a2521c7421fa04235f5799f21a0d
+    pty/shim.so   14240  babfea63c10282730fa8fda35ed41e67192ccb55ab10459d428a87483df5d2e9
+    runtime/opencode 282130080 8eca81f014327016af1e401aa2536d74b2b24f1b47631b792a248e4673ea76c2
+
+=====================================================================
+4. SANDBOXED INSTALL REHEARSAL (stands in for the oscar step, see §5)
+=====================================================================
+pacman 7.1.0 / libalpm 16.0.0, private RootDir under usr/tmp/v2repack/fakeroot:
+
+  pacman -U --config <sandbox conf> --noconfirm opencode-compressed-2.0.12-3-aarch64.pkg.tar.gz
+  ->  looking for conflicting packages... / installing opencode-compressed...
+  ->  NO "Partition / is mounted read only"  (this is exactly the error the
+      relative convention produced on oscar; its absence is the point of the
+      whole exercise)
+
+  pacman -Qkk opencode-compressed
+  ->  opencode-compressed: 16 total files, 0 altered files
+  pacman -Ql  -> 16 members, every one under
+                 data/data/com.termux/files/usr/{bin,lib/opencode}/...
+  installed tree: bin/opencode, lib/opencode/{libopencode-crhandler.so,
+                 pty/{librust_pty_arm64_musl_patched.so,shim.so},
+                 runtime/opencode} — 11 payloads + 5 dirs = 16.
+
+  FUNCTIONAL: PREFIX=<sandbox> <sandbox>/bin/opencode --version
+  ->  opencode v2.0.12        exit 0
+
+The -2 empty shell was 11 files registered in the DB with none on disk. A
+package that lays down 16 real files and verifies 0 altered cannot reproduce
+that state, so reinstalling it over the shell is structurally sufficient to
+clear it — no DB surgery needed.
+
+=====================================================================
+5. OSCAR REINSTALL — NOT DONE (network down, stopped at the 3rd failure)
+=====================================================================
+  attempt 1  ssh -p 8022 ... 10.254.129.10   connect timed out
+  ping -c 2 -W 3             100% packet loss
+  ping -c 1 -w 5             100% packet loss
+  attempt 2  ssh (ConnectTimeout=20)          connect timed out
+  attempt 3  ssh (ConnectTimeout=20)          connect timed out   <- stop line
+  local ifconfig: ccmni3 = 10.21.147.229 (cellular), no route to 10.254.129.0/24
+
+Per the "network failure >=2 switch strategy, stop at the 3rd" rule I stopped
+after the third attempt rather than varying ports/paths. The host may simply
+be asleep or off-network; that is not diagnosable from here.
+
+STILL OUTSTANDING ON OSCAR (needs the machine back, order matters):
+  1. ssh -p 8022 u0_a450@10.254.129.10 ; verify identity FIRST
+     (uname -r must read 3.18.140-mokee / OC105 — the IP has been observed
+     getting reassigned to a different device)
+  2. scp opencode-compressed-2.0.12-3-aarch64.pkg.tar.gz  (sha 585ef0c6…)
+  3. pacman -U --noconfirm ./opencode-compressed-2.0.12-3-aarch64.pkg.tar.gz
+  4. pacman -Qk  opencode-compressed   -> expect 0 missing
+     pacman -Qkk opencode-compressed   -> expect 0 altered
+     ls -la $PREFIX/bin/opencode       -> expect in place
+  5. $PREFIX/bin/opencode --version    -> expect 2.0.12
+  6. serve liveness, READ-ONLY (do not disturb the resident runsv instance,
+     pid 18724): pgrep -af 'opencode serve' and/or
+     curl -s -o /dev/null -w '%{http_code}' localhost:4096/<health>
+     Reinstall replaces files under a running process; that is safe (inode
+     content already mapped) but do NOT restart or kill anything.
+
+  The v2 serve pointed straight at
+  $PREFIX/lib/opencode/runtime/opencode is unaffected by the -2 shell problem
+  and was never at risk.
+
+=====================================================================
+6. NOT TOUCHED (per discipline)
+=====================================================================
+  v1 -9 package, files1, no file deletions anywhere. The empty shell is
+  cleared by the reinstall overwrite, not by removing anything.
+  The resident serve was not signalled in any way.
+  No push.
+
+Side observation (pre-existing, NOT introduced here, NOT fixed — out of scope):
+`make pacman-compressed` ended with a non-zero exit even though the package
+was built correctly and every guard passed. The Makefile fallback loop globs
+`packing/pacman/*-$(VER)-$(PKGREL)-*.pkg.*`, and with VER=2.0.12 PKGREL=3 that
+also matches the unrelated opencode-wrapper-2.0.12-3-aarch64.pkg.tar.xz, which
+pkg-abs-repack.sh then tried to repack and aborted on (tar: .INSTALL: Cannot
+stat) — the wrapper package has no .INSTALL. The comment above that loop
+claims it is "scoped to the EXACT pkgver just built", but the glob is not
+scoped to the package NAME, only to ver+rel. Worth a pkgname qualifier
+(`*-compressed-$(VER)-...` or an explicit PKG_NAME variable) before anyone
+runs this target again on a shelf holding multiple families.
