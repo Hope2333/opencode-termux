@@ -553,3 +553,177 @@ opencode  --version → CANNOT LINK EXECUTABLE "opencode":
 1. pacman.conf: `$PREFIX/etc/pacman.conf.bak.20261005-065301`（取消注释第12行）
 2. 叠影归档: `/data/data/com.termux/shadow-archive-20261005-065301/data`（3.0G）
 3. v1 装机前备份: `…/shadow-archive-20261005-065301/v1-preinstall-backup/`（7 文件 59M，sha 已校验）
+
+---
+
+# 装机纪律（务必沿用）：`--overwrite` 必须用等号形式
+
+```
+✗ --overwrite <路径> …        → error: could not open file …: Unrecognized archive format
+                                 error: '…': cannot open package file   （路径被当包文件）
+✓ --overwrite=<路径> …         → 正常逐条绑定
+```
+`--overwrite` 声明为 `--overwrite <glob>`（glob 型选项）。**空格形式会把后续位置参数吞掉**，
+必须用 `=` 形式逐条绑定。本机两次装机（v1 -9）均采用 `=` 形式 + 精确路径、零通配。
+
+---
+
+# S6 收尾（本机线最终验收口径）
+
+## S6-① 全库逐包 `-Qk` 扫描（544 包，非 `-Qkk` 全局口径）
+```
+有 missing 的包: 93
+missing 文件总计: 53527
+```
+
+### 归因（逐包与旧 RootDir=prefix 对照）
+| 类别 | 包数 | missing 变化 |
+|---|---|---|
+| ✅ **改善** | **90** | 合计**减少 16788** 个文件 |
+| ➖ 相同 | 0 | — |
+| ❌ **恶化** | **3** | 合计增加 28840 |
+
+**恶化 3 包**（db 记 `/usr/…` 裸路径，RootDir 口径变化）：
+```
+deepseek-harness        0 → 28828
+hope2333-mirrorlist     0 → 7
+opencode (v2)           1 → 6
+```
+
+**改善代表例**（RootDir 规范化修复了原先的双叠解析失效）:
+```
+bash 143→1    libnss 296→1    gdb 114→1    at-spi2-core 135→1
+libheif 56→1  liblzma 55→1    libxml2 72→1 libnpth 17→1
+fribidi 74→1  libdw 17→1       less 23→1   gdb/… 共 90 包
+```
+
+### 有 missing 的包全名单（93 包 + 数字）
+```
+adwaita-icon-theme 2      at-spi2-core 1        android-tools 2
+antiword 35               bash 1                 bash-glibc 142
+binutils-glibc 39         binutils-libs-glibc 451 brotli-glibc 25
+ca-certificates-glibc 12  deepseek-harness 28828 dos2unix 10
+e2fsprogs-glibc 116       ffmpeg 7               fribidi 1
+gcc-libs-glibc 4          gdb 1                  gdbm-glibc 21
+ghostscript 483           giflib 20              glib 6
+glibc 1581                glibc-runner 14        golang 2
+groff 729                 highway 53             hope2333-mirrorlist 7
+httrack 7                 httrack-data 12        json-c-glibc 29
+krb5-glibc 147            less 1                 libandroid-stub 1
+libblkid-glibc 9          libbz2-glibc 8         libcap 4
+libcurl 4                 libcurl-glibc 556      libdb-glibc 21
+libdebuginfod-glibc 20    libdw 1                libelf 79
+libelf-glibc 135          libevent-glibc 49      libexpat 6
+libheif 1                 libidn2-glibc 37       libjansson-glibc 9
+liblz4-glibc 12           liblzma 1              liblzma-glibc 46
+libmd 40                  libnghttp2-glibc 18    libnpth 1
+libnss 1                  libpsl-glibc 16        libssh2-glibc 198
+libstemmer 1              libuchardet 11         libunistring-glibc 55
+libunwind-glibc 60        libuuid-glibc 5        libverto-glibc 11
+libvidstab 3              libxcrypt-glibc 22     libxml2 1
+linux-api-headers-glibc 1042                    ncurses-glibc 3951
+ndk-multilib 32           ninja 3                opencode 6
+openssl-glibc 6741        patchelf-glibc 14      perl-glibc 3209
+procps 22                 python-grpcio 10       radare2 488
+readline-glibc 54         ruby 3469              rust 145
+rust-std-aarch64-linux-android 30                strace 6
+strace-glibc 12           termux-exec-glibc 4    tumbler 2
+uchardet 2                vim 6                  virglrenderer-android 2
+vulkan-loader-generic 1   xorg-fonts-encodings 2 yazi 5
+zlib-glibc 12             zstd-glibc 26
+```
+> 注: 3 个恶化包 + 部分 glibc 系包的 missing 均为 **db 解析口径变化**，文件实体在盘
+> （已抽样验证 dsh / 两个 mirrorlist.conf / opencode 286M 等）。
+
+## S6-② serve 12681 — 存活未重启
+```
+PID     ELAPSED COMMAND
+12681    02:06:54 …/opencode1/runtime/opencode serve --hostname 0.0.0.0 --port 4096
+/proc/12681/exe -> …/runtime/opencode (deleted)
+```
+etime 全程单调递增：01:43:31(S0) → 01:51:58(S3) → 02:00:45(S4) → 02:05:25 → **02:06:54(S6)**，
+**从未重启、全程未发信号**。`(deleted)` = 仍持旧 inode（裁决③预期偏差，重启时机由用户定）。
+
+**v2 serve: N/A** — 本机不存在 v2 serve（非「掉了」；任务书原给的 7084/12612 均已不存在）。
+
+## S6-③ 环境 6/6 — 与 S0 逐字一致
+```
+bash   GNU bash, version 5.3.15(1)-release (aarch64-unknown-linux-android)
+python Python 3.14.6
+git    git version 2.55.0
+node   v26.4.0
+bun    1.3.14
+SHELL  /data/data/com.termux/files/usr/bin/zsh
+```
+
+## S6-④ 叠影归档完整
+```
+/data/data/com.termux/shadow-archive-20261005-065301/data
+3.0G / 42291 文件 / 8204 软链     ← 与归档前逐项一致
+```
+
+## S6-⑤ v1 -9 三验入表
+| 验项 | 数字 |
+|---|---|
+| 包版本 | `opencode1-compressed 1.18.32-9`（-7 → -9）|
+| `opencode1 --version` | **1.18.32** |
+| TUI 一帧冒烟 | **PASS**，抓帧 **13801 B**（`task-25-tui-smoke-v1.raw`）|
+| `.so` 留存 | **4 个**（零 .so 新形态下旧 .so 未被删）|
+| 单包 `-Qk` | **12 total files, 0 missing files**（13 → 0）|
+
+serve 偏差说明: `/proc/12681/exe` 显示 `(deleted)`，因 -9 装机替换了 runtime 文件，
+而 serve 未重启（裁决③），内存中仍是 -7 旧码；盘上已是 -9（47178844 B）。
+
+---
+
+# v2 结论（裁决：选项 1，本轮跳过）
+
+两条硬事实（已实测，非推测）:
+
+**(a) `-5` 物理不可装**（非「装了不生效」）
+```
+$ tar -tf …opencode-2.0.18-5….pkg.tar.xz | grep -vE '/$|^\.'
+usr/bin/opencode
+usr/lib/opencode/libopencode-crhandler.so      ← 相对成员，RootDir=/ 下需写 /usr/…
+$ ls -ld /usr      → No such file or directory
+$ ls -ld /usr/bin  → No such file or directory
+$ [ -w /usr/bin ]  → NOT writable
+```
+→ 事务必然失败。
+
+**(b) 该目录无任何版本库元数据**
+```
+$ ls -ld $PREFIX/usr/lib/opencode/.git     → 不存在
+$ git -C $PREFIX/usr/lib/opencode status   → fatal: not a git repository
+$ 逐级上溯查找 .git 至 /                    → 未找到
+```
+→ tracked/untracked 判据无从判定。
+且 `runtime/` 下**无 opencode 本体**，仅三个孤儿:
+`opencode-upx-best` 49M / `opencode.bak.1.17.3` 156M / `opencode.v1backup` 180M。
+
+**结论行**：等 Phase 0 后的生成器正式构建出「绝对成员 + 不覆盖源码树」的 v2 包再装，
+本轮不必手改打包脚本。
+
+## 实证 Phase 0 必要性（结论性事实）
+`-4`/`-5` 属「Phase 0 生成器反转之前」的旧约定产物（同约定、2 成员、二进制
+sha `6fdef1c6…` ≠ 现装 `212d06a0…`）。仓内已有 `tools/pkg-abs-repack.sh`（6.7k，可执行）
+可机械化把此类包转为绝对约定 —— 这实证了 Phase 0（生成器反转）接入发布链的必要性：
+**没有 Phase 0，每个包都得手工 repack 才能上机。**
+
+---
+
+# 回滚材料（全部就绪）
+1. **pacman.conf**: `$PREFIX/etc/pacman.conf.bak.20261005-065301`（取消注释第 12 行即还原 RootDir=prefix）
+2. **叠影归档**: `mv /data/data/com.termux/shadow-archive-20261005-065301/data /data/data/com.termux/files/data`
+3. **v1 装机前备份**: `…/shadow-archive-20261005-065301/v1-preinstall-backup/`（7 文件 59M，sha256 已校验）
+4. **v1 回退到 -7**: `pacman -U --noconfirm <opencode1-compressed-1.18.32-7-aarch64.pkg.tar.gz>`（或从 v1-preinstall-backup 还原 7 文件）
+
+# 本机线最终状态
+```
+RootDir            = /            （规范化完成）
+opencode1-compressed = 1.18.32-9   ✅ 目标达成，TUI 实测通过
+opencode            = 2.0.18-4    ⚠️ 维持损坏（CANNOT LINK），等 repack
+serve 12681        = 存活未重启 ✅
+环境 6/6           = 与 S0 一致 ✅
+叠影               = 已归档 3.0G（归位段按裁决跳过）✅
+```
