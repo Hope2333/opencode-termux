@@ -727,3 +727,157 @@ serve 12681        = 存活未重启 ✅
 环境 6/6           = 与 S0 一致 ✅
 叠影               = 已归档 3.0G（归位段按裁决跳过）✅
 ```
+
+---
+
+# S4b(A) 重打包 v2 绝对成员 → 装 -6 — PASS ✅
+
+## 三条硬事实（前一轮已实测，此处留档）
+**(a) `-5` 物理不可装**（非「装了不生效」）
+```
+$ tar -tf …opencode-2.0.18-5….pkg.tar.xz | grep -vE '/$|^\.'
+usr/bin/opencode
+usr/lib/opencode/libopencode-crhandler.so        ← 相对成员
+$ ls -ld /usr      → No such file or directory
+$ ls -ld /usr/bin  → No such file or directory
+$ [ -w /usr/bin ]  → NOT writable
+```
+RootDir=/ 下需写 `/usr/…`，该处不存在且不可写 → 事务必然失败。
+
+**(b) 无任何版本库元数据**
+```
+$ ls -ld $PREFIX/usr/lib/opencode/.git     → 不存在
+$ git -C $PREFIX/usr/lib/opencode status   → fatal: not a git repository
+$ 逐级上溯查找 .git 至 /                    → 未找到
+```
+tracked/untracked 判据无从判定 → 本轮改用**只读全目录快照**替代。
+
+**(c) `runtime/` 下无 opencode 本体**，仅三个孤儿:
+```
+opencode-upx-best 49M | opencode.bak.1.17.3 156M | opencode.v1backup 180M
+```
+
+## 重打包（repack 工具链实证可用）
+```
+$ ./tools/pkg-abs-repack.sh <绝对路径>/opencode-2.0.18-5-aarch64.pkg.tar.xz \
+                           <绝对路径>/opencode-2.0.18-6-aarch64.pkg.tar.xz
+OK: …/packing/pacman/opencode-2.0.18-6-aarch64.pkg.tar.xz
+    pkgver 2.0.18-5 -> 2.0.18-6
+    members now under data/data/com.termux/files/usr/, .MTREE digests verified
+```
+**脚本未改动一字**（`git status tools/pkg-abs-repack.sh` clean）。
+**踩坑记录**：脚本第 44 行 `cd "$WORK"`（临时解包目录），因此**输出路径必须给绝对路径** ——
+给相对路径会落到临时目录里，报 `No such file or directory` 且因 `set -e` 静默 exit 1。
+（我一度误判为脚本 bug 并试改 `readlink -f`→`-m`，查明后已完整还原。）
+
+### 门 (a) 路径约定 — PASS
+```
+相对 usr/ 成员数 = 0
+绝对成员数       = 2
+  data/data/com.termux/files/usr/bin/opencode
+  data/data/com.termux/files/usr/lib/opencode/libopencode-crhandler.so
+```
+
+### 门 (b) .MTREE 逐条 size+sha256 对账 — PASS（5/5）
+```
+.BUILDINFO                                              size✅ sha✅
+.INSTALL                                                size✅ sha✅
+.PKGINFO                                                size✅ sha✅
+data/data/com.termux/files/usr/bin/opencode             size✅ sha✅
+data/data/…/usr/lib/opencode/libopencode-crhandler.so   size✅ sha✅
+```
+对照 `-5` 的 .MTREE 证明确为路径改写（内容 sha 未变）:
+```
+-5: ./usr/bin/opencode          size=286258848 sha256digest=6fdef1c68348eb51…
+-6: ./data/data/com.termux/files/usr/bin/opencode size=286258848 sha256digest=6fdef1c68348eb51…
+```
+
+### 门 (c) payload 零漂移 — PASS
+```
+usr/bin/opencode                          -5=6fdef1c68348eb51…  -6=6fdef1c68348eb51…  ✅ 一致
+usr/lib/opencode/libopencode-crhandler.so -5=ebf59e44e737f2ed… -6=ebf59e44e737f2ed… ✅ 一致
+```
+→ `-5` 相对 `-4` 的真实变更（`212d06a0…` → `6fdef1c6…`）**完整保留，未退回 -4**。
+
+## 装前留证
+```
+快照: /data/data/com.termux/shadow-archive-20261005-065301/v2-pre-snapshot/
+  find-sorted.txt   9850 条目（全目录 find|sort）
+  sha256-full.txt   3929 文件（全文件 sha256）
+  nm-find.txt       5416 条目（node_modules 清单）
+  opencode-2.0.18-5-ORIGINAL.pkg.tar.xz（-5 原件另存）
+pacman -Qo $PREFIX/usr/bin/opencode                        → error: No package owns（预期）
+pacman -Qo $PREFIX/usr/lib/opencode/libopencode-crhandler.so → error: No package owns
+三恶化包实体: dsh 455B / hope2333-mirrorlist.conf 496B / mirrorlist.conf 497B / opencode 286193312B
+```
+
+## 装机（等号形式 + 精确 2 路径 + 零通配）
+```
+$ pacman -U --noconfirm \
+   --overwrite=$PREFIX/usr/bin/opencode \
+   --overwrite=$PREFIX/usr/lib/opencode/libopencode-crhandler.so \
+   packing/pacman/opencode-2.0.18-6-aarch64.pkg.tar.xz
+[ALPM] upgraded opencode (2.0.18-4 -> 2.0.18-6)
+```
+## 装后验证 — v2 修复
+```
+$ pacman -Q opencode            → opencode 2.0.18-6
+$ opencode --version            → opencode v2.0.18          ← 由 CANNOT LINK 修复 ✅
+$ pacman -Qk opencode           → 6 total files, 0 missing  ← 6 → 0 ✅
+db 记录 = data/data/com.termux/files/usr/…（绝对成员）
+```
+内容一致性（盘上 vs -6 成员）:
+```
+bin/opencode          ✅ 6fdef1c68348eb51ada7bc5025d23ec49fc650666c4a7dcef208ffd15490bbb0
+libopencode-crhandler.so ✅ ebf59e44e737f2ed4624d6625ca207cd1090facf24a2c9717c6eab0a643a2fc6
+```
+
+## 装后快照 diff — 符合预期
+```
+find|sort diff : 仅 1 条新增 = libopencode-crhandler.so (f 8104)
+sha256    diff : 仅 1 条新增 = ebf59e44… libopencode-crhandler.so
+node_modules diff : 0 差异 ✅（源码树三个孤儿与 node_modules 全部未动）
+```
+
+### 自查更正：快照作用域漏了 bin/opencode
+`bin/opencode` 在 diff 中显示 0 变化，**并非内容未变，而是我的快照作用域只覆盖
+`$PREFIX/usr/lib/opencode`，不含 `$PREFIX/usr/bin/`**。真相: S0 时盘上是 `-4` 的
+`212d06a0…`，装机后为 `6fdef1c6…` —— **bin 确实被替换了**，只是快照没覆盖到。
+补验已直接比对「盘上 sha vs -6 成员 sha」= ✅ 一致。
+→ 教训: 快照范围须显式包含两条 payload 的**各自真实路径**（bin 与 lib 跨目录）。
+
+## S6 重跑 — v2 闭合
+```
+$ pacman -Qk opencode              → 6 total files, 0 missing   （原 6 missing）
+$ pacman -Qk deepseek-harness      → 28828 missing（不变）
+$ pacman -Qk hope2333-mirrorlist   → 7 missing（不变）
+
+全库汇总: 92 包有 missing / 53521 文件
+  （S6 首轮 93 包 / 53527 → 恰好 -1 包 / -6 文件 = opencode 闭合 ✅）
+```
+另两包（deepseek-harness / hope2333-mirrorlist）**仍缺 = 各自的旧约定问题，
+不在本轮范围**（repack 需其对应包的 repack 版，本轮无）。
+
+## v1 未受影响 / serve 未重启
+```
+opencode1 --version → 1.18.32   ✅
+serve 12681 etime   → 02:11:40  单调递增，从未重启、全程未发信号 ✅
+```
+
+# 本机线最终状态（v1+v2 双线达成）
+```
+RootDir               = /                 ✅ 规范化完成
+opencode1-compressed  = 1.18.32-9         ✅ --version 1.18.32 + TUI 帧 13801B PASS
+opencode              = 2.0.18-6          ✅ --version v2.0.18（CANNOT LINK 已修复）
+serve 12681           = 存活未重启         ✅
+环境 6/6              = 与 S0 一致         ✅
+叠影归档              = 3.0G 完整（归位段按裁决跳过）✅
+全库逐包 -Qk          = 92 包 missing（v2 已闭合，余 2 包属各自旧约定）
+```
+
+# 回滚材料
+1. pacman.conf: `$PREFIX/etc/pacman.conf.bak.20261005-065301`
+2. 叠影归档: `mv /data/data/com.termux/shadow-archive-20261005-065301/data /data/data/com.termux/files/data`
+3. v1 装机前备份: `…/v1-preinstall-backup/`（7 文件 59M，sha256 已校验）
+4. v2 装前快照: `…/v2-pre-snapshot/`（find/sha256/node_modules + -5 原件）
+5. v2 回退: `pacman -U --noconfirm …opencode-2.0.18-4….pkg.tar.xz`（或 -5 原件 + 手工重装）
