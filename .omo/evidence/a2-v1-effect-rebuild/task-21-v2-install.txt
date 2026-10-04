@@ -1,0 +1,183 @@
+task-21 — oscar reinstall of opencode-compressed 2.0.12-3 (absolute-path convention)
+date: 2026-10-04  branch: native-android
+status: IDENTITY OK / TRANSFER OK / **INSTALL BLOCKED — pacman conflicting-files, stopped per discipline**
+        / NOTHING MUTATED ON OSCAR / serve still alive
+
+Package under test (unchanged from task-20, no rebuild):
+  packing/pacman/opencode-compressed-2.0.12-3-aarch64.pkg.tar.gz
+  local  sha256 585ef0c6b601aa7da050ebd7ff81a5cf39fd6330fa3a49ce4ae4f2ca2ab69179
+  remote sha256 585ef0c6b601aa7da050ebd7ff81a5cf39fd6330fa3a49ce4ae4f2ca2ab69179  MATCH
+
+=====================================================================
+1. IDENTITY VERIFIED FIRST (IP-reassignment guard)
+=====================================================================
+  ssh -p 8022 -o PubkeyAuthentication=no -o PreferredAuthentications=password \
+      -o StrictHostKeyChecking=no u0_a450@10.254.129.10
+  uname -r                3.18.140-mokee-g3592dbe76eff   <- expected 3.18.140-mokee OK
+  getprop ro.product.model          OC105                <- expected OC105      OK
+  id -un                            u0_a115
+  PREFIX              /data/data/com.termux/files/usr
+  PROCEED.
+
+Network note: the host is back. Last round stopped at 3 failed connects; the
+first connect this round succeeded.
+
+=====================================================================
+2. BEFORE STATE — the empty shell, re-measured
+=====================================================================
+  $ pacman -Q opencode-compressed
+    opencode-compressed 2.0.12-2
+
+  $ pacman -Qkk opencode-compressed
+    warning: opencode-compressed: /usr (No such file or directory)
+    warning: opencode-compressed: /usr/bin (No such file or directory)
+    warning: opencode-compressed: /usr/bin/opencode (No such file or directory)
+    warning: opencode-compressed: /usr/lib (No such file or directory)
+    warning: opencode-compressed: /usr/lib/opencode (No such file or directory)
+    warning: opencode-compressed: /usr/lib/opencode/libopencode-crhandler.so (No such file or directory)
+    warning: opencode-compressed: /usr/lib/opencode/pty (No such file or directory)
+    warning: opencode-compressed: /usr/lib/opencode/pty/librust_pty_arm64_musl_patched.so (No such file or directory)
+    warning: opencode-compressed: /usr/lib/opencode/pty/shim.so (No such file or directory)
+    warning: opencode-compressed: /usr/lib/opencode/runtime (No such file or directory)
+    warning: opencode-compressed: /usr/lib/opencode/runtime/opencode (No such file or directory)
+    opencode-compressed: 12 total files, 11 altered files
+
+  The -2 DB entry registers 11 files under a RELATIVE /usr/ convention. Under
+  pacman 7.1.0 / RootDir=/ those resolve to /usr/... which does not exist on a
+  bionic/Termux device — hence 11 missing. Textbook empty shell, reconfirmed.
+
+  BUT the real files are on disk and healthy (deployed in place Oct 2):
+    1787      2026-10-02 18:08:30   bin/opencode
+    8104      2026-10-02 18:08:30   lib/opencode/libopencode-crhandler.so
+    541400    2026-10-02 18:08:30   lib/opencode/pty/librust_pty_arm64_musl_patched.so
+    14240     2026-10-02 18:08:30   lib/opencode/pty/shim.so
+    282130080 2026-10-02 18:08:30   lib/opencode/runtime/opencode
+
+=====================================================================
+3. THE BLOCKER (new finding, not anticipated by task-20 §5)
+=====================================================================
+  $ pacman -U --noconfirm $PREFIX/tmp/opencode-compressed-2.0.12-3-...pkg.tar.gz
+    loading packages...
+    resolving dependencies...
+    looking for conflicting packages...
+    Packages (1) opencode-compressed-2.0.12-3
+    Total Installed Size:  269.60 MiB
+    Net Upgrade Size:        0.00 MiB
+    :: Proceed with installation? [Y/n]
+    checking keyring...
+    checking package integrity...
+    loading package files...
+    checking for file conflicts...
+    error: failed to commit transaction (conflicting files)
+    opencode-compressed: /data/data/com.termux/files/usr/bin/opencode exists in filesystem
+    opencode-compressed: /data/data/com.termux/files/usr/lib/opencode/libopencode-crhandler.so exists in filesystem
+    opencode-compressed: /data/data/com.termux/files/usr/lib/opencode/pty/librust_pty_arm64_musl_patched.so exists in filesystem
+    opencode-compressed: /data/data/com.termux/files/usr/lib/opencode/pty/shim.so exists in filesystem
+    opencode-compressed: /data/data/com.termux/files/usr/lib/opencode/runtime/opencode exists in filesystem
+    Errors occurred, no packages were upgraded.
+    PACMAN_EXIT=1
+
+  Root cause: the 5 absolute-path files exist on disk but belong to NO
+  package. They were deployed in place on Oct 2 by hand, not by pacman, so
+  the -2 shell's DB row never covered them and nothing owns them:
+
+    $ pacman -Qo bin/opencode                      -> error: No package owns bin/opencode
+    $ pacman -Qo lib/opencode/runtime/opencode     -> error: No package owns lib/opencode/runtime/opencode
+    (same for libopencode-crhandler.so and both pty .so files)
+
+  pacman -U refuses to overwrite unowned files without an explicit
+  --overwrite grant. NOTE: this is NOT the "Partition / is mounted read only"
+  error the relative convention produced, and NOT a corrupt package — the
+  transaction got as far as integrity+conflict checking and then declined.
+  task-20 §4's sandbox rehearsal could not have caught this: a clean fakeroot
+  has no pre-existing unowned files at those paths.
+
+  Task-20 §4 predicted the reinstall would be "structurally sufficient"
+  because the -3 package lays down 16 real files. That prediction assumed the
+  target paths were empty. On oscar they are populated-but-unowned, so the
+  conflict guard fires first.
+
+=====================================================================
+4. WHY --overwrite IS SAFE HERE (evidence for the decision, not yet executed)
+=====================================================================
+  Every one of the 5 conflicting files is BYTE-IDENTICAL to the package member
+  it would replace. On-disk sha256 vs the .MTREE values recorded in task-20 §3:
+
+    ee345a5a59db1e36e187f8c79b531fb6f239301d575e979266c156667f58acbe  bin/opencode
+    ebf59e44e737f2ed4624d6625ca207cd1090facf24a2c9717c6eab0a643a2fc6  libopencode-crhandler.so
+    1047d3e2b55580918b01256e992817ff46e5a2521c7421fa04235f5799f21a0d  pty/librust_pty_arm64_musl_patched.so
+    babfea63c10282730fa8fda35ed41e67192ccb55ab10459d428a87483df5d2e9  pty/shim.so
+    8eca81f014327016af1e401aa2536d74b2b24f1b47631b792a248e4673ea76c2  lib/opencode/runtime/opencode
+
+  All five match task-20's verified .MTREE digests exactly. So the overwrite
+  is a content-level no-op: the only real change is the DB row moving from the
+  broken 2.0.12-2 shell to a correct 2.0.12-3 that owns what is already there.
+  The 282M payload the two serves are executing is the same inode content.
+
+  Install script audited before proposing anything:
+    .INSTALL has MIGRATE_HOOK=0 (v2 family = zero-hook contract).
+    post_install/post_upgrade only echo text; the migration branch is
+    unreachable at MIGRATE_HOOK=0. No v1 data isolation, no deletions.
+
+  Also note the obvious alternative does NOT work: `pacman -Rdd
+  opencode-compressed` would drop the -2 row, but the 5 files stay on disk
+  still unowned, so the subsequent -U hits the exact same conflict guard.
+  --overwrite is the only mechanism that addresses the actual condition.
+
+  NOT EXECUTED. The lead's step 3 said "失败即停手，不硬装" — a --overwrite
+  grant is a judgement call on a shared machine with two live serves, so it
+  is escalated rather than self-authorized.
+
+=====================================================================
+5. AFTER STATE — unchanged, nothing mutated
+=====================================================================
+  $ pacman -Q opencode-compressed
+    opencode-compressed 2.0.12-2                      <- still the shell, as before
+  $ pacman -Qkk opencode-compressed
+    opencode-compressed: 12 total files, 11 altered files   <- identical to before
+
+  Files intact after the aborted transaction:
+    ee345a5a59db1e36e187f8c79b531fb6f239301d575e979266c156667f58acbe  bin/opencode
+    8eca81f014327016af1e401aa2536d74b2b24f1b47631b792a248e4673ea76c2  lib/opencode/runtime/opencode
+
+  Staged package left in place for the retry:
+    $PREFIX/tmp/opencode-compressed-2.0.12-3-aarch64.pkg.tar.gz  (94M, sha verified)
+
+=====================================================================
+6. SERVE LIVENESS — baseline AND post-abort (read-only, never signalled)
+=====================================================================
+  BEFORE the install attempt:
+    18724 .../lib/opencode/runtime/opencode serve --service
+    27905 .../lib/opencode/runtime/opencode serve --hostname 0.0.0.0
+    27896 .../usr/var/service/runsvdir .../usr/var/service
+    curl http://127.0.0.1:4096/      -> 401
+    curl http://127.0.0.1:4096/health -> 401
+
+  AFTER the aborted transaction:
+    18724 .../lib/opencode/runtime/opencode serve --service
+    27905 .../lib/opencode/runtime/opencode serve --hostname 0.0.0.0
+    curl http://127.0.0.1:4096/      -> 401
+
+  Identical pids before and after: no restart, no kill, no signal. 401 is the
+  auth-gated response from a live server (it answers; it is not a refused
+  connection). Both serves kept running straight through.
+
+=====================================================================
+7. NOT TOUCHED (per discipline)
+=====================================================================
+  v1 opencode1-compressed 1.18.32-9 — untouched, not queried for mutation.
+  files1 — untouched.
+  No file deleted, moved, or truncated on oscar. The package is on disk in
+  $PREFIX/tmp awaiting the overwrite decision.
+  No serve restarted or signalled.
+  No push.
+
+=====================================================================
+8. OPEN ITEM FOR THE LEAD
+=====================================================================
+  One command, pending approval:
+    pacman -U --noconfirm --overwrite '/data/data/com.termux/files/usr/*' \
+      $PREFIX/tmp/opencode-compressed-2.0.12-3-aarch64.pkg.tar.gz
+  Expected: 16 total files, 0 altered; $PREFIX/bin/opencode --version ->
+  opencode v2.0.12; serve pids 18724/27905 unchanged.
+  Safer still would be --overwrite scoped to the 5 exact paths.
