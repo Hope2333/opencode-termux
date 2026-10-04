@@ -1,0 +1,132 @@
+task-19 — fix20 / repair-doubled.sh 归位逻辑改「审计式」（oscar 实测缺陷修订）
+日期: 2026-10-04  执行: impl-fix20b  分支: native-android（主仓）/ main（站点仓）
+依据: .omo/evidence/a2-v1-effect-rebuild/task-18-oscar-deploy.txt（oscar 3.18 机实测）
+本机 = 受影响机（叠影 42291 文件 / 8204 软链 / 受影响包 146），故自检直接在本机跑。
+
+════════════════════════════════════════════════════════════════════
+1. 修订动因（oscar 实测暴露的三处缺陷）
+════════════════════════════════════════════════════════════════════
+① [18] 的 `pacman -S <受影响整集>`（原 [12/20] 全量升级同源问题）危险：
+   oscar 3.18 机上受影响集含 glibc / bash / openssh / python / zsh / git ——
+   全量重装会砸掉承载 ssh 通道的自身包。oscar 实际改为「先审计、再按内容归位」。
+   → fix20 与 repair-doubled.sh 均改为审计式：STALE=0 只 rename 归位
+     （零包管理事务、零网络）；仅 STALE≠0 的包才单包 `pacman -S --overwrite <单包>`。
+
+② 审计漏软链：db mtree 里 symlink 是 `type=link link=<目标>`，**无 sha256digest**
+   —— 按摘要过滤会静默丢弃全部软链（oscar 首轮漏 980 个：htop copyright /
+   git libexec / libmd man）。
+   → 判据改为两类都审计、缺一即判 STALE：
+     正则文件比 sha256digest；软链比 db 记录的 link 目标（readlink）。
+
+③ rename 目标已存在同名文件的冲突：按 oscar 实测语义「db 为准」——
+   正确路径已有同名实体时不覆盖，该条目所属包降级为单包重装
+   （与 STALE/ABSENT 合并进同一逐包重装集合）。
+
+约束遵守：只改归位逻辑 + 相应断言/日志。repair-doubled.sh 的静默 / 自动修复 /
+递归判据（shadow_tops 非空子树、-Qk 健康门、DB_LCK 延迟续跑）语义未动
+（`broken_pkgs` 仍作健康门判据，仅不再当"要重装的清单"用）。
+
+════════════════════════════════════════════════════════════════════
+2. 审计判据实现（两仓同源）
+════════════════════════════════════════════════════════════════════
+对受影响包逐个解 `$PREFIX/var/lib/pacman/local/<pkg>-<ver>/mtree`：
+
+  条目形态         判据                        缺判据时
+  ─────────────────────────────────────────────────────────────
+  type=link        比 db 的 link= 目标           目标缺失 → STALE
+  有 sha256digest  比叠影副本 sha256             无摘要 → STALE
+  type=dir         跳过（目录由文件派生）        —
+
+分类输出（classified.tab：class / pkg / abspath / expect）：
+  OK         = db 总条目 − 正确路径缺失数（正确路径已有实体）
+  RESTORABLE = 正确路径缺 + 叠影副本在 + 判据相符 → 纯 rename 可还原
+  STALE      = 叠影副本在但判据不符 / 类型不符 / 无判据 → 须重装
+  ABSENT     = 正确路径与叠影皆无 → 须重装
+
+两处实现要点（均为实测踩出来的）：
+  · mtree 八进制反转义：路径里的空格写作 `\040`（termux-licenses 的
+    "Public Domain.txt" 即此类）。不反转义则该条目永久判 STALE。
+  · `sha256digest=` 前缀长 13，摘要从第 14 字符起（早先按 15 取会丢掉
+    摘要首字符，导致全部正则文件误判 STALE）。
+  · 叠影副本路径 = <原 RootDir> + db 路径，故叠影清单按"剥掉 eff_root
+    后的 db 路径"建键再 join。
+  · 摘要批量取：一次 `xargs -0 -n 200 sha256sum`，避免每文件一进程。
+
+════════════════════════════════════════════════════════════════════
+3. 本机 dry-run 自检（只审计，未执行任何归位/重装/清理）
+════════════════════════════════════════════════════════════════════
+入口: SHADOW_AUDIT_ONLY=1 bash packing/init-pacmanV00fix20.sh
+（自检段整体置于 [1/20] 之前，靠位置保证 apt / RootDir 规范化 /
+  pacman -Syyu / 归位 / 清理一步都不执行；rc=0）
+
+  叠影顶层: /data/data/com.termux/files/data
+  叠影规模: 文件 42291 / 软链 8204
+  受影响包: 146
+  审计: OK=27494 RESTORABLE=22999 STALE=0 ABSENT=0
+        RESTORABLE 中软链 7641
+  STALE/ABSENT 包（这些才需要单包重装）: （空）
+
+判读：
+  · STALE=0 → 全部 22999 条走 rename 归位，全程零包管理事务、零网络。
+    与 oscar 实测（50 包 / 3889 文件，STALE=0）同向。
+  · RESTORABLE 22999 = 正则 15358 + 软链 7641。**软链已计入**
+    （若按摘要过滤，7641 条软链会被静默丢弃 —— 即 oscar 首轮的缺陷）。
+  · ABSENT=0：oscar 那 2 条 ABSENT 是解析器对含空格文件名的假阳性；
+    本次八进制反转义后归零，反证该修正生效。
+  · STALE=0 与"叠影副本即包管理器原件"一致（本机 RootDir 仍为活动态
+    /data/data/com.termux/files，尚未做过任何归位）。
+
+交叉验证：站点仓 audit_shadow 用同一受影响集独立跑出
+  AUDIT 27494 22999 0 0 7641
+与主仓逐字段一致。
+
+════════════════════════════════════════════════════════════════════
+4. 判据区分力反测（合成夹具，不碰真机叠影）
+════════════════════════════════════════════════════════════════════
+真机 STALE=0，无法证明"STALE 分支真的会判出来"。故造合成夹具
+（假 db + 假叠影 + 唯一探针名，$PREFIX 保持真机只做 find 盘点）：
+
+  探针                          期望        实测
+  ───────────────────────────────────────────────────────
+  摘要相符的正规文件            RESTORABLE  RESTORABLE
+  摘要不符的正规文件            STALE        STALE
+  link 目标相符的软链           RESTORABLE  RESTORABLE
+  link 目标不符的软链           STALE        STALE
+  db 记正则 / 叠影是软链        STALE        STALE
+  无摘要且无 link（无判据）     STALE        STALE
+  正确路径已有实体              OK           OK
+
+归位循环反测（从脚本里按行标记**抽取真实循环**执行，防止测试与产物漂移）：
+  正规文件 rename                GOOD（内容一致，叠影副本已移走）
+  含空格文件名 rename            SPACED（\040 反转义端到端生效）
+  软链按 link 目标重建           SYMLINK -> plain.txt
+  目标已存在同名文件             保留原实体（不覆盖），该包降级进重装集合
+  RELOCATE_FAILED                空
+  RELOCATE_CONFLICT              " pkga"
+
+四项 STALE 路径与冲突降级均被真实触发，判据具备区分力（非恒判 RESTORABLE）。
+
+════════════════════════════════════════════════════════════════════
+5. 改动清单
+════════════════════════════════════════════════════════════════════
+主仓 packing/init-pacmanV00fix20.sh
+  + shadow_audit()：db mtree ↔ 叠影逐条审计，输出 OK/RESTORABLE/STALE/ABSENT
+    与 RESTORABLE 中的软链数
+  + affected_pkgs()：从 [17] 内联块抽出，供 [17] 与自检共用
+  + SHADOW_AUDIT_ONLY=1 自检入口（置于 [1/20] 之前，只读）
+  ~ [18/20] 由「整集 pacman -S 重装」改为：审计 → RESTORABLE 走 rename
+    （软链 ln -sfn 按 db 目标；已存在同名实体则不覆盖并降级）→
+    STALE/ABSENT/冲突包逐包 `pacman -S --noconfirm --overwrite <单包>`
+  ~ [18/20] 断言保留：叠影不得增长 + 逐包 pacman -Qk
+  ~ shadow_tops() 上移至引擎段（自检需在 [1]-[16] 之前调用）
+  步骤总数仍为 20；[17]/[19]/[20] 语义不变
+
+站点仓 scripts/repair-doubled.sh（mirrorlist 包内）
+  + audit_shadow()：与主仓同源同判据
+  ~ repair() 步骤 2/3 改为审计式：STALE=0 只 rename，STALE≠0 逐包重装
+  ~ 新增归位后复检（叠影不得增长 + 逐包 -Qk）
+  ~ 顶部注释补 oscar 修订说明
+  未动：静默健康门（shadow_tops / broken_pkgs -Qk）、自动修复调度
+        （DB_LCK 延迟续跑）、RootDir 注释回落、失败红字 + 指向 fix20
+
+未 push（发布序列归 Phase 2）。oscar / v2 线均未触碰。
