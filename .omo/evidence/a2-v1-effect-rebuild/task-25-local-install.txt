@@ -326,3 +326,56 @@ pacman -U --noconfirm --overwrite \
   packing/pacman/opencode1-compressed-1.18.32-9-aarch64.pkg.tar.gz
 ```
 预期收益: -9 db 记录绝对成员 → RootDir=/ 下解析回真实路径 → 单包 `-Qk` 应 13 missing → **0 missing**，过渡态缺口闭合。
+
+## 前置校验更正：`/usr/lib/opencode` **不是** git checkout
+
+先前我称其为「git 源码 checkout」，实测 `.git` **不存在**：
+```
+$ ls -ld $PREFIX/usr/lib/opencode/.git
+No such file or directory
+$ git -C $PREFIX/usr/lib/opencode status --porcelain
+fatal: not a git repository (or any parent up to mount point /)
+```
+→ 实为**源码树副本/解压产物**（含 .editorconfig/.github/.gitignore/.husky/.vscode/.zed/
+AGENTS.md/bun.lock/bunfig.toml/packages/node_modules/runtime 等仓库特征文件，但无版本库元数据）。
+
+**影响**：裁决中的前置校验 (c)「`git -C status --porcelain` 留档，装后复查 tracked 改动」
+在本机**无法按原样执行**（无 git 仓库可比对）。替代做法 = 装机前后对
+`/usr/lib/opencode` 全目录做清单+校验和快照比对。
+
+## v2 前置校验 (a)(b)(c)(d) 实测结果 — **(a) 不通过，停手**
+
+### (a) -5 路径约定 — ❌ **FAIL（相对成员，非绝对）**
+```
+$ tar -tf packing/pacman/opencode-2.0.18-5-aarch64.pkg.tar.xz
+.BUILDINFO  .INSTALL  .MTREE  .PKGINFO
+usr/  usr/bin/  usr/bin/opencode  usr/lib/  usr/lib/opencode/  usr/lib/opencode/libopencode-crhandler.so
+--- 相对 usr/ 成员计数（须为 0）: 2   ← 实为 2，非 0
+```
+裁决明确：「若仍是相对成员 → 停下报告（需重打包），别硬装」→ **停手**。
+
+补充: -5 与现装 -4 约定**相同**（-4 成员也是 `usr/bin/opencode` + `usr/lib/opencode/libopencode-crhandler.so`），
+即 -5 是 -4 的同约定 repack，**未修路径约定问题**。相对成员在 RootDir=/ 下会解析到
+`/usr/bin/opencode`（不存在）→ 装了也定位不到，与 -7→-9 的过渡态缺口**同源**。
+
+### (b) 二进制同一性 — 有差异（非零漂移覆盖）
+```
+-4 usr/bin/opencode sha256 = 212d06a0d3b397ec2691e81828deefaa
+-5 usr/bin/opencode sha256 = 6fdef1c68348eb51ada7bc5025d23ec4
+盘上          sha256      = 212d06a0d3b397ec2691e81828deefaa   （= -4）
+```
+→ -5 相对现装是**真实内容变更**（非重打包零漂移）。
+
+### (c) git 留档 — 无法执行（见上文更正）
+
+### (d) 源码树留档 — 已记录，且 -5 不覆盖源码文件
+```
+/usr/lib/opencode/ 成员: AGENTS.md bun.lock bunfig.toml packages node_modules runtime
+                        .editorconfig .github .gitignore .husky .vscode .zed …
+-5 仅含 2 个成员: usr/bin/opencode, usr/lib/opencode/libopencode-crhandler.so
+  → 二者均非源码树内文件（后者现 MISSING，正是 v2 CANNOT LINK 所缺）
+```
+即 **-5 不会写坏源码树**（与被弃用的 2.0.12-3 不同，后者含 runtime/ 与 pty/*.so 共 5 成员）。
+
+## 待裁决
+(a) FAIL → 按裁决停手。需 team-lead 决定：重打包 -5 为绝对约定，或改用其他 v2 包，或本轮跳过 v2。
