@@ -83,7 +83,10 @@ LOG_PATH = (os.path.join(REPO_ROOT, ".omo", "evidence",
                          "task-fleet-compressed-push.log") if REPO_ROOT
             else os.path.join(HOME_BASE, "logs", "fleet-push.log"))
 
-RELEASE_TAG = "Push260903"
+# 批次滚动 tag：每批 fleet 换一个 tag（上一批 Push260903 = 压制产物批次；
+# 本批 Push261005 = 未压缩原包/压制输入，外包压制完成后压缩资产回传到本批 tag）。
+# 可用环境变量覆盖，便于同一批次内临时指向 rc 标签：FLEET_TAG=Push261005rc1
+RELEASE_TAG = os.environ.get("FLEET_TAG", "Push261005")
 
 # ── 资产形态：raw（发布未压缩原包）vs upx（历史压制资产） ──────────────
 #
