@@ -1,7 +1,7 @@
 # D2 — 机器与环境手册
 
 > **快照基线**: 2026-09-30（交接快照日）；本文件落笔 2026-10-01。
-> **范围**: 本机（Termux u0_a450）+ 实验机 10.254.129.10 + fake-IP 代理网络 + 磁盘纪律 + pacman RootDir 双机差异。
+> **范围**: 本机（Termux u0_a450）+ 实验机 10.254.129.10 + fake-IP 代理网络 + 磁盘纪律 + pacman RootDir 双机差异 + 外部仓库克隆/缓存约定。
 > **证据约定**: 每条后括注在案来源（`file:line` / commit / evidence 路径）；**无在案证据的不写**——本手册不承载推断。
 
 ---
@@ -170,6 +170,24 @@
   - 处置: **RC5 包装轮**——关键逻辑迁 **pacman hook 文件**（HookDir 是真实路径，§6.1 表中 HookDir 行）；`.INSTALL` 降级 best-effort 并文档化。
   - 现场同源观察: 实验机上 `.INSTALL` `post_upgrade` 同样失败，非致命（2.0.12 不在 stale-serve-kill 区间）（`task-17-rootdir.md` Note 行）。
 - **同 commit 另一条**: mirrorlist db/pkg **非原子对**——Server 走 `releases/latest/download/`，latest 漂移（RC4 上线）期 db 与 pkg 来自不同轮 site-rebuild 自愈（`99-open-issues:130`）。处置: site-rebuild db+pkg 原子成对上传（用户侧自动化，待修）；货架已收敛（`7ec10039` 双向验证）。open item 见 `docs/80-handover/83-open-items.md:20-24`。
+
+---
+
+## 7. 外部仓库克隆与缓存约定（2026-10-05 用户确立）
+
+**约定本体**：
+
+1. 克隆/缓存外部仓库（如 bun-termux-loader）**只允许**放在：① 本仓（opencode-termux）内的临时 tmp 目录，或 ② env 显式指定的缓存目录。
+2. opencode-termux 一律使用外部仓库的**最新**版本。上游仓库（如 btl）持续保持 GitHub 上的最新最佳状态，本地缓存**自动拉取并同步到最新**。
+3. **禁止**在解析逻辑里做「优先选某个本地副本」——副本漂移的根就在这。
+
+**Why（病历，约定存在的理由）**：2026-10-05 实测发现本仓 `Makefile:831`（`V2_LOADER_ROOT`）解析 bun-termux-loader 时优先选中旧本地副本 `~/bun-termux-loader`（停在 `15a4ced`，缺 readlink 截断修复），而活跃且已修复的副本在 `~/develop/bun-termux-loader`（`8da3340`）——结果是 wrapper-native 实际一直在用有缺陷的那个版本。用户裁决：**不改 Makefile 的解析顺序**（文档层解决，不动代码），而是确立本约定，让「本地只缓存最新 + 缓存放仓内 tmp」从根上消除副本漂移。
+
+**配套事实（btl 侧，2026-10-05）**：
+
+- btl 活跃副本 HEAD 曾带**未解决冲突标记**导致编译不过，已修复并 push。
+- 另修 btl 缓存**仅按 size 校验**的缺陷——同尺寸的损坏缓存会被复用（红绿测试留证）。
+- readlink 截断防护已随 `8da3340` 落地（旧副本 `15a4ced` 缺它）。
 
 ---
 
