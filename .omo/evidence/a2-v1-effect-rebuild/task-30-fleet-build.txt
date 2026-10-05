@@ -1271,3 +1271,709 @@ SMOKE_fleet-1.18.34_GREEN
 ver	status	bytes	sha256	elf_bytes	elf_sha256	isolation	tui
 
 1.18.34	OK	30701688	a4396fbb24f7c513a66fab2349644e6203cfbd829c7b71fb8d74c8d554993695	elf=135132928	elfsha=4bc840e1d747f30006eb10abf9cbf7018277a3228b91ee2ace9abe8d95572c64	roots=4/4	tui=GREEN
+
+############### fleet-v1-build (pkgrel=90, no UPX) 2026-10-05T10:08:31Z ###############
+versions: 1.18.33 1.18.32 1.18.31 1.18.30   effect=4.0.0-beta.83 (upstream catalog;见文件头说明)
+src=/data/data/com.termux/files/usr/tmp/a2-src/opencode-fleet bun=1.4.2 free=11345MB
+
+############ v1 1.18.33 (v1.18.33) ############
+-- [1/8] git checkout v1.18.33 (single clone, clean between builds) --
+Previous HEAD position was aec0b9a6 release: v1.18.34
+HEAD is now at 51ef4be1 release: v1.18.33
+error: unknown switch `f'
+usage: git reset [--mixed | --soft | --hard | --merge | --keep] [-q] [<commit>]
+   or: git reset [-q] [<tree-ish>] [--] <pathspec>...
+   or: git reset [-q] [--pathspec-from-file [--pathspec-file-nul]] [<tree-ish>]
+   or: git reset --patch [<tree-ish>] [--] [<pathspec>...]
+
+    -q, --[no-]quiet      be quiet, only report errors
+    --no-refresh          skip refreshing the index after reset
+    --refresh             opposite of --no-refresh
+    --mixed               reset HEAD and index
+    --soft                reset only HEAD
+    --hard                reset HEAD, index and working tree
+    --merge               reset HEAD, index and working tree
+    --keep                reset HEAD but keep local changes
+    --[no-]recurse-submodules[=<reset>]
+                          control recursive updating of submodules
+    -p, --[no-]patch      select hunks interactively
+    --[no-]auto-advance   auto advance to the next file when selecting hunks interactively
+    -U, --unified <n>     generate diffs with <n> lines context
+    --inter-hunk-context <n>
+                          show context between diff hunks up to the specified number of lines
+    -N, --[no-]intent-to-add
+                          record only the fact that removed paths will be added later
+    --[no-]pathspec-from-file <file>
+                          read pathspec from file
+    --[no-]pathspec-file-nul
+                          with --pathspec-from-file, pathspec elements are separated with NUL character
+
+    HEAD=51ef4be1 free=11345MB
+-- [2/8] single-elf namespace patch (A+ ignore-xdg) --
+    patched 6 line(s) in global.ts
+    patched 1 line(s) in global.test.ts
+    patched 2 line(s) in preload.ts
+OK: namespace 'opencode1' baked into packages/core/src/global.ts (backup: global.ts.single-elf.bak)
+OK: A+ applied (DEFAULT) — roots derive from $HOME only, XDG_*_HOME no longer consumed
+OK: test assertions realigned (packages/core/test/global.test.ts, packages/opencode/test/preload.ts)
+BEHAVIOR CHANGE: tmp root is now os.tmpdir()/opencode1/opencode (was os.tmpdir()/opencode) — cross-generation tmp sharing is closed; TMPDIR itself still honored
+NOTE: rebuild the runtime before packaging; assertions A1-A11 live in docs/single-elf-v1.md §5
+-- [3/8] bun install (store must exist before the pty swap) --
++ typescript@5.8.2
+
+2306 packages installed [14.94s]
+    store keys: 2334  free=8707MB
+-- [3a/8] install @opentui/core platform variants (v0.4.5) --
+    OK  @opentui/core-linux-arm64@0.4.5
+    OK  @opentui/core-linux-arm64-musl@0.4.5
+    libopentui.so store copies: 2
+-- [3b/8] bun-pty store patch (bionic embed) --
+    replacing: node_modules/.bun/bun-pty@0.4.8/node_modules/bun-pty/rust-pty/target/release/librust_pty_arm64.so (555704 B)
+OK: node_modules/.bun/bun-pty@0.4.8/node_modules/bun-pty/rust-pty/target/release/librust_pty_arm64.so -> bionic build (517016 B, exports=8)
+==> pty-embed store patch done (bun --compile will embed the bionic lib)
+-- [4/8] build-v1.sh compile --
+==> build-v1 (A2) VER=1.18.33  free=8214MB
+    src = /data/data/com.termux/files/usr/tmp/a2-src/opencode-fleet
+    bun = /data/data/com.termux/files/home/develop/opencode-termux/artifacts/transplant/android-bun/bun-1.4.2/bun (1.4.2)
+    models snapshot: 5.1M (/data/data/com.termux/files/usr/tmp/a2-src/models.dev-api.json)
+==> deps OK (effect 4.0.0-beta.83 store present, 2373 store keys)
+    effect version gate OK: 4.0.0-beta.83
+    grafted bionic libopentui.so -> node_modules/.bun/@opentui+core-linux-arm64-musl@0.4.5/node_modules/@opentui/core-linux-arm64-musl/libopentui.so
+    grafted bionic libopentui.so -> node_modules/.bun/@opentui+core-linux-arm64@0.4.5/node_modules/@opentui/core-linux-arm64/libopentui.so
+    graft gate OK: 2 copies all bionic
+platform chunk: chunk-bun-t2myhmwd.js
+platform literal patched
+branch force patched
+    target filter patched (linux-arm64 gnu only)
+==> compiling (android bun, target=bun-linux-arm64, no web-ui embed)...
+opencode script {
+  "channel": "latest",
+  "version": "1.18.33",
+  "preview": false,
+  "release": false,
+  "team": [
+    "adamdotdevin",
+    "arvsrn",
+    "Brendonovich",
+    "fwang",
+    "Hona",
+    "iamdavidhill",
+    "jayair",
+    "jlongster",
+    "kitlangton",
+    "kommander",
+    "ludvigrask",
+    "MrMushrooooom",
+    "neriousy",
+    "nexxeln",
+    "R44VC0RP",
+    "rekram1-node",
+    "thdxr",
+    "simonklee",
+    "Slickstef11",
+    "usrnk1",
+    "vimtor",
+    "StarpTech",
+    "vaprdev",
+    "actions-user",
+    "opencode",
+    "opencode-agent[bot]"
+  ]
+}
+Loaded models.dev snapshot
+building opencode-linux-arm64
+==> normalized: /data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/1.18.33/opencode-v1-1.18.33-fleet1.18.33 (135132928 B)
+    sha256: 2fc8236eee6f7ff2307ecb976c7dca2eece91e709d56e92ece20edd21448bf3a
+    wrote build json
+==> build-v1 done: /data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/1.18.33/opencode-v1-1.18.33-fleet1.18.33
+    built: 135132928 B  sha256=2fc8236eee6f7ff2307ecb976c7dca2eece91e709d56e92ece20edd21448bf3a
+-- [5/8] TLSDESC graft --
+swap_tui: embedded asset @ 0x7af34f0 slot=6037032 incoming=5495136
+swap_tui: guard scan over 2 owner symbols: clamp=2 csel_vs=4
+swap_tui: wrote /data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/1.18.33/opencode-v1-1.18.33-fleet1.18.33-grafted (135132928 bytes)
+    graft assert: slot@0x7af34f0 6037032B (embed 5495136B + 541896B pad), 0B drift outside slot
+    graft assert: INIT_ARRAY=2 (>=2)  TLSDESC=11 (==11)
+-- [6/8] hermetic home remap --
+hermetic: remapped 58 occurrences (46 opentui + 12 cargo, 3956 bytes changed, all inside prefix ranges), size 135132928B unchanged
+swap_tui: guard scan over 2 owner symbols: clamp=2 csel_vs=4
+    hermetic assert: gate=0, slot@0x7af34f0 5495136B, guard=OK, INIT_ARRAY=2, TLSDESC=11
+    hermetic: 135132928 B  sha256=c18fadb2487f49d7be4005f03daa6499ad7d2a00efb2105ec495830ca2145c08
+-- [7/8] form self-proof (zero-glibc / bionic-dynamic / uncompressed) --
+    home-path hits=0 (0)
+    PT_INTERP=1 PT_DYNAMIC=1 (1/1 = bionic dynamic本体，参照 A2 hermetic-grafted)
+    embedded pty markers=2 (>=1)  UPX! magic=0 (0 — 未压缩)
+    NEEDED:   0x0000000000000001 (NEEDED)          Shared library: [libc.so]   0x0000000000000001 (NEEDED)          Shared library: [libm.so]   0x0000000000000001 (NEEDED)          Shared library: [libdl.so] 
+    zero-glibc gate: OK (no versioned soname)
+-- [8/8] package (pkgrel=90) + smoke --
+==> Making package: opencode1 1.18.33-90 (Mon Oct  5 18:10:01 2026)
+==> Checking runtime dependencies...
+==> Checking buildtime dependencies...
+==> Retrieving sources...
+==> Extracting sources...
+==> Package creation...
+==> Starting package()...
+==> Installing native runtime from /data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/1.18.33/opencode-v1-1.18.33-fleet1.18.33-hermetic
+==> Packaged migrate-to-opencode1.sh (v1 migration helper)
+==> binary is not seccomp-hardened; shipping without libopencode-crhandler.so
+==> Tidying install...
+  -> Purging unwanted files...
+  -> Removing empty directories...
+  -> Compressing man and info pages...
+==> Checking for packaging issues...
+==> Creating package "opencode1"...
+  -> Generating .PKGINFO file...
+  -> Generating .BUILDINFO file...
+  -> Adding install file...
+  -> Generating .MTREE file...
+  -> Compressing package...
+==> Package creation.
+==> Finished making: opencode1 1.18.33-90 (Mon Oct  5 18:10:26 2026)
+Native pacman package created under: /data/data/com.termux/files/home/develop/opencode-termux/packing/pacman
+Convention guard: OK (absolute data/data/com.termux/files/usr/ members, no relative usr/)
+    pkg: opencode1-1.18.33-90-aarch64.pkg.tar.xz  size=30701844  sha256=cbf9c1f760fc9fe3d334d71ee3e0368df92b4fa5045f8c289ac4614836f87c4a
+    --version = 1.18.33
+    root OK: $HOME/.local/share/opencode1/opencode
+    root OK: $HOME/.cache/opencode1/opencode
+    root OK: $HOME/.config/opencode1/opencode
+    root OK: $HOME/.local/state/opencode1/opencode
+    decoy decoy-cfg entries=0  namespace-leak=0  bun-runtime-cache=0
+    decoy decoy-data entries=0  namespace-leak=0  bun-runtime-cache=0
+    decoy decoy-state entries=0  namespace-leak=0  bun-runtime-cache=0
+    decoy decoy-cache entries=15  namespace-leak=0  bun-runtime-cache=14
+    namespace-leak dirs=0 (expect 0)  bun-runtime-cache entries=14 (informational, 非 opencode 数据)
+    roots landed=4/4
+== smoke fleet-1.18.33 2026-10-05T10:13:05Z host=6.6.118-android15-8-ge58033dc8ea6-abogki498046332-4k ==
+bin=/data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/1.18.33/opencode-v1-1.18.33-fleet1.18.33-hermetic port=28969 rc=124
+render_bytes_at_25s=20480 total_bytes=27522 ansi_lines=13 crash_keywords=0
+DELTA_type_z=0 DELTA_arrow=4096 DELTA_keys_window=4096 echo_z_after_keys=3
+verdict=GREEN
+SMOKE_fleet-1.18.33_GREEN
+    ==> v1 1.18.33 DONE
+
+############ v1 1.18.32 (v1.18.32) ############
+-- [1/8] git checkout v1.18.32 (single clone, clean between builds) --
+Previous HEAD position was 51ef4be1 release: v1.18.33
+HEAD is now at 545f51d2 release: v1.18.32
+error: unknown switch `f'
+usage: git reset [--mixed | --soft | --hard | --merge | --keep] [-q] [<commit>]
+   or: git reset [-q] [<tree-ish>] [--] <pathspec>...
+   or: git reset [-q] [--pathspec-from-file [--pathspec-file-nul]] [<tree-ish>]
+   or: git reset --patch [<tree-ish>] [--] [<pathspec>...]
+
+    -q, --[no-]quiet      be quiet, only report errors
+    --no-refresh          skip refreshing the index after reset
+    --refresh             opposite of --no-refresh
+    --mixed               reset HEAD and index
+    --soft                reset only HEAD
+    --hard                reset HEAD, index and working tree
+    --merge               reset HEAD, index and working tree
+    --keep                reset HEAD but keep local changes
+    --[no-]recurse-submodules[=<reset>]
+                          control recursive updating of submodules
+    -p, --[no-]patch      select hunks interactively
+    --[no-]auto-advance   auto advance to the next file when selecting hunks interactively
+    -U, --unified <n>     generate diffs with <n> lines context
+    --inter-hunk-context <n>
+                          show context between diff hunks up to the specified number of lines
+    -N, --[no-]intent-to-add
+                          record only the fact that removed paths will be added later
+    --[no-]pathspec-from-file <file>
+                          read pathspec from file
+    --[no-]pathspec-file-nul
+                          with --pathspec-from-file, pathspec elements are separated with NUL character
+
+    HEAD=545f51d2 free=10314MB
+-- [2/8] single-elf namespace patch (A+ ignore-xdg) --
+    patched 6 line(s) in global.ts
+    patched 1 line(s) in global.test.ts
+    patched 2 line(s) in preload.ts
+OK: namespace 'opencode1' baked into packages/core/src/global.ts (backup: global.ts.single-elf.bak)
+OK: A+ applied (DEFAULT) — roots derive from $HOME only, XDG_*_HOME no longer consumed
+OK: test assertions realigned (packages/core/test/global.test.ts, packages/opencode/test/preload.ts)
+BEHAVIOR CHANGE: tmp root is now os.tmpdir()/opencode1/opencode (was os.tmpdir()/opencode) — cross-generation tmp sharing is closed; TMPDIR itself still honored
+NOTE: rebuild the runtime before packaging; assertions A1-A11 live in docs/single-elf-v1.md §5
+-- [3/8] bun install (store must exist before the pty swap) --
++ typescript@5.8.2
+
+2308 packages installed [18.90s]
+    store keys: 2336  free=7676MB
+-- [3a/8] install @opentui/core platform variants (v0.4.5) --
+    OK  @opentui/core-linux-arm64@0.4.5
+    OK  @opentui/core-linux-arm64-musl@0.4.5
+    libopentui.so store copies: 2
+-- [3b/8] bun-pty store patch (bionic embed) --
+    replacing: node_modules/.bun/bun-pty@0.4.8/node_modules/bun-pty/rust-pty/target/release/librust_pty_arm64.so (555704 B)
+OK: node_modules/.bun/bun-pty@0.4.8/node_modules/bun-pty/rust-pty/target/release/librust_pty_arm64.so -> bionic build (517016 B, exports=8)
+==> pty-embed store patch done (bun --compile will embed the bionic lib)
+-- [4/8] build-v1.sh compile --
+==> build-v1 (A2) VER=1.18.32  free=7183MB
+    src = /data/data/com.termux/files/usr/tmp/a2-src/opencode-fleet
+    bun = /data/data/com.termux/files/home/develop/opencode-termux/artifacts/transplant/android-bun/bun-1.4.2/bun (1.4.2)
+    models snapshot: 5.1M (/data/data/com.termux/files/usr/tmp/a2-src/models.dev-api.json)
+==> deps OK (effect 4.0.0-beta.83 store present, 2375 store keys)
+    effect version gate OK: 4.0.0-beta.83
+    grafted bionic libopentui.so -> node_modules/.bun/@opentui+core-linux-arm64-musl@0.4.5/node_modules/@opentui/core-linux-arm64-musl/libopentui.so
+    grafted bionic libopentui.so -> node_modules/.bun/@opentui+core-linux-arm64@0.4.5/node_modules/@opentui/core-linux-arm64/libopentui.so
+    graft gate OK: 2 copies all bionic
+platform chunk: chunk-bun-t2myhmwd.js
+platform literal patched
+branch force patched
+    target filter patched (linux-arm64 gnu only)
+==> compiling (android bun, target=bun-linux-arm64, no web-ui embed)...
+opencode script {
+  "channel": "latest",
+  "version": "1.18.32",
+  "preview": false,
+  "release": false,
+  "team": [
+    "adamdotdevin",
+    "arvsrn",
+    "Brendonovich",
+    "fwang",
+    "Hona",
+    "iamdavidhill",
+    "jayair",
+    "jlongster",
+    "kitlangton",
+    "kommander",
+    "ludvigrask",
+    "MrMushrooooom",
+    "neriousy",
+    "nexxeln",
+    "R44VC0RP",
+    "rekram1-node",
+    "thdxr",
+    "simonklee",
+    "Slickstef11",
+    "usrnk1",
+    "vimtor",
+    "StarpTech",
+    "vaprdev",
+    "actions-user",
+    "opencode",
+    "opencode-agent[bot]"
+  ]
+}
+Loaded models.dev snapshot
+building opencode-linux-arm64
+==> normalized: /data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/1.18.32/opencode-v1-1.18.32-fleet1.18.32 (135132928 B)
+    sha256: 801abdefd7f8061d1d39ac320bb24a2c4cc9d738c62dee2b5a38cf8e75adcb33
+    wrote build json
+==> build-v1 done: /data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/1.18.32/opencode-v1-1.18.32-fleet1.18.32
+    built: 135132928 B  sha256=801abdefd7f8061d1d39ac320bb24a2c4cc9d738c62dee2b5a38cf8e75adcb33
+-- [5/8] TLSDESC graft --
+swap_tui: embedded asset @ 0x7af2bfa slot=6037032 incoming=5495136
+swap_tui: guard scan over 2 owner symbols: clamp=2 csel_vs=4
+swap_tui: wrote /data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/1.18.32/opencode-v1-1.18.32-fleet1.18.32-grafted (135132928 bytes)
+    graft assert: slot@0x7af2bfa 6037032B (embed 5495136B + 541896B pad), 0B drift outside slot
+    graft assert: INIT_ARRAY=2 (>=2)  TLSDESC=11 (==11)
+-- [6/8] hermetic home remap --
+hermetic: remapped 58 occurrences (46 opentui + 12 cargo, 3956 bytes changed, all inside prefix ranges), size 135132928B unchanged
+swap_tui: guard scan over 2 owner symbols: clamp=2 csel_vs=4
+    hermetic assert: gate=0, slot@0x7af2bfa 5495136B, guard=OK, INIT_ARRAY=2, TLSDESC=11
+    hermetic: 135132928 B  sha256=9c10beb174bfeb6fa82946f6eec6422a8e1722108a34b11d2b425e1f5c69df26
+-- [7/8] form self-proof (zero-glibc / bionic-dynamic / uncompressed) --
+    home-path hits=0 (0)
+    PT_INTERP=1 PT_DYNAMIC=1 (1/1 = bionic dynamic本体，参照 A2 hermetic-grafted)
+    embedded pty markers=2 (>=1)  UPX! magic=0 (0 — 未压缩)
+    NEEDED:   0x0000000000000001 (NEEDED)          Shared library: [libc.so]   0x0000000000000001 (NEEDED)          Shared library: [libm.so]   0x0000000000000001 (NEEDED)          Shared library: [libdl.so] 
+    zero-glibc gate: OK (no versioned soname)
+-- [8/8] package (pkgrel=90) + smoke --
+==> Making package: opencode1 1.18.32-90 (Mon Oct  5 18:15:01 2026)
+==> Checking runtime dependencies...
+==> Checking buildtime dependencies...
+==> Retrieving sources...
+==> Extracting sources...
+==> Package creation...
+==> Starting package()...
+==> Installing native runtime from /data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/1.18.32/opencode-v1-1.18.32-fleet1.18.32-hermetic
+==> Packaged migrate-to-opencode1.sh (v1 migration helper)
+==> binary is not seccomp-hardened; shipping without libopencode-crhandler.so
+==> Tidying install...
+  -> Purging unwanted files...
+  -> Removing empty directories...
+  -> Compressing man and info pages...
+==> Checking for packaging issues...
+==> Creating package "opencode1"...
+  -> Generating .PKGINFO file...
+  -> Generating .BUILDINFO file...
+  -> Adding install file...
+  -> Generating .MTREE file...
+  -> Compressing package...
+==> Package creation.
+==> Finished making: opencode1 1.18.32-90 (Mon Oct  5 18:15:29 2026)
+Native pacman package created under: /data/data/com.termux/files/home/develop/opencode-termux/packing/pacman
+Convention guard: OK (absolute data/data/com.termux/files/usr/ members, no relative usr/)
+    pkg: opencode1-1.18.32-90-aarch64.pkg.tar.xz  size=30701252  sha256=ade8c784b3edff18e627b22159b018588cf17ea0877dfc59b9d6c26cce02bb71
+    --version = 1.18.32
+    root OK: $HOME/.local/share/opencode1/opencode
+    root OK: $HOME/.cache/opencode1/opencode
+    root OK: $HOME/.config/opencode1/opencode
+    root OK: $HOME/.local/state/opencode1/opencode
+    decoy decoy-cfg entries=0  namespace-leak=0  bun-runtime-cache=0
+    decoy decoy-data entries=0  namespace-leak=0  bun-runtime-cache=0
+    decoy decoy-state entries=0  namespace-leak=0  bun-runtime-cache=0
+    decoy decoy-cache entries=15  namespace-leak=0  bun-runtime-cache=14
+    namespace-leak dirs=0 (expect 0)  bun-runtime-cache entries=14 (informational, 非 opencode 数据)
+    roots landed=4/4
+== smoke fleet-1.18.32 2026-10-05T10:17:44Z host=6.6.118-android15-8-ge58033dc8ea6-abogki498046332-4k ==
+bin=/data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/1.18.32/opencode-v1-1.18.32-fleet1.18.32-hermetic port=25616 rc=124
+render_bytes_at_25s=20480 total_bytes=26294 ansi_lines=1 crash_keywords=0
+DELTA_type_z=0 DELTA_arrow=4096 DELTA_keys_window=4096 echo_z_after_keys=0
+verdict=GREEN
+SMOKE_fleet-1.18.32_GREEN
+    ==> v1 1.18.32 DONE
+
+############ v1 1.18.31 (v1.18.31) ############
+-- [1/8] git checkout v1.18.31 (single clone, clean between builds) --
+Previous HEAD position was 545f51d2 release: v1.18.32
+HEAD is now at 014614d3 release: v1.18.31
+error: unknown switch `f'
+usage: git reset [--mixed | --soft | --hard | --merge | --keep] [-q] [<commit>]
+   or: git reset [-q] [<tree-ish>] [--] <pathspec>...
+   or: git reset [-q] [--pathspec-from-file [--pathspec-file-nul]] [<tree-ish>]
+   or: git reset --patch [<tree-ish>] [--] [<pathspec>...]
+
+    -q, --[no-]quiet      be quiet, only report errors
+    --no-refresh          skip refreshing the index after reset
+    --refresh             opposite of --no-refresh
+    --mixed               reset HEAD and index
+    --soft                reset only HEAD
+    --hard                reset HEAD, index and working tree
+    --merge               reset HEAD, index and working tree
+    --keep                reset HEAD but keep local changes
+    --[no-]recurse-submodules[=<reset>]
+                          control recursive updating of submodules
+    -p, --[no-]patch      select hunks interactively
+    --[no-]auto-advance   auto advance to the next file when selecting hunks interactively
+    -U, --unified <n>     generate diffs with <n> lines context
+    --inter-hunk-context <n>
+                          show context between diff hunks up to the specified number of lines
+    -N, --[no-]intent-to-add
+                          record only the fact that removed paths will be added later
+    --[no-]pathspec-from-file <file>
+                          read pathspec from file
+    --[no-]pathspec-file-nul
+                          with --pathspec-from-file, pathspec elements are separated with NUL character
+
+    HEAD=014614d3 free=10176MB
+-- [2/8] single-elf namespace patch (A+ ignore-xdg) --
+    patched 6 line(s) in global.ts
+    patched 1 line(s) in global.test.ts
+    patched 2 line(s) in preload.ts
+OK: namespace 'opencode1' baked into packages/core/src/global.ts (backup: global.ts.single-elf.bak)
+OK: A+ applied (DEFAULT) — roots derive from $HOME only, XDG_*_HOME no longer consumed
+OK: test assertions realigned (packages/core/test/global.test.ts, packages/opencode/test/preload.ts)
+BEHAVIOR CHANGE: tmp root is now os.tmpdir()/opencode1/opencode (was os.tmpdir()/opencode) — cross-generation tmp sharing is closed; TMPDIR itself still honored
+NOTE: rebuild the runtime before packaging; assertions A1-A11 live in docs/single-elf-v1.md §5
+-- [3/8] bun install (store must exist before the pty swap) --
++ typescript@5.8.2
+
+2322 packages installed [15.00s]
+    store keys: 2350  free=7420MB
+-- [3a/8] install @opentui/core platform variants (v0.4.5) --
+    OK  @opentui/core-linux-arm64@0.4.5
+    OK  @opentui/core-linux-arm64-musl@0.4.5
+    libopentui.so store copies: 2
+-- [3b/8] bun-pty store patch (bionic embed) --
+    replacing: node_modules/.bun/bun-pty@0.4.8/node_modules/bun-pty/rust-pty/target/release/librust_pty_arm64.so (555704 B)
+OK: node_modules/.bun/bun-pty@0.4.8/node_modules/bun-pty/rust-pty/target/release/librust_pty_arm64.so -> bionic build (517016 B, exports=8)
+==> pty-embed store patch done (bun --compile will embed the bionic lib)
+-- [4/8] build-v1.sh compile --
+==> build-v1 (A2) VER=1.18.31  free=7127MB
+    src = /data/data/com.termux/files/usr/tmp/a2-src/opencode-fleet
+    bun = /data/data/com.termux/files/home/develop/opencode-termux/artifacts/transplant/android-bun/bun-1.4.2/bun (1.4.2)
+    models snapshot: 5.1M (/data/data/com.termux/files/usr/tmp/a2-src/models.dev-api.json)
+==> deps OK (effect 4.0.0-beta.83 store present, 2412 store keys)
+    effect version gate OK: 4.0.0-beta.83
+    grafted bionic libopentui.so -> node_modules/.bun/@opentui+core-linux-arm64-musl@0.4.5/node_modules/@opentui/core-linux-arm64-musl/libopentui.so
+    grafted bionic libopentui.so -> node_modules/.bun/@opentui+core-linux-arm64@0.4.5/node_modules/@opentui/core-linux-arm64/libopentui.so
+    graft gate OK: 2 copies all bionic
+platform chunk: chunk-bun-t2myhmwd.js
+platform literal patched
+branch force patched
+    target filter patched (linux-arm64 gnu only)
+==> compiling (android bun, target=bun-linux-arm64, no web-ui embed)...
+opencode script {
+  "channel": "latest",
+  "version": "1.18.31",
+  "preview": false,
+  "release": false,
+  "team": [
+    "adamdotdevin",
+    "arvsrn",
+    "Brendonovich",
+    "fwang",
+    "Hona",
+    "iamdavidhill",
+    "jayair",
+    "jlongster",
+    "kitlangton",
+    "kommander",
+    "ludvigrask",
+    "MrMushrooooom",
+    "neriousy",
+    "nexxeln",
+    "R44VC0RP",
+    "rekram1-node",
+    "thdxr",
+    "simonklee",
+    "Slickstef11",
+    "usrnk1",
+    "vimtor",
+    "StarpTech",
+    "actions-user",
+    "opencode",
+    "opencode-agent[bot]"
+  ]
+}
+Loaded models.dev snapshot
+building opencode-linux-arm64
+==> normalized: /data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/1.18.31/opencode-v1-1.18.31-fleet1.18.31 (135067392 B)
+    sha256: 482d120054026463153b32cea1242955fa72ae7a62b6aa6a45eebc9adfd0846f
+    wrote build json
+==> build-v1 done: /data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/1.18.31/opencode-v1-1.18.31-fleet1.18.31
+    built: 135067392 B  sha256=482d120054026463153b32cea1242955fa72ae7a62b6aa6a45eebc9adfd0846f
+-- [5/8] TLSDESC graft --
+swap_tui: embedded asset @ 0x7aed31c slot=6037032 incoming=5495136
+swap_tui: guard scan over 2 owner symbols: clamp=2 csel_vs=4
+swap_tui: wrote /data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/1.18.31/opencode-v1-1.18.31-fleet1.18.31-grafted (135067392 bytes)
+    graft assert: slot@0x7aed31c 6037032B (embed 5495136B + 541896B pad), 0B drift outside slot
+    graft assert: INIT_ARRAY=2 (>=2)  TLSDESC=11 (==11)
+-- [6/8] hermetic home remap --
+hermetic: remapped 58 occurrences (46 opentui + 12 cargo, 3956 bytes changed, all inside prefix ranges), size 135067392B unchanged
+swap_tui: guard scan over 2 owner symbols: clamp=2 csel_vs=4
+    hermetic assert: gate=0, slot@0x7aed31c 5495136B, guard=OK, INIT_ARRAY=2, TLSDESC=11
+    hermetic: 135067392 B  sha256=e764fc04ef546ece392b7386b7bede8e8c5f2de2605364dba72214fc467bce6c
+-- [7/8] form self-proof (zero-glibc / bionic-dynamic / uncompressed) --
+    home-path hits=0 (0)
+    PT_INTERP=1 PT_DYNAMIC=1 (1/1 = bionic dynamic本体，参照 A2 hermetic-grafted)
+    embedded pty markers=2 (>=1)  UPX! magic=0 (0 — 未压缩)
+    NEEDED:   0x0000000000000001 (NEEDED)          Shared library: [libc.so]   0x0000000000000001 (NEEDED)          Shared library: [libm.so]   0x0000000000000001 (NEEDED)          Shared library: [libdl.so] 
+    zero-glibc gate: OK (no versioned soname)
+-- [8/8] package (pkgrel=90) + smoke --
+==> Making package: opencode1 1.18.31-90 (Mon Oct  5 18:19:49 2026)
+==> Checking runtime dependencies...
+==> Checking buildtime dependencies...
+==> Retrieving sources...
+==> Extracting sources...
+==> Package creation...
+==> Starting package()...
+==> Installing native runtime from /data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/1.18.31/opencode-v1-1.18.31-fleet1.18.31-hermetic
+==> Packaged migrate-to-opencode1.sh (v1 migration helper)
+==> binary is not seccomp-hardened; shipping without libopencode-crhandler.so
+==> Tidying install...
+  -> Purging unwanted files...
+  -> Removing empty directories...
+  -> Compressing man and info pages...
+==> Checking for packaging issues...
+==> Creating package "opencode1"...
+  -> Generating .PKGINFO file...
+  -> Generating .BUILDINFO file...
+  -> Adding install file...
+  -> Generating .MTREE file...
+  -> Compressing package...
+==> Package creation.
+==> Finished making: opencode1 1.18.31-90 (Mon Oct  5 18:20:16 2026)
+Native pacman package created under: /data/data/com.termux/files/home/develop/opencode-termux/packing/pacman
+Convention guard: OK (absolute data/data/com.termux/files/usr/ members, no relative usr/)
+    pkg: opencode1-1.18.31-90-aarch64.pkg.tar.xz  size=30699512  sha256=7767cbaccabfeb3f6bf7a52c9b51a2f1f6e4016e45197ce13e6a070838365f63
+    --version = 1.18.31
+    root OK: $HOME/.local/share/opencode1/opencode
+    root OK: $HOME/.cache/opencode1/opencode
+    root OK: $HOME/.config/opencode1/opencode
+    root OK: $HOME/.local/state/opencode1/opencode
+    decoy decoy-cfg entries=0  namespace-leak=0  bun-runtime-cache=0
+    decoy decoy-data entries=0  namespace-leak=0  bun-runtime-cache=0
+    decoy decoy-state entries=0  namespace-leak=0  bun-runtime-cache=0
+    decoy decoy-cache entries=15  namespace-leak=0  bun-runtime-cache=14
+    namespace-leak dirs=0 (expect 0)  bun-runtime-cache entries=14 (informational, 非 opencode 数据)
+    roots landed=4/4
+== smoke fleet-1.18.31 2026-10-05T10:22:57Z host=6.6.118-android15-8-ge58033dc8ea6-abogki498046332-4k ==
+bin=/data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/1.18.31/opencode-v1-1.18.31-fleet1.18.31-hermetic port=29462 rc=124
+render_bytes_at_25s=16384 total_bytes=26838 ansi_lines=13 crash_keywords=0
+DELTA_type_z=4096 DELTA_arrow=4096 DELTA_keys_window=8192 echo_z_after_keys=1
+verdict=GREEN
+SMOKE_fleet-1.18.31_GREEN
+    ==> v1 1.18.31 DONE
+
+############ v1 1.18.30 (v1.18.30) ############
+-- [1/8] git checkout v1.18.30 (single clone, clean between builds) --
+Previous HEAD position was 014614d3 release: v1.18.31
+HEAD is now at 3104c142 release: v1.18.30
+error: unknown switch `f'
+usage: git reset [--mixed | --soft | --hard | --merge | --keep] [-q] [<commit>]
+   or: git reset [-q] [<tree-ish>] [--] <pathspec>...
+   or: git reset [-q] [--pathspec-from-file [--pathspec-file-nul]] [<tree-ish>]
+   or: git reset --patch [<tree-ish>] [--] [<pathspec>...]
+
+    -q, --[no-]quiet      be quiet, only report errors
+    --no-refresh          skip refreshing the index after reset
+    --refresh             opposite of --no-refresh
+    --mixed               reset HEAD and index
+    --soft                reset only HEAD
+    --hard                reset HEAD, index and working tree
+    --merge               reset HEAD, index and working tree
+    --keep                reset HEAD but keep local changes
+    --[no-]recurse-submodules[=<reset>]
+                          control recursive updating of submodules
+    -p, --[no-]patch      select hunks interactively
+    --[no-]auto-advance   auto advance to the next file when selecting hunks interactively
+    -U, --unified <n>     generate diffs with <n> lines context
+    --inter-hunk-context <n>
+                          show context between diff hunks up to the specified number of lines
+    -N, --[no-]intent-to-add
+                          record only the fact that removed paths will be added later
+    --[no-]pathspec-from-file <file>
+                          read pathspec from file
+    --[no-]pathspec-file-nul
+                          with --pathspec-from-file, pathspec elements are separated with NUL character
+
+    HEAD=3104c142 free=10018MB
+-- [2/8] single-elf namespace patch (A+ ignore-xdg) --
+    patched 6 line(s) in global.ts
+    patched 1 line(s) in global.test.ts
+    patched 2 line(s) in preload.ts
+OK: namespace 'opencode1' baked into packages/core/src/global.ts (backup: global.ts.single-elf.bak)
+OK: A+ applied (DEFAULT) — roots derive from $HOME only, XDG_*_HOME no longer consumed
+OK: test assertions realigned (packages/core/test/global.test.ts, packages/opencode/test/preload.ts)
+BEHAVIOR CHANGE: tmp root is now os.tmpdir()/opencode1/opencode (was os.tmpdir()/opencode) — cross-generation tmp sharing is closed; TMPDIR itself still honored
+NOTE: rebuild the runtime before packaging; assertions A1-A11 live in docs/single-elf-v1.md §5
+-- [3/8] bun install (store must exist before the pty swap) --
++ typescript@5.8.2
+
+2319 packages installed [13.77s]
+    store keys: 2350  free=7322MB
+-- [3a/8] install @opentui/core platform variants (v0.4.5) --
+    OK  @opentui/core-linux-arm64@0.4.5
+    OK  @opentui/core-linux-arm64-musl@0.4.5
+    libopentui.so store copies: 2
+-- [3b/8] bun-pty store patch (bionic embed) --
+    replacing: node_modules/.bun/bun-pty@0.4.8/node_modules/bun-pty/rust-pty/target/release/librust_pty_arm64.so (555704 B)
+OK: node_modules/.bun/bun-pty@0.4.8/node_modules/bun-pty/rust-pty/target/release/librust_pty_arm64.so -> bionic build (517016 B, exports=8)
+==> pty-embed store patch done (bun --compile will embed the bionic lib)
+-- [4/8] build-v1.sh compile --
+==> build-v1 (A2) VER=1.18.30  free=6708MB
+    src = /data/data/com.termux/files/usr/tmp/a2-src/opencode-fleet
+    bun = /data/data/com.termux/files/home/develop/opencode-termux/artifacts/transplant/android-bun/bun-1.4.2/bun (1.4.2)
+    models snapshot: 5.1M (/data/data/com.termux/files/usr/tmp/a2-src/models.dev-api.json)
+==> deps OK (effect 4.0.0-beta.83 store present, 2413 store keys)
+    effect version gate OK: 4.0.0-beta.83
+    grafted bionic libopentui.so -> node_modules/.bun/@opentui+core-linux-arm64-musl@0.4.5/node_modules/@opentui/core-linux-arm64-musl/libopentui.so
+    grafted bionic libopentui.so -> node_modules/.bun/@opentui+core-linux-arm64@0.4.5/node_modules/@opentui/core-linux-arm64/libopentui.so
+    graft gate OK: 2 copies all bionic
+platform chunk: chunk-bun-t2myhmwd.js
+platform literal patched
+branch force patched
+    target filter patched (linux-arm64 gnu only)
+==> compiling (android bun, target=bun-linux-arm64, no web-ui embed)...
+opencode script {
+  "channel": "latest",
+  "version": "1.18.30",
+  "preview": false,
+  "release": false,
+  "team": [
+    "adamdotdevin",
+    "arvsrn",
+    "Brendonovich",
+    "fwang",
+    "Hona",
+    "iamdavidhill",
+    "jayair",
+    "jlongster",
+    "kitlangton",
+    "kommander",
+    "ludvigrask",
+    "MrMushrooooom",
+    "neriousy",
+    "nexxeln",
+    "R44VC0RP",
+    "rekram1-node",
+    "thdxr",
+    "simonklee",
+    "Slickstef11",
+    "usrnk1",
+    "vimtor",
+    "StarpTech",
+    "actions-user",
+    "opencode",
+    "opencode-agent[bot]"
+  ]
+}
+Loaded models.dev snapshot
+building opencode-linux-arm64
+==> normalized: /data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/1.18.30/opencode-v1-1.18.30-fleet1.18.30 (135132928 B)
+    sha256: 805f4ffe186b904535a8a253ab0fe6f49281ffc4638511c4750b6837e295c82d
+    wrote build json
+==> build-v1 done: /data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/1.18.30/opencode-v1-1.18.30-fleet1.18.30
+    built: 135132928 B  sha256=805f4ffe186b904535a8a253ab0fe6f49281ffc4638511c4750b6837e295c82d
+-- [5/8] TLSDESC graft --
+swap_tui: embedded asset @ 0x7af3f9e slot=6037032 incoming=5495136
+swap_tui: guard scan over 2 owner symbols: clamp=2 csel_vs=4
+swap_tui: wrote /data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/1.18.30/opencode-v1-1.18.30-fleet1.18.30-grafted (135132928 bytes)
+    graft assert: slot@0x7af3f9e 6037032B (embed 5495136B + 541896B pad), 0B drift outside slot
+    graft assert: INIT_ARRAY=2 (>=2)  TLSDESC=11 (==11)
+-- [6/8] hermetic home remap --
+hermetic: remapped 58 occurrences (46 opentui + 12 cargo, 3956 bytes changed, all inside prefix ranges), size 135132928B unchanged
+swap_tui: guard scan over 2 owner symbols: clamp=2 csel_vs=4
+    hermetic assert: gate=0, slot@0x7af3f9e 5495136B, guard=OK, INIT_ARRAY=2, TLSDESC=11
+    hermetic: 135132928 B  sha256=8626c4d9344493c8e5c5fc017ba6c89cadff801c24660fc41f5746a8c2161727
+-- [7/8] form self-proof (zero-glibc / bionic-dynamic / uncompressed) --
+    home-path hits=0 (0)
+    PT_INTERP=1 PT_DYNAMIC=1 (1/1 = bionic dynamic本体，参照 A2 hermetic-grafted)
+    embedded pty markers=2 (>=1)  UPX! magic=0 (0 — 未压缩)
+    NEEDED:   0x0000000000000001 (NEEDED)          Shared library: [libc.so]   0x0000000000000001 (NEEDED)          Shared library: [libm.so]   0x0000000000000001 (NEEDED)          Shared library: [libdl.so] 
+    zero-glibc gate: OK (no versioned soname)
+-- [8/8] package (pkgrel=90) + smoke --
+==> Making package: opencode1 1.18.30-90 (Mon Oct  5 18:24:48 2026)
+==> Checking runtime dependencies...
+==> Checking buildtime dependencies...
+==> Retrieving sources...
+==> Extracting sources...
+==> Package creation...
+==> Starting package()...
+==> Installing native runtime from /data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/1.18.30/opencode-v1-1.18.30-fleet1.18.30-hermetic
+==> Packaged migrate-to-opencode1.sh (v1 migration helper)
+==> binary is not seccomp-hardened; shipping without libopencode-crhandler.so
+==> Tidying install...
+  -> Purging unwanted files...
+  -> Removing empty directories...
+  -> Compressing man and info pages...
+==> Checking for packaging issues...
+==> Creating package "opencode1"...
+  -> Generating .PKGINFO file...
+  -> Generating .BUILDINFO file...
+  -> Adding install file...
+  -> Generating .MTREE file...
+  -> Compressing package...
+==> Package creation.
+==> Finished making: opencode1 1.18.30-90 (Mon Oct  5 18:25:15 2026)
+Native pacman package created under: /data/data/com.termux/files/home/develop/opencode-termux/packing/pacman
+Convention guard: OK (absolute data/data/com.termux/files/usr/ members, no relative usr/)
+    pkg: opencode1-1.18.30-90-aarch64.pkg.tar.xz  size=30706956  sha256=43899086a0d241d9a2e44b18f97f3abdf7453f394bc6490e37696bfdff8fd041
+    --version = 1.18.30
+    root OK: $HOME/.local/share/opencode1/opencode
+    root OK: $HOME/.cache/opencode1/opencode
+    root OK: $HOME/.config/opencode1/opencode
+    root OK: $HOME/.local/state/opencode1/opencode
+    decoy decoy-cfg entries=0  namespace-leak=0  bun-runtime-cache=0
+    decoy decoy-data entries=0  namespace-leak=0  bun-runtime-cache=0
+    decoy decoy-state entries=0  namespace-leak=0  bun-runtime-cache=0
+    decoy decoy-cache entries=15  namespace-leak=0  bun-runtime-cache=14
+    namespace-leak dirs=0 (expect 0)  bun-runtime-cache entries=14 (informational, 非 opencode 数据)
+    roots landed=4/4
+== smoke fleet-1.18.30 2026-10-05T10:27:30Z host=6.6.118-android15-8-ge58033dc8ea6-abogki498046332-4k ==
+bin=/data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/1.18.30/opencode-v1-1.18.30-fleet1.18.30-hermetic port=23363 rc=124
+render_bytes_at_25s=20480 total_bytes=26838 ansi_lines=13 crash_keywords=0
+DELTA_type_z=0 DELTA_arrow=4096 DELTA_keys_window=4096 echo_z_after_keys=0
+verdict=GREEN
+SMOKE_fleet-1.18.30_GREEN
+    ==> v1 1.18.30 DONE
+
+=== fleet-v1-build summary: done=4 failed=none ===
+ver	status	bytes	sha256	elf_bytes	elf_sha256	isolation	tui
+
+1.18.33	OK	30701844	cbf9c1f760fc9fe3d334d71ee3e0368df92b4fa5045f8c289ac4614836f87c4a	elf=135132928	elfsha=c18fadb2487f49d7be4005f03daa6499ad7d2a00efb2105ec495830ca2145c08	roots=4/4	tui=GREEN
+1.18.32	OK	30701252	ade8c784b3edff18e627b22159b018588cf17ea0877dfc59b9d6c26cce02bb71	elf=135132928	elfsha=9c10beb174bfeb6fa82946f6eec6422a8e1722108a34b11d2b425e1f5c69df26	roots=4/4	tui=GREEN
+1.18.31	OK	30699512	7767cbaccabfeb3f6bf7a52c9b51a2f1f6e4016e45197ce13e6a070838365f63	elf=135067392	elfsha=e764fc04ef546ece392b7386b7bede8e8c5f2de2605364dba72214fc467bce6c	roots=4/4	tui=GREEN
+1.18.30	OK	30706956	43899086a0d241d9a2e44b18f97f3abdf7453f394bc6490e37696bfdff8fd041	elf=135132928	elfsha=8626c4d9344493c8e5c5fc017ba6c89cadff801c24660fc41f5746a8c2161727	roots=4/4	tui=GREEN
