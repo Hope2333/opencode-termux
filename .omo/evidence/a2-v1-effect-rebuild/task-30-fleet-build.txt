@@ -3286,3 +3286,253 @@ usage: git reset [--mixed | --soft | --hard | --merge | --keep] [-q] [<commit>]
     installing @opencode-ai/pty@0.1.13...
 2411 packages installed [68.33s]
     installing @parcel/watcher-linux-arm64-glibc@2.5.1...
+
+############### fleet-v2-build (pkgrel=90, no UPX) 2026-10-05T11:01:59Z ###############
+versions: 2.0.19 2.0.20 2.0.21 2.0.22   free=9519MB (min 6800MB)
+
+############ v2 2.0.19 (v2.0.19) 真编译 ############
+-- [1/7] git checkout v2.0.19 --
+Previous HEAD position was 84c9be93 release: v2.0.20
+HEAD is now at 1fd016ef release: v2.0.19
+error: unknown switch `f'
+usage: git reset [--mixed | --soft | --hard | --merge | --keep] [-q] [<commit>]
+   or: git reset [-q] [<tree-ish>] [--] <pathspec>...
+   or: git reset [-q] [--pathspec-from-file [--pathspec-file-nul]] [<tree-ish>]
+   or: git reset --patch [<tree-ish>] [--] [<pathspec>...]
+
+    -q, --[no-]quiet      be quiet, only report errors
+    --no-refresh          skip refreshing the index after reset
+    --refresh             opposite of --no-refresh
+    --mixed               reset HEAD and index
+    --soft                reset only HEAD
+    --hard                reset HEAD, index and working tree
+    --merge               reset HEAD, index and working tree
+    --keep                reset HEAD but keep local changes
+    --[no-]recurse-submodules[=<reset>]
+                          control recursive updating of submodules
+    -p, --[no-]patch      select hunks interactively
+    --[no-]auto-advance   auto advance to the next file when selecting hunks interactively
+    -U, --unified <n>     generate diffs with <n> lines context
+    --inter-hunk-context <n>
+                          show context between diff hunks up to the specified number of lines
+    -N, --[no-]intent-to-add
+                          record only the fact that removed paths will be added later
+    --[no-]pathspec-from-file <file>
+                          read pathspec from file
+    --[no-]pathspec-file-nul
+                          with --pathspec-from-file, pathspec elements are separated with NUL character
+
+    HEAD=1fd016ef free=13485MB
+-- [2/7] build-bionic.sh (bun 1.4.0 pin, PTY_VARIANT=musl, no UPX) --
+==> build-bionic VER=2.0.19
+    src = /data/data/com.termux/files/usr/tmp/a2-src/opencode-fleet
+    bun = /data/data/com.termux/files/home/develop/opencode-termux/artifacts/transplant/android-bun/bun-1.4.0/bun
+==> installing dependencies (bun install --force --ignore-scripts + shim)...
++ ws@8.21.0
+
+2357 packages installed [41.07s]
+==> installing platform packages one-by-one (pty, watcher, core, fonts)...
+
+2409 packages installed [66.05s]
+    ^ @opencode-ai/pty-linux-arm64-gnu@0.1.13
+
+2409 packages installed [62.81s]
+    ^ @parcel/watcher-linux-arm64-glibc@2.5.1
+
+2410 packages installed [81.69s]
+    ^ @opentui/core-linux-arm64@0.5.10
+    OK  @opentui/core-linux-arm64-musl@0.5.10
+    WARN (non-fatal): @opentui/solid-linux-arm64@0.5.10 unavailable
+    deployed bionic libopentui.so -> /data/data/com.termux/files/usr/tmp/a2-src/opencode-fleet/node_modules/.bun/@opentui+core-linux-arm64@0.5.10/node_modules/@opentui/core-linux-arm64
+    deployed bionic libopentui.so -> /data/data/com.termux/files/usr/tmp/a2-src/opencode-fleet/node_modules/.bun/@opentui+core-linux-arm64@0.5.12/node_modules/@opentui/core-linux-arm64
+    deployed bionic libopentui.so -> /data/data/com.termux/files/usr/tmp/a2-src/opencode-fleet/node_modules/.bun/@opentui+core@0.5.12+2240c214a0f33214/node_modules/@opentui/core
+    deployed bionic libopentui.so -> /data/data/com.termux/files/usr/tmp/a2-src/opencode-fleet/node_modules/.bun/@opentui+core-linux-arm64@0.5.10/node_modules/@opentui/core-linux-arm64
+    deployed bionic libopentui.so -> /data/data/com.termux/files/usr/tmp/a2-src/opencode-fleet/node_modules/.bun/@opentui+core-linux-arm64@0.5.12/node_modules/@opentui/core-linux-arm64
+    deployed bionic libopentui.so -> /data/data/com.termux/files/usr/tmp/a2-src/opencode-fleet/node_modules/.bun/@opentui+core@0.5.12+2240c214a0f33214/node_modules/@opentui/core
+    opentui bionic runtime OK: /data/data/com.termux/files/usr/tmp/a2-src/opencode-fleet/node_modules/.bun/@opentui+core-linux-arm64@0.5.10/node_modules/@opentui/core-linux-arm64/libopentui.so
+==> installing linux platform packages (pty, watcher)...
+    installing @opencode-ai/pty@0.1.13...
+2411 packages installed [67.92s]
+    installing @parcel/watcher-linux-arm64-glibc@2.5.1...
+2411 packages installed [67.21s]
+==> installing musl PTY helper (issue #27: gnu variant cannot run on bionic)...
+1 package installed [59.00ms]
+    static musl pty -> /data/data/com.termux/files/usr/tmp/a2-src/opencode-fleet/node_modules/.bun/@opencode-ai+pty-linux-arm64-gnu@0.1.13/node_modules/@opencode-ai/pty-linux-arm64-gnu/bin/opencode-pty
+    static musl pty -> /data/data/com.termux/files/usr/tmp/a2-src/opencode-fleet/node_modules/.bun/@opencode-ai+pty-linux-arm64-gnu@0.1.13/node_modules/@opencode-ai/pty-linux-arm64-gnu/bin/opencode-pty
+platform chunk: chunk-bun-8f4q4e2m.js
+platform literal patched
+branch force patched
+==> bun pin: package.json packageManager -> bun@1.4.0 (upstream gate accept)
+==> rc2b: re-deploying bionic libopentui.so (post-1b, pre-embed)...
+    re-deployed -> /data/data/com.termux/files/usr/tmp/a2-src/opencode-fleet/node_modules/.bun/@opentui+core-linux-arm64-musl@0.5.10/node_modules/@opentui/core-linux-arm64-musl/libopentui.so
+    re-deployed -> /data/data/com.termux/files/usr/tmp/a2-src/opencode-fleet/node_modules/.bun/@opentui+core-linux-arm64-musl@0.5.12/node_modules/@opentui/core-linux-arm64-musl/libopentui.so
+    re-deployed -> /data/data/com.termux/files/usr/tmp/a2-src/opencode-fleet/node_modules/.bun/@opentui+core-linux-arm64@0.5.10/node_modules/@opentui/core-linux-arm64/libopentui.so
+    re-deployed -> /data/data/com.termux/files/usr/tmp/a2-src/opencode-fleet/node_modules/.bun/@opentui+core-linux-arm64@0.5.12/node_modules/@opentui/core-linux-arm64/libopentui.so
+    rc2b sweep OK: 4 libopentui.so all bionic
+==> web-ui: patching app-assets.ts (#22 skipBuild collects prebuilt dist)
+    app-assets.ts patched (skipBuild -> collect-only)
+==> web-ui: restoring dist from per-version cache (/data/data/com.termux/files/usr/tmp/v2src/.app-dist-cache/2.0.19)
+==> web-ui: dist ready (94M), skip vite
+==> compiling (android bun, target=opencode-linux-arm64)
+opencode script {
+  "channel": "latest",
+  "version": "2.0.19",
+  "preview": false,
+  "release": false,
+  "team": [
+    "adamdotdevin",
+    "arvsrn",
+    "Brendonovich",
+    "fwang",
+    "Hona",
+    "iamdavidhill",
+    "jayair",
+    "jlongster",
+    "kitlangton",
+    "kommander",
+    "ludvigrask",
+    "MrMushrooooom",
+    "neriousy",
+    "nexxeln",
+    "R44VC0RP",
+    "rekram1-node",
+    "thdxr",
+    "simonklee",
+    "Slickstef11",
+    "usrnk1",
+    "vimtor",
+    "StarpTech",
+    "actions-user",
+    "opencode",
+    "opencode-agent[bot]"
+  ]
+}
+building cli-linux-arm64
+==> normalized: /data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/2.0.19/opencode-native-revived (287176352 B)
+    sha256: d8a0058289e69a9f95c66acc6b759f6e7123ea63e2c5fa9a1224c980c39f6b3b
+==> cleaning source tree node_modules to save disk...
+    wrote build.json
+==> build-bionic done: /data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/2.0.19
+    revived: 287176352 B  sha256=d8a0058289e69a9f95c66acc6b759f6e7123ea63e2c5fa9a1224c980c39f6b3b
+-- [2b/7] W11 seccomp harden (crhandler DT_NEEDED + shim) --
+crhandler_patch: strings @file 0x173730..0x173769 (zero run 0x17372c+212B)
+crhandler_patch: OK /data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/2.0.19/opencode-native-revived (DT_NEEDED[0] -> libopencode-crhandler.so first, libc.so -> DT_DEBUG slot, DT_RUNPATH $ORIGIN/../lib/opencode, DT_STRSZ 21881->1479961, zero displacement proven)
+    crhandler DT_NEEDED refs=1 (expect >=1)  shim=8104 B
+-- [3/7] TLSDESC graft --
+swap_tui: embedded asset @ 0x1045c4dd slot=6037032 incoming=5495136
+swap_tui: guard scan over 2 owner symbols: clamp=2 csel_vs=4
+swap_tui: wrote /data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/2.0.19/opencode-native-fleet-grafted (287176352 bytes)
+    graft assert: slot@0x1045c4dd 6037032B (embed 5495136B + 541896B pad), 0B drift outside slot
+    graft assert: INIT_ARRAY=2 (>=2)  TLSDESC=11 (==11)
+-- [4/7] hermetic home remap (classification gate) --
+hermetic: remapped 46 occurrences (46 opentui + 0 cargo, 3404 bytes changed, all inside prefix ranges), size 287176352B unchanged
+swap_tui: guard scan over 2 owner symbols: clamp=2 csel_vs=4
+    hermetic assert: gate=0, slot@0x1045c4dd 5495136B, guard=OK, INIT_ARRAY=2, TLSDESC=11
+-- [5/7] form self-proof (zero-UPX / zero-glibc) --
+    home-path hits=0 (0)  UPX! magic=0 (0 — 未压缩)
+    NEEDED:   0x0000000000000001 (NEEDED)          Shared library: [libopencode-crhandler.so]   0x0000000000000001 (NEEDED)          Shared library: [libm.so]   0x0000000000000001 (NEEDED)          Shared library: [libdl.so]   0x0000000000000001 (NEEDED)          Shared library: [libc.so] 
+    zero-glibc gate: OK (no versioned soname)
+-- [6/7] package (pkgrel=90) --
+==> Making package: opencode 2.0.19-90 (Mon Oct  5 19:16:10 2026)
+==> Checking runtime dependencies...
+==> Checking buildtime dependencies...
+==> Retrieving sources...
+==> Extracting sources...
+==> Package creation...
+==> Starting package()...
+==> Installing native runtime from /data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/2.0.19/opencode-native-fleet-hermetic
+==> Packaging seccomp shim: /data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/2.0.19/libopencode-crhandler.so -> usr/lib/opencode/
+==> Tidying install...
+  -> Purging unwanted files...
+  -> Removing empty directories...
+  -> Compressing man and info pages...
+==> Checking for packaging issues...
+==> Creating package "opencode"...
+  -> Generating .PKGINFO file...
+  -> Generating .BUILDINFO file...
+  -> Adding install file...
+  -> Generating .MTREE file...
+  -> Compressing package...
+==> Package creation.
+==> Finished making: opencode 2.0.19-90 (Mon Oct  5 19:17:25 2026)
+Native pacman package created under: /data/data/com.termux/files/home/develop/opencode-termux/packing/pacman
+Convention guard: OK (absolute data/data/com.termux/files/usr/ members, no relative usr/)
+    pkg: opencode-2.0.19-90-aarch64.pkg.tar.xz  size=68025656  sha256=d6a3291e9fbd8838b1d6672bb40eda0cb60244320e892e4c2ebeffa1ef897800
+-- [7/7] smoke (--version + TUI) --
+    --version = opencode v2.0.19
+== smoke fleet-2.0.19 2026-10-05T11:18:26Z host=6.6.118-android15-8-ge58033dc8ea6-abogki498046332-4k [v2 full-screen] ==
+bin=/data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/2.0.19/opencode-native-fleet-hermetic port=31727 rc=0 (139=SIGSEGV)
+render_bytes_at_25s=8192 total_bytes=12735 ansi_lines=1 crash_keywords=0
+screen_complete=1 (prompt=1 statusbar=1 ver=2)
+screen_hash d861d261fae566c3 -> adfce13050f0cb04 changed=1 echo_z_after_keys=1
+note=v2 全屏原地重绘, 字节数恒定(DELTA=0); 键入活性在本 harness 下不可测 ——
+     对照件 2.0.18(RC4 已实证) 同样 DELTA=0, 故非本 fleet 编译缺陷
+verdict=GREEN
+SMOKE_fleet-2.0.19_GREEN
+    ==> v2 2.0.19 DONE
+    cleaned intermediates; free=12722MB
+
+############ v2 2.0.20 (v2.0.20) 真编译 ############
+-- [1/7] git checkout v2.0.20 --
+Previous HEAD position was 1fd016ef release: v2.0.19
+HEAD is now at 84c9be93 release: v2.0.20
+error: unknown switch `f'
+usage: git reset [--mixed | --soft | --hard | --merge | --keep] [-q] [<commit>]
+   or: git reset [-q] [<tree-ish>] [--] <pathspec>...
+   or: git reset [-q] [--pathspec-from-file [--pathspec-file-nul]] [<tree-ish>]
+   or: git reset --patch [<tree-ish>] [--] [<pathspec>...]
+
+    -q, --[no-]quiet      be quiet, only report errors
+    --no-refresh          skip refreshing the index after reset
+    --refresh             opposite of --no-refresh
+    --mixed               reset HEAD and index
+    --soft                reset only HEAD
+    --hard                reset HEAD, index and working tree
+    --merge               reset HEAD, index and working tree
+    --keep                reset HEAD but keep local changes
+    --[no-]recurse-submodules[=<reset>]
+                          control recursive updating of submodules
+    -p, --[no-]patch      select hunks interactively
+    --[no-]auto-advance   auto advance to the next file when selecting hunks interactively
+    -U, --unified <n>     generate diffs with <n> lines context
+    --inter-hunk-context <n>
+                          show context between diff hunks up to the specified number of lines
+    -N, --[no-]intent-to-add
+                          record only the fact that removed paths will be added later
+    --[no-]pathspec-from-file <file>
+                          read pathspec from file
+    --[no-]pathspec-file-nul
+                          with --pathspec-from-file, pathspec elements are separated with NUL character
+
+    HEAD=84c9be93 free=12826MB
+-- [2/7] build-bionic.sh (bun 1.4.0 pin, PTY_VARIANT=musl, no UPX) --
+==> build-bionic VER=2.0.20
+    src = /data/data/com.termux/files/usr/tmp/a2-src/opencode-fleet
+    bun = /data/data/com.termux/files/home/develop/opencode-termux/artifacts/transplant/android-bun/bun-1.4.0/bun
+==> installing dependencies (bun install --force --ignore-scripts + shim)...
++ ws@8.21.0
+
+2357 packages installed [26.66s]
+==> installing platform packages one-by-one (pty, watcher, core, fonts)...
+
+2409 packages installed [49.71s]
+    ^ @opencode-ai/pty-linux-arm64-gnu@0.1.13
+
+2409 packages installed [47.93s]
+    ^ @parcel/watcher-linux-arm64-glibc@2.5.1
+
+2410 packages installed [56.31s]
+    ^ @opentui/core-linux-arm64@0.5.10
+    OK  @opentui/core-linux-arm64-musl@0.5.10
+    WARN (non-fatal): @opentui/solid-linux-arm64@0.5.10 unavailable
+    deployed bionic libopentui.so -> /data/data/com.termux/files/usr/tmp/a2-src/opencode-fleet/node_modules/.bun/@opentui+core-linux-arm64@0.5.10/node_modules/@opentui/core-linux-arm64
+    deployed bionic libopentui.so -> /data/data/com.termux/files/usr/tmp/a2-src/opencode-fleet/node_modules/.bun/@opentui+core-linux-arm64@0.5.12/node_modules/@opentui/core-linux-arm64
+    deployed bionic libopentui.so -> /data/data/com.termux/files/usr/tmp/a2-src/opencode-fleet/node_modules/.bun/@opentui+core@0.5.12+2240c214a0f33214/node_modules/@opentui/core
+    deployed bionic libopentui.so -> /data/data/com.termux/files/usr/tmp/a2-src/opencode-fleet/node_modules/.bun/@opentui+core-linux-arm64@0.5.10/node_modules/@opentui/core-linux-arm64
+    deployed bionic libopentui.so -> /data/data/com.termux/files/usr/tmp/a2-src/opencode-fleet/node_modules/.bun/@opentui+core-linux-arm64@0.5.12/node_modules/@opentui/core-linux-arm64
+    deployed bionic libopentui.so -> /data/data/com.termux/files/usr/tmp/a2-src/opencode-fleet/node_modules/.bun/@opentui+core@0.5.12+2240c214a0f33214/node_modules/@opentui/core
+    opentui bionic runtime OK: /data/data/com.termux/files/usr/tmp/a2-src/opencode-fleet/node_modules/.bun/@opentui+core-linux-arm64@0.5.10/node_modules/@opentui/core-linux-arm64/libopentui.so
+==> installing linux platform packages (pty, watcher)...
+    installing @opencode-ai/pty@0.1.13...
+2411 packages installed [51.81s]
+    installing @parcel/watcher-linux-arm64-glibc@2.5.1...
