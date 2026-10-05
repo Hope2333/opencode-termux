@@ -65,11 +65,50 @@ LOG_PATH = (os.path.join(REPO_ROOT, ".omo", "evidence",
             else os.path.join(HOME_BASE, "logs", "fleet-push.log"))
 
 RELEASE_TAG = "Push260903"
-ASSET_TMPL = "opencode-native-{ver}-upx.xz"
+
+# ── 资产形态：raw（发布未压缩原包）vs upx（历史压制资产） ──────────────
+#
+# task-30 起fleet 的产物是**未压缩本体包**（压制外包给别的机器做），所以
+# 默认形态从 `-upx.xz` 切到 `-raw.xz`，且作业链**删掉 upx 段**。
+#
+# 为什么不能只换 ASSET_TMPL 而留着 upx 段（硬阻断，docs/fleet-matrix.md §3.3 #1）：
+#   JOB_SH 里的 `upx --best` 会把 ELF 压掉再 xz。未压缩件一旦被压，
+#   sha256/尺寸都与压制方的输入对不上，而且 UPX 再压一次已压件不可逆。
+#   所以 upx 段必须**真的删掉**，不是加个开关跳�� —— 留着就是定时炸弹。
+#
+# 两形态并存（RESERVE 槽位）：upx 资产名保持逐字不变，幂等判定继续认它，
+# 这样历史上架的 `opencode-native-<v>-upx.xz` 不会被 raw 轮误标 DONE 或重做。
+FLEET_MODE = os.environ.get("FLEET_MODE", "raw")   # raw | upx
+if FLEET_MODE not in ("raw", "upx"):
+    sys.exit(f"Error: FLEET_MODE must be raw|upx (got {FLEET_MODE!r})")
+# raw 轮只上传未压缩原包；压制轮由外包跑，本工具的 upx 形态保留为可选路径。
+ASSET_TMPL = ("opencode-native-{ver}-raw.xz" if FLEET_MODE == "raw"
+              else "opencode-native-{ver}-upx.xz")
+# 幂等：两种形态各自的「已存在」判定共用这一个正则组。
+ASSET_DONE_RES = (
+    re.compile(r"^opencode-native-([\d.]+)-raw\.xz$"),
+    re.compile(r"^opencode-native-([\d.]+)-upx\.xz$"),
+)
+
 def pkg_tmpl(ver):
     # v1 (1.x) renamed opencode1; v2 keeps opencode. PKGREL-adaptive (issue: RC3
     # ships pkgrel=3): return the actual local filename if any pkgrel exists,
     # else the RC3-era -3 name as the canonical expectation.
+    #
+    # task-30 fleet 带用的是 **pkgrel=90**（tools/a2/fleet-*-build.sh 的 PKGREL
+    # 默认），刻意高于全部历史 rel（v1 1..10 / v2 1..6），所以 max() 自适应
+    # 恰好会选中 fleet 件 —— 但这是「碰巧对」，不是「设计上对」：若哪天 fleet
+    # 改用 -1 起，max() 会去拿历史高压 rel 的包名，指到一个内容不同的文件，
+    # 而且**不报错**（docs/fleet-matrix.md §3.3 #4 点名的「跑起来不报错但结果
+    # 错」那一类）。所以先按 fleet 带精确取，取不到再退回自适应。
+    fleet_rel = os.environ.get("FLEET_PKGREL", "90")
+    for base in (PKG_DIR, INBOX):
+        if not os.path.isdir(base):
+            continue
+        for fam in (f"opencode1-{ver}", f"opencode-{ver}"):
+            exact = os.path.join(base, f"{fam}-{fleet_rel}-aarch64.pkg.tar.xz")
+            if os.path.isfile(exact):
+                return os.path.basename(exact)
     for base in (PKG_DIR, INBOX):
         if os.path.isdir(base):
             hits = sorted(glob.glob(os.path.join(base, f"opencode-{ver}-*-aarch64.pkg.tar.xz"))
@@ -214,9 +253,16 @@ MAX_ATTEMPTS = 3
 SSH_TIMEOUT = 8
 HEALTH_TTL = 60
 
-# 阶段权重 / 兜底 ETA(秒)（push/upx/upload 有真实进度, ETA 仅兜底）
-WEIGHTS = {"push": .10, "untar": .05, "upx": .45, "xz9": .15, "upload": .25}
-STAGE_ETA = {"push": 60, "untar": 60, "upx": 480, "xz9": 150, "upload": 90}
+# 阶段权重 / 兜底 ETA(秒)（push/xz9/upload 有真实进度, ETA 仅兜底）
+#
+# raw 模式：upx 段不存在，它原来占的 45% 归给「取件+打包」和 xz9。
+# 未压缩件 130–290MB，xz -9 要压的量比压制件大一个量级，所以 xz9 权重上调。
+if FLEET_MODE == "raw":
+    WEIGHTS = {"push": .10, "untar": .05, "pack": .30, "xz9": .35, "upload": .20}
+    STAGE_ETA = {"push": 60, "untar": 60, "pack": 30, "xz9": 420, "upload": 150}
+else:
+    WEIGHTS = {"push": .10, "untar": .05, "upx": .45, "xz9": .15, "upload": .25}
+    STAGE_ETA = {"push": 60, "untar": 60, "upx": 480, "xz9": 150, "upload": 90}
 
 # ───────────────────── ANSI ─────────────────────
 
@@ -266,6 +312,8 @@ class Ver:
         self.size_out = 0
         self.upx_in = self.upx_out = 0
         self.upx_ratio = self.upx_fmt = self.upx_name = ""
+        self.elf_bytes = 0
+        self.elf_name = ""
         self.pre_existing = False
         self.src_size = 0
         self.fetch_done = 0
@@ -287,14 +335,14 @@ class Ver:
     def live_pct(self, now=None):
         """计算进行中版本的加权实时进度, 供 render() 每帧刷新.
         阶段顺序匹配 WEIGHTS keys; 当前阶段取真实源(push→push_pct,
-        upx/upload→stage_pct, untar/xz9→封顶 ETA), 后续阶段为 0."""
+        upx/pack/upload→stage_pct, untar/xz9→封顶 ETA), 后续阶段为 0."""
         if self.state == Ver.DONE or self.pre_existing:
             return 100.0
         if self.state == Ver.FAILED:
             return self.pct
         if not self.node:
             return 0.0
-        order = ["push", "untar", "upx", "xz9", "upload"]
+        order = STAGE_ORDER
         now = now if now is not None else time.time()
         idx = order.index(self.stage) if self.stage in order else -1
         if idx < 0:
@@ -306,7 +354,7 @@ class Ver:
             elif i == idx:
                 if s == "push":
                     p = self.push_pct / 100.0 if self.push_pct else 0.0
-                elif s in ("upx", "upload"):
+                elif s in ("upx", "pack", "upload"):
                     p = self.stage_pct.get(s, 0.0) / 100.0
                 else:
                     p = min(0.99, self.stage_progress(s, now) / 100.0)
@@ -315,20 +363,20 @@ class Ver:
         return total * 100.0
 
     def recompute(self, now=None):
-        comp = ["untar", "upx", "xz9"]
+        comp = [s for s in ("untar", "upx", "pack", "xz9") if s in WEIGHTS]
+        comp_w = sum(WEIGHTS[s] for s in comp)
         if self.state == Ver.PENDING:
             self.pct = 0.0
         elif self.state == Ver.PUSH:
             self.pct = WEIGHTS["push"] * self.push_pct
         elif self.state == Ver.COMPUTE:
-            base = WEIGHTS["push"]
             acc = 0.0
             for s in comp:
                 acc += self.stage_progress(s, now)
-            self.pct = base + (WEIGHTS["untar"] + WEIGHTS["upx"] + WEIGHTS["xz9"]) * acc / 300.0
+            self.pct = WEIGHTS["push"] + comp_w * acc / (100.0 * len(comp))
         elif self.state == Ver.UPLOAD_WAIT:
-            base = WEIGHTS["push"] + WEIGHTS["untar"] + WEIGHTS["upx"] + WEIGHTS["xz9"]
-            self.pct = base + WEIGHTS["upload"] * self.stage_progress("upload", now)
+            self.pct = WEIGHTS["push"] + comp_w + \
+                WEIGHTS["upload"] * self.stage_progress("upload", now)
         else:
             self.pct = 100.0
 
@@ -459,7 +507,7 @@ print("#F 100")
 
 JOB_SH = r'''
 set -uo pipefail
-R="$1"; D="$2"; A="$3"; TAG="$4"; REPO="$5"; RM="$6"; SZ="${7:-0}"
+R="$1"; D="$2"; A="$3"; TAG="$4"; REPO="$5"; RM="$6"; SZ="${7:-0}"; MODE="${8:-raw}"
 cd "$R" || exit 9
 say(){ printf '#%s\n' "$*"; }
 if [ ! -s "$D" ]; then
@@ -477,16 +525,55 @@ if [ ! -s "$D" ]; then
 fi
 say "S untar"
 tar -xJf "$D" -C "$R" || { say "E untar"; exit 2; }
-B="$(find "$R" -type f -name opencode | head -1)"
+# ELF 定位：必须**跟随符号链接**（硬阻断，docs/fleet-matrix.md §3.3 #2）。
+#
+# 原写法 `find "$R" -type f -name opencode` 有两个问题：
+#   1. `-type f` 排除 symlink 本身。v1 single-elf 形态的入口是
+#      bin/opencode1 -> ../lib/opencode1/runtime/opencode；解包后 symlink
+#      与目标的相对路径依赖解包根，一旦目标改名就断。
+#   2. 硬编码文件名 `opencode`。v2 是 bin/opencode（命中），v1 是
+#      lib/opencode1/runtime/opencode（也命中），但这是巧合而非契约。
+#
+# 现在：先按已知成员路径取，取不到再 `find -L` 兜底（跟随 symlink），
+# 最后校验拿到的东西**真的是 ELF**（读 magic），避免把 .sh/文本当载荷压。
+B=""
+for cand in \
+  "$R/data/data/com.termux/files/usr/bin/opencode" \
+  "$R/data/data/com.termux/files/usr/lib/opencode/runtime/opencode" \
+  "$R/data/data/com.termux/files/usr/lib/opencode1/runtime/opencode" \
+  "$R/usr/bin/opencode" \
+  "$R/usr/lib/opencode/runtime/opencode" \
+  "$R/usr/lib/opencode1/runtime/opencode"
+do
+  if [ -f "$cand" ]; then B="$cand"; break; fi
+done
+if [ -z "$B" ]; then
+  B="$(find -L "$R" -type f -name opencode 2>/dev/null | head -1)"
+fi
 [ -n "$B" ] || { say "E no-elf"; exit 2; }
-say "D untar"
+# ELF magic 硬校验（\x7fELF）。防止 symlink 解析到非 ELF（launcher/.sh）。
+if ! head -c 4 "$B" | grep -q $'\177ELF'; then
+  say "E not-elf $(basename "$B")"
+  exit 2
+fi
+say "D untar elf=$(basename "$B") sz=$(wc -c < "$B")"
 rm -f "$R/packed" "$R"/packed.tmp.* "$R/out.xz"
-say "S upx"
-upx --best -o "$R/packed.tmp.$$" "$B" 2>"$R/upx.err"
-rc=$?
-say "D upx"
-[ $rc -eq 0 ] && mv -f "$R/packed.tmp.$$" "$R/packed"
-[ $rc -eq 0 ] || { say "E upx rc=$rc err=$(tail -c 160 "$R/upx.err" 2>/dev/null | tr '\n' ' ')"; exit 3; }
+if [ "$MODE" = upx ]; then
+  say "S upx"
+  upx --best -o "$R/packed.tmp.$$" "$B" 2>"$R/upx.err"
+  rc=$?
+  say "D upx"
+  [ $rc -eq 0 ] && mv -f "$R/packed.tmp.$$" "$R/packed"
+  [ $rc -eq 0 ] || { say "E upx rc=$rc err=$(tail -c 160 "$R/upx.err" 2>/dev/null | tr '\n' ' ')"; exit 3; }
+else
+  # raw 模式：ELF 原样落成 packed，**完全不压制**。外包拿 release 里的
+  # -raw.xz 解开就是原件，可直接喂 upx。用 cp 而不是重定向，语义直白。
+  say "S pack"
+  cp -f "$B" "$R/packed" || { say "E pack"; exit 3; }
+  say "D pack raw $(wc -c < "$R/packed")"
+fi
+# 本体尺寸随进度流上报（供控制器填充 Ver.elf_bytes，最终表对账用）
+printf '#ELF %s %s\n' "$(wc -c < "$R/packed")" "$(basename "$R/packed")"
 say "S xz9"
 xz -9 -c "$R/packed" > "$R/out.xz" 2>"$R/xz9.err" || { say "E xz9 err=$(tail -c 160 "$R/xz9.err" 2>/dev/null | tr '\n' ' ')"; exit 4; }
 say "D xz9"
@@ -514,6 +601,11 @@ def b64(s):
     return base64.b64encode(s.encode()).decode()
 
 
+# 阶段顺序：raw 模式没有 upx，多一个 pack（原样取件，供外包压制）。
+STAGE_ORDER = (["push", "untar", "pack", "xz9", "upload"] if FLEET_MODE == "raw"
+               else ["push", "untar", "upx", "xz9", "upload"])
+
+
 def job_argv(node_cmd, v, tag, repo, do_clean):
     r = v.rdir
     pkg_name = os.path.basename(v.pkg)
@@ -527,7 +619,8 @@ def job_argv(node_cmd, v, tag, repo, do_clean):
              f"echo {b64(FETCH_PY)} | base64 -d > {r}/fetch.py && "
              f"echo {b64(JOB_SH)} | base64 -d > {r}/job.sh && "
              f"bash {r}/job.sh {r} {d} {shlex.quote(v.asset)} "
-             f"{shlex.quote(tag)} {shlex.quote(repo)} {1 if do_clean else 0} {int(v.src_size or 0)}")
+             f"{shlex.quote(tag)} {shlex.quote(repo)} {1 if do_clean else 0} "
+             f"{int(v.src_size or 0)} {shlex.quote(FLEET_MODE)}")
     if node_cmd is None:
         return ["bash", "-c", inner], None
     return ["bash", "-c", f"{node_cmd} {shlex.quote(inner)}"], v.pkg
@@ -612,6 +705,15 @@ class PtyJob:
         if m:
             with self.f.lock:
                 v.size_out = int(m.group(1))
+            return
+        m = re.match(r"^#ELF (\d+) (\S+)$", line)
+        if m:
+            # raw 模式：作业把未压缩 ELF 原样落成 packed。记录本体尺寸，
+            # 供最终表显示「未压缩原包 N MB → 传输 .xz M MB」，让外包
+            # 拿到 release 就能对账压制前的原件尺寸。
+            with self.f.lock:
+                v.elf_bytes = int(m.group(1))
+                v.elf_name = m.group(2)
             return
         m = UPX_SUM.match(line)
         if m:
@@ -795,10 +897,17 @@ class Scheduler:
                 if rc == 0 and v.sha_node:
                     v.state = Ver.DONE
                     v.t_done = time.time()
-                    log(f"DONE {ver} node={v.node} sha={v.sha_node[:16]} "
-                        f"out={mib(v.size_out)} upx={v.upx_in}->{v.upx_out} "
-                        f"({v.upx_ratio}%) fmt={v.upx_fmt}")
-                    self.f.ev(f"{ver} ✔ 完成 {mib(v.size_out)} ({v.upx_ratio}%)")
+                    if FLEET_MODE == "raw":
+                        log(f"DONE {ver} node={v.node} sha={v.sha_node[:16]} "
+                            f"out={mib(v.size_out)} elf={mib(v.elf_bytes)} "
+                            f"({v.elf_name}) mode=raw")
+                        self.f.ev(f"{ver} ✔ 完成 未压缩原包 {mib(v.elf_bytes)} "
+                                  f"→ .xz {mib(v.size_out)}")
+                    else:
+                        log(f"DONE {ver} node={v.node} sha={v.sha_node[:16]} "
+                            f"out={mib(v.size_out)} upx={v.upx_in}->{v.upx_out} "
+                            f"({v.upx_ratio}%) fmt={v.upx_fmt}")
+                        self.f.ev(f"{ver} ✔ 完成 {mib(v.size_out)} ({v.upx_ratio}%)")
                 else:
                     if _classify_err(v.err) or v.attempt >= self.o.attempts:
                         v.state = Ver.FAILED
@@ -839,8 +948,9 @@ def render(f, o, out):
     if f.stop.is_set():
         tail = "强制终止" if f.force else "再按一次 Ctrl+C 强制终止"
         lines.append(f"{Y}⏸ 收尾中… {tail}{N}")
-    lines.append(f"{B}FLEET-COMPRESSED-PUSH{N}  {time.strftime('%H:%M:%S')}"
-                 f"  elapsed {hms(now-f.t0)}  remote-upload={'on' if not o.no_remote_upload else 'off'}")
+    lines.append(f"{B}FLEET-{'RAW' if FLEET_MODE == 'raw' else 'COMPRESSED'}-PUSH{N}  {time.strftime('%H:%M:%S')}"
+                 f"  elapsed {hms(now-f.t0)}  remote-upload={'on' if not o.no_remote_upload else 'off'}"
+                 + ("  mode=raw(不压制,发布未压缩原包)" if FLEET_MODE == "raw" else ""))
     lines.append("── slots " + "─" * 56)
     for slot in f.slots:
         node = slot.rsplit("#", 1)[0]
@@ -863,6 +973,10 @@ def render(f, o, out):
         elif sp == "upx":
             pct = v.stage_pct.get("upx", 0.0)
             extra = v.upx_live or ""
+        elif sp == "pack":
+            # raw 模式：原样取件，瞬时完成，无真实进度源 → 走封顶 ETA
+            pct = v.stage_progress("pack", now) if v.t_state else 0.0
+            extra = f"raw {mib(v.elf_bytes)}" if v.elf_bytes else "raw"
         elif sp == "upload":
             pct = v.stage_pct.get("upload", 0.0)
             extra = f"{mib(v.size_out * pct / 100)}/{mib(v.size_out)}" if v.size_out else ""
@@ -875,8 +989,12 @@ def render(f, o, out):
     order = sorted(vers, key=lambda x: x.ver)
     for v in order:
         if v.state == Ver.DONE:
-            lines.append(f" {G}✔{N} {v.ver:8} {v.upx_in} → {v.upx_out} "
-                         f"{G}({v.upx_ratio}%){N} {v.upx_fmt:12} {hms((v.t_done or now)-(v.t_start or now))}")
+            if FLEET_MODE == "raw":
+                lines.append(f" {G}✔{N} {v.ver:8} raw {mib(v.elf_bytes):>9} → xz {mib(v.size_out):>8} "
+                             f"{DIM}{v.elf_name[:16]:16}{N} {hms((v.t_done or now)-(v.t_start or now))}")
+            else:
+                lines.append(f" {G}✔{N} {v.ver:8} {v.upx_in} → {v.upx_out} "
+                             f"{G}({v.upx_ratio}%){N} {v.upx_fmt:12} {hms((v.t_done or now)-(v.t_start or now))}")
         elif v.state == Ver.FAILED:
             lines.append(f" {R}✖{N} {v.ver:8} 失败 {v.err or ''} ({v.attempt} 次)")
         elif v.state == Ver.SKIPPED:
@@ -990,8 +1108,12 @@ def final_table(f, o):
     for v in vers:
         if v.state == Ver.DONE:
             sha_str = v.sha_node[:16] if v.sha_node else "—(复用)"
-            print(f" ✔ {v.ver:8} {v.asset}  {mib(v.size_out)}  sha={sha_str}…"
-                  f"  upx {v.upx_in}→{v.upx_out} ({v.upx_ratio}%) {v.upx_fmt}")
+            if FLEET_MODE == "raw":
+                print(f" ✔ {v.ver:8} {v.asset}  xz={mib(v.size_out)}  "
+                      f"未压缩原件={mib(v.elf_bytes)} ({v.elf_name})  sha={sha_str}…")
+            else:
+                print(f" ✔ {v.ver:8} {v.asset}  {mib(v.size_out)}  sha={sha_str}…"
+                      f"  upx {v.upx_in}→{v.upx_out} ({v.upx_ratio}%) {v.upx_fmt}")
         elif v.state == Ver.FAILED:
             print(f" ✖ {v.ver:8} 失败: {v.err}")
         elif v.state == Ver.SKIPPED:
@@ -1006,19 +1128,33 @@ def final_table(f, o):
             log(f"INTERRUPTED {v.ver} stage={stage} pct={pct:.1f}")
     total = len(vers)
     if nint == 0 and nd == total:
-        print(f"\n{G}FLEET-COMPRESSED-OK {nd}/{total}{N}")
-        log(f"VERDICT FLEET-COMPRESSED-OK {nd}/{total}")
+        print(f"\n{G}FLEET-VERDICT-OK {nd}/{total}{N}")
+        log(f"VERDICT FLEET-VERDICT-OK {nd}/{total}")
     else:
         tag = "INTERRUPTED" if nint else "PARTIAL"
-        print(f"\n{Y}FLEET-COMPRESSED-{tag} {nd}/{total} (中断 {nint}){N}"
+        print(f"\n{Y}FLEET-VERDICT-{tag} {nd}/{total} (中断 {nint}){N}"
               + (f"  {DIM}重跑自动续传(已在架的跳过){N}" if nint else ""))
-        log(f"VERDICT FLEET-COMPRESSED-{tag} {nd}/{total} interrupted={nint}")
+        log(f"VERDICT FLEET-VERDICT-{tag} {nd}/{total} interrupted={nint}")
 
 # ───────────────────── main ─────────────────────
 
 
+def _asset_done_match(name):
+    """资产名 → 版本号（任一形态），不是本形态则 None。
+
+    两种形态都认：raw 轮看到 upx 资产已存在时**不该**重做（那是压制轮留下的），
+    反之亦然。分开判定会导致「换个形态就重做一遍并 --clobber 覆盖」，
+    这正是 docs/fleet-matrix.md §3.3 #5 点名的幂等失效。
+    """
+    for rx in ASSET_DONE_RES:
+        m = rx.match(name)
+        if m:
+            return m.group(1)
+    return None
+
+
 def discover_release(tag, repo):
-    """从 release 资产建版本表: 源=pacman 包; 已存在的 *-upx.xz 标 DONE 跳过"""
+    """从 release 资产建版本表: 源=pacman 包; 已存在的成品资产(任一形态)标 DONE 跳过"""
     r = subprocess.run(["gh", "api", f"repos/{repo}/releases/tags/{tag}", "--jq",
                         '.assets[] | .name + " " + (.size|tostring)'],
                        capture_output=True, text=True, cwd=REPO_ROOT)
@@ -1031,6 +1167,9 @@ def discover_release(tag, repo):
         print(f"release {tag} 无资产或不可达: {r.stderr.strip()[:200]}")
         sys.exit(1)
     vers, pre = {}, []
+    # 版本正则**故意保持窄**：只收 `opencode|opencode1 <ver>-<纯数字rel>-aarch64`。
+    # 放宽会让 wrapper 族 / compressed 族 / 任何带额外标识的文件名混进来，
+    # 而 fleet 产物必须严格是这一形（见 docs/fleet-matrix.md §3.3 #3）。
     pkg_re = re.compile(r"^(?:opencode|opencode1)-([\d.]+)-(\d+)-aarch64\.pkg\.tar\.xz$")
     for name, size in assets.items():
         m = pkg_re.match(name)
@@ -1038,9 +1177,10 @@ def discover_release(tag, repo):
             v = Ver(m.group(1), os.path.join(INBOX, name), ASSET_TMPL.format(ver=m.group(1)))
             v.src_size = size
             vers[m.group(1)] = v
-        m2 = re.match(r"^opencode-native-([\d.]+)-upx\.xz$", name)
-        if m2:
-            pre.append(m2.group(1))
+        else:
+            vp = _asset_done_match(name)
+            if vp:
+                pre.append(vp)
     for vp in pre:
         if vp in vers:
             vv = vers[vp]
@@ -1233,12 +1373,17 @@ def main():
     ap = argparse.ArgumentParser(
         description="三节点 fleet 压缩推送调度器（PTY 屏幕流归整 + 实时进度聚合）",
         epilog=(
-            "流程（每版本, 包源=packing/pacman/opencode-<v>-<rel>-aarch64.pkg.tar.xz（PKGREL 自适应））:\n"
+            "流程（每版本, 包源=packing/pacman/opencode-<v>-<rel>-aarch64.pkg.tar.xz）:\n"
             "  push   本机→节点: python 分块写 ssh stdin, 自建进度条        (10%)\n"
-            "  untar  节点解包取 ELF                                         (5%)\n"
-            "  upx    upx --best, 原生进度条实时聚合                          (45%)\n"
-            "  xz9    xz -9 压缩产物                                         (15%)\n"
-            "  upload 节点直传 gh release(已录认证): python3 分块上传自建进度条 (25%)\n\n"
+            "  untar  节点解包取 ELF（按已知成员路径取, 兜底 find -L 跟随 symlink, 校验 ELF magic） (5%)\n"
+            + ("  pack   原样取件, **不做压制**; 未压缩 ELF 直接落 packed       (30%)\n"
+               "  xz9    xz -9 压缩未压缩原包（外包据此压制）                     (35%)\n"
+               "  upload 节点直传 gh release(已录认证): python3 分块上传自建进度条 (20%)\n\n"
+               if FLEET_MODE == "raw" else
+               "  upx    upx --best, 原生进度条实时聚合                          (45%)\n"
+               "  xz9    xz -9 压缩产物                                         (15%)\n"
+               "  upload 节点直传 gh release(已录认证): python3 分块上传自建进度条 (25%)\n\n")
+            + f"当前形态: FLEET_MODE={FLEET_MODE} → 资产 {ASSET_TMPL}\n\n"
             "示例:\n"
             "  python3 tools/fleet-push.py --plan --tag Push260905 --attempts 3 --source auto\n"
             "  python3 tools/fleet-push.py --plan --tag Push260905 --attempts 3 --source auto --slots 2\n"
@@ -1394,8 +1539,13 @@ def main():
                   f"{len(_cache_vers)} 版已本地缓存 / {_existing} 版已在架跳过")
         for n, c in NODES.items():
             print(f"  slot {n:6} {c or '(local)'}")
-        print(f"  flow: push(10) → untar(5) → upx(45,原生进度聚合) → xz9(15) "
-              f"→ upload(25,{'节点直传' if not o.no_remote_upload else '本机回传'})")
+        if FLEET_MODE == "raw":
+            print(f"  flow: push(10) → untar(5) → pack(30,原样取件不压制) → xz9(35) "
+                  f"→ upload(20,{'节点直传' if not o.no_remote_upload else '本机回传'})")
+            print(f"  资产: {ASSET_TMPL}  (未压缩原包, 压制外包给下游)")
+        else:
+            print(f"  flow: push(10) → untar(5) → upx(45,原生进度聚合) → xz9(15) "
+                  f"→ upload(25,{'节点直传' if not o.no_remote_upload else '本机回传'})")
         return 0
     if o.dry_run:
         f.slots = ([f"local#{i+1}" for i in range(o.slots)]
