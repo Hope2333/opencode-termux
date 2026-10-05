@@ -1,27 +1,46 @@
 #!/usr/bin/env python3
-"""fleet-push.py v3 — 三节点 fleet 压缩推送调度器（PTY 屏幕流归整 + 实时进度聚合）
+"""fleet-push.py v4 — 三节点 fleet 推送调度器（PTY 屏幕流归整 + 实时进度聚合）
+
+**两种形态**（FLEET_MODE 环境变量，默认 raw）:
+
+  raw（task-30 起默认）—— 发布**未压缩原包**，压制外包给下游机器做。
+    push(10) → untar(5) → pack(30, 原样取件不压制) → xz9(35) → upload(20)
+    资产 `opencode-native-<ver>-raw.xz`。作业链里 **upx 段整段不存在**，
+    不是加开关跳过 —— 已压件再压不可逆，且 sha/尺寸会与外包的输入对不上。
+    外包解开 -raw.xz 拿到的就是原件，直接喂 upx。
+
+  upx（历史行为，保留）—— 节点上就地压制。
+    push(10) → untar(5) → upx(45, 原生进度条实时聚合) → xz9(15) → upload(25)
+    资产 `opencode-native-<ver>-upx.xz`。
 
 用法:
-    python3 tools/fleet-push.py [--plan] [--dry-run N] [--tag TAG]
+    FLEET_MODE=raw python3 tools/fleet-push.py [--plan] [--dry-run N] [--tag TAG]
         [--versions v1 v2 ...] [--attempts N] [--include-artifacts]
         [--no-remote-upload] [--verify-download] [--no-clean]
 
-流程（每版本, 包源=packing/pacman/opencode-<v>-<rel>-aarch64.pkg.tar.xz（PKGREL 自适应））:
-  push   本机 →节点: python 分块写 ssh stdin, 自建进度条        (10%)
-  untar  节点解包取 ELF                                         (5%)
-  upx    upx --best, 原生进度条实时聚合(如 `2/5 [***....] 37.7%`) (45%)
-  xz9    xz -9 压缩产物                                         (15%)
-  upload 节点直传 gh release(已录认证): python3 分块上传自建进度条,
-         无 python3 回落 gh release upload; 上传后本机核对资产尺寸 (25%)
+    FLEET_PKGREL  fleet 带的 pkgrel（默认 90，刻意高于全部历史 rel）
 
-upx 完成块解析并展示:
+流程细节:
+  push   本机 →节点: python 分块写 ssh stdin, 自建进度条
+  untar  节点解包取 ELF：按已知成员路径取 → `find -L` 兜底（跟随 symlink）
+         → 校验 \x7fELF magic。三步都必要：v1 single-elf 的入口是 symlink，
+         硬编码文件名 + `-type f` 会在入口改名时静默断掉（docs/fleet-matrix.md §3.3 #2）
+  pack   raw 专属：cp 原样落 packed（零压制），并上报 #ELF <bytes> <name>
+  xz9    xz -9 压缩产物
+  upload 节点直传 gh release(已录认证): python3 分块上传自建进度条,
+         无 python3 回落 gh release upload; 上传后本机核对资产尺寸
+
+upx 形态的完成块解析并展示:
         File size         Ratio      Format      Name
    179807785 ->  51891796   28.86%    linux/elf64   xxxbin
 
-仪表盘: 槽位行(实时阶段+进度+瞬态) / 版本行(运行=总条, 完成=upx摘要)
+raw 形态展示: `raw <未压缩原件 MB> → xz <传输 MB>`
+
+仪表盘: 槽位行(实时阶段+进度+瞬态) / 版本行(运行=总条, 完成=形态摘要)
         底部 TOTAL 总进度条 + 事件流. Ctrl-C 优雅收尾落终表.
 
-零第三方依赖(本机); 节点需 upx + (gh 已认证); python3 可选(升级上传进度).
+零第三方依赖(本机); 节点需 (raw: 无需 upx | upx: 需 upx) + (gh 已认证);
+python3 可选(升级上传进度).
 """
 
 import argparse
@@ -1371,7 +1390,7 @@ def _prefetch_thread(fleet, tag, repo, versions, slots):
 
 def main():
     ap = argparse.ArgumentParser(
-        description="三节点 fleet 压缩推送调度器（PTY 屏幕流归整 + 实时进度聚合）",
+        description="三节点 fleet 推送调度器（raw 未压缩原包 / upx 就地压制）",
         epilog=(
             "流程（每版本, 包源=packing/pacman/opencode-<v>-<rel>-aarch64.pkg.tar.xz）:\n"
             "  push   本机→节点: python 分块写 ssh stdin, 自建进度条        (10%)\n"
