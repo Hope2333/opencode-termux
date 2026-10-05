@@ -204,7 +204,7 @@ elif [[ "${OPENTUI_REBUILD:-0}" == "1" ]]; then
 else
   echo "==> opentui bionic runtime stale/broken; refusing auto-rebuild (patch drift risk)"
   echo "    TUI_SO=$TUI_SO missing FFI symbols — graft a verified .so then re-run"
-  echo "    (build: make libopentui  OR manual zig build per docs/tui-common-fix.md)"
+  echo "    (build: make libopentui  OR manual zig build per docs/10-build/16-tui-common-fix.md)"
   exit 1
 fi
 

@@ -1,9 +1,0 @@
-docs/README.md
-docs/skills-index.md
-docs/execution-checklist.md
-docs/13-opencode-runtime-build.md
-docs/22-termux-services-opencode-web.md
-docs/plugin-management.md
-docs/plugin-packaging-design.md
-docs/system-skills-hook-architecture.md
-docs/incidents/2026-02-23-opencode-web-termux-so-avalanche.md

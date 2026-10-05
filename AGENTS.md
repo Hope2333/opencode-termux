@@ -4,7 +4,7 @@
 **Branch:** pure-android
 
 ## OVERVIEW
-Termux-first OpenCode build/packaging workspace. Stable mainline since 27/28 is the native bionic line: a single zero-glibc Android ELF produced by the transplant revive pipeline (`tools/transplant/`, `make transplant`; see `docs/transplant.md`). The wrapper line is renamed `opencode-wrapper` and demoted to appendix maintenance (local build path `tools/produce-local.sh` + `scripts/*`); `opencode-wrapper-standalone` is the frozen single-version rollback package that can coexist with `opencode`. `opencode` and `opencode-wrapper` remain mutually exclusive. GitHub Actions workflows are diagnostic/handoff, not final runtime release.
+Termux-first OpenCode build/packaging workspace. Stable mainline since 27/28 is the native bionic line: a single zero-glibc Android ELF produced by the transplant revive pipeline (`tools/transplant/`, `make transplant`; see `docs/10-build/14-transplant-pipeline.md`). The wrapper line is renamed `opencode-wrapper` and demoted to appendix maintenance (local build path `tools/produce-local.sh` + `scripts/*`); `opencode-wrapper-standalone` is the frozen single-version rollback package that can coexist with `opencode`. `opencode` and `opencode-wrapper` remain mutually exclusive. GitHub Actions workflows are diagnostic/handoff, not final runtime release.
 
 ## STRUCTURE
 ```text
@@ -13,7 +13,17 @@ opencode-termux/
 ├── scripts/                    # staging, packaging, hook runners, CI helper scripts
 ├── tools/                      # operator-facing CLIs (make wrapper, plugin lifecycle, matrix)
 ├── packing/                  # package templates + manifests (mixed with generated outputs)
-├── docs/                       # canonical runbooks, architecture notes, incident records (e.g. docs/transplant.md)
+├── docs/                       # canonical runbooks, architecture notes, incidents — family tree, index at docs/README.md
+│   ├── 00-scope/               # goals, scope, env baseline, production policy
+│   ├── 10-build/               # build & runtime internals (e.g. docs/10-build/14-transplant-pipeline.md)
+│   ├── 20-packaging/           # deb/pacman/service/plugin packaging + docs bundle list
+│   ├── 30-testing/             # matrices, audits, test reports, perf measurements
+│   ├── 40-release/             # release & migration runbooks
+│   ├── 50-automation/          # CI handoff, make maintainer surface, plugin ops
+│   ├── 80-handover/            # dated handover snapshots (D1–D4)
+│   ├── 90-incidents/           # incident RCA & postmortems
+│   ├── 99-reference/           # upstream issue sync, comparisons, research
+│   └── cross-compile/          # cross-compilation line (separate workstream)
 ├── artifacts/                  # generated runtime/staging outputs (disposable)
 └── .github/workflows/          # CI handoff workflows
 ```
@@ -26,12 +36,12 @@ opencode-termux/
 | Stage install tree | `scripts/build.sh`, `scripts/common.sh` | writes staged prefix + build metadata |
 | Build DEB package (wrapper appendix) | `scripts/package/package_deb.sh`, `packing/deb/DEBIAN/control` | builds the `opencode-wrapper` deb; postinst hook calls system-skill runner |
 | Build pacman package (wrapper appendix) | `scripts/package/package_pacman.sh`, `packing/pacman/PKGBUILD*` | builds the `opencode-wrapper` pacman package; dynamic pkgver/pkgrel rewrite + makepkg flow |
-| Native provider packaging | `scripts/package/package_deb_native.sh`, `scripts/package/package_pacman_native.sh`, `packing/pacman/PKGBUILD.native` | `opencode-native` deb/pacman providers for the native bionic mainline (stable since 27/28; see docs/dual-track-install.md) |
+| Native provider packaging | `scripts/package/package_deb_native.sh`, `scripts/package/package_pacman_native.sh`, `packing/pacman/PKGBUILD.native` | `opencode-native` deb/pacman providers for the native bionic mainline (stable since 27/28; see docs/20-packaging/23-dual-track-install.md) |
 | Standalone rollback packaging | `scripts/package/package_deb_standalone.sh`, `scripts/package/package_pacman_standalone.sh`, `packing/pacman/PKGBUILD.standalone` | `opencode-wrapper-standalone` frozen rollback package (coexists with `opencode`); stage via `STANDALONE=1 ./scripts/build.sh` |
 | System-skill hook behavior | `scripts/hooks/run-system-skills.sh`, `packing/manifests/system-skills/*.json` | strict/network flags default to safe mode |
-| Plugin lifecycle | `tools/plugin-manager.sh`, `tools/plugin-selfcheck.sh`, `docs/plugin-management.md` | local file plugin path + snapshot rollback model |
-| Upgrade/downgrade simulation | `tools/upgrade-matrix.sh`, `docs/execution-checklist.md` | machine2 lifecycle validation with cached deb artifacts |
-| Transplant 管线 | `tools/transplant/transplant.py` | 原生 android Bun 拼接 + ELF 复活手术（C1 已复活，见 `docs/transplant.md`） |
+| Plugin lifecycle | `tools/plugin-manager.sh`, `tools/plugin-selfcheck.sh`, `docs/50-automation/53-plugin-management.md` | local file plugin path + snapshot rollback model |
+| Upgrade/downgrade simulation | `tools/upgrade-matrix.sh`, `docs/40-release/40-execution-checklist.md` | machine2 lifecycle validation with cached deb artifacts |
+| Transplant 管线 | `tools/transplant/transplant.py` | 原生 android Bun 拼接 + ELF 复活手术（C1 已复活，见 `docs/10-build/14-transplant-pipeline.md`） |
 | CI armv7 handoff | `.github/workflows/prebuild-armv7.yml`, `scripts/ci/*` | attempt-based build evidence, not final Termux release path |
 
 ## CODE MAP
@@ -51,7 +61,7 @@ opencode-termux/
 - Packaging sources live under `packing/*` templates; versioned package files are generated artifacts.
 
 ## ANTI-PATTERNS (THIS PROJECT)
-- Do not use musl/proot as official Termux final runtime path (`README.md`, `docs/local-production.md`).
+- Do not use musl/proot as official Termux final runtime path (`README.md`, `docs/00-scope/03-local-production.md`).
 - Do not treat CI armv7 handoff artifacts as final release binaries.
 - Do not edit generated outputs (`artifacts/`, `packing/dpkg/work/`, `packing/pacman/pkg/`, versioned `.deb` / `.pkg.tar.xz`).
 - Do not run staging/packaging scripts against shared or wrong prefixes: several flows use destructive `rm -rf` cleanup.

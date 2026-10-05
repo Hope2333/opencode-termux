@@ -352,7 +352,7 @@ opencode1 config/cache trees). Re-run after every plugin update:
   migrate-to-opencode1.sh patch
 Verify with live fds, not declarations:
   ls -l /proc/$(pgrep -n opencode1)/fd
-Full playbook: MIGRATION-EXPERIENCE.md / docs/migration-v1-to-v2.md
+Full playbook: MIGRATION-EXPERIENCE.md / docs/40-release/41-migration-v1-to-v2.md
 This script is idempotent; it never clobbers the nested target.
 CHECKLIST
 }

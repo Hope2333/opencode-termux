@@ -19,7 +19,7 @@ on:
     branches: [main, master]
     paths:
       - .github/workflows/prebuild-armv7.yml
-      - docs/ci-prebuild-armv7.md
+      - docs/50-automation/51-ci-prebuild-armv7.md
       - scripts/ci/lib-ci.sh
       - scripts/ci/build-bun-armv7.sh
       - scripts/ci/build-bun-armv7-source.sh

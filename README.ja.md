@@ -103,7 +103,7 @@ make deb-native VER=2.0.0
 make pacman-native VER=2.0.0
 ```
 
-ビルドの詳細は [docs/make-maintainer.md](./docs/make-maintainer.md) を参照。
+ビルドの詳細は [docs/50-automation/50-make-maintainer.md](docs/50-automation/50-make-maintainer.md) を参照。
 
 ## v1 と v2（二世代）
 
@@ -118,10 +118,10 @@ pacman -S opencode1           # v1 メインライン
 
 ## 技術ドキュメント
 
-- [docs/transplant.md](./docs/transplant.md) -- ランタイム移植パイプライン
-- [docs/comparison-runtime-lines.md](./docs/comparison-runtime-lines.md) -- ランタイムライン比較
-- [docs/dual-track-install.md](./docs/dual-track-install.md) -- デュアルトラックインストールガイド
-- [docs/make-maintainer.md](./docs/make-maintainer.md) -- Makefile リファレンス
+- [docs/10-build/14-transplant-pipeline.md](docs/10-build/14-transplant-pipeline.md) -- ランタイム移植パイプライン
+- [docs/99-reference/comparison-runtime-lines.md](docs/99-reference/comparison-runtime-lines.md) -- ランタイムライン比較
+- [docs/20-packaging/23-dual-track-install.md](docs/20-packaging/23-dual-track-install.md) -- デュアルトラックインストールガイド
+- [docs/50-automation/50-make-maintainer.md](docs/50-automation/50-make-maintainer.md) -- Makefile リファレンス
 
 ## 💬 コミュニティ & Discussions
 

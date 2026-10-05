@@ -142,7 +142,7 @@ Supersedes Push260903 (demoted old batch). Compressed family assets arrive via t
 - **opencode-wrapper-standalone**: Single-version rollback (coexists with opencode).
 
 ## Installation
-See docs/dual-track-install.md
+See docs/20-packaging/23-dual-track-install.md
 EOF
 )
         gh release create "$TAG" --repo "$REPO_SLUG" --prerelease \

@@ -79,7 +79,7 @@ if [[ -d "$ROOT_DIR/packing/manifests/system-skills" ]]; then
 	cp -a "$ROOT_DIR/packing/manifests/system-skills/." "$LIB_DIR/system-skills/"
 fi
 
-DOCS_LIST="${DOCS_LIST:-$ROOT_DIR/docs/bundle-list.txt}"
+DOCS_LIST="${DOCS_LIST:-$ROOT_DIR/docs/20-packaging/bundle-list.txt}"
 DOCS_OUT="$PREFIX_DIR/share/opencode/docs"
 if [[ -f "$DOCS_LIST" ]]; then
 	ensure_dir "$DOCS_OUT"

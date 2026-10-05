@@ -41,7 +41,7 @@ fi
 
 # pty splice (optional asset, backward compatible): when the compressed package
 # ships the patched musl librust_pty (bun-pty 0.4.11 splice — see
-# tools/bun-pty-splice/ and docs/compressed-line.md), point bun-pty's
+# tools/bun-pty-splice/ and docs/20-packaging/24-compressed-line-contract.md), point bun-pty's
 # BUN_PTY_LIB probe at it so the runtime dlopens the bionic-compatible build
 # instead of failing on the inlined asset. Its DT_NEEDED shim.so resolves via
 # the pty dir added to LD_LIBRARY_PATH above. Old packages without the asset

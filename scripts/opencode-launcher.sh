@@ -18,7 +18,7 @@
 #   linker needs the explicit path to libopencode-crhandler.so.
 # - BUN_PTY_LIB injection (optional asset, backward compatible): when the
 #   package ships the patched musl librust_pty (bun-pty 0.4.11 splice — see
-#   tools/bun-pty-splice/ and docs/compressed-line.md), point bun-pty's
+#   tools/bun-pty-splice/ and docs/20-packaging/24-compressed-line-contract.md), point bun-pty's
 #   probe at it. Absent asset = no export, graceful degradation.
 set -euo pipefail
 P="${PREFIX:-/data/data/com.termux/files/usr}"

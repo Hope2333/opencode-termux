@@ -103,7 +103,7 @@ make deb-native VER=2.0.0
 make pacman-native VER=2.0.0
 ```
 
-See [docs/make-maintainer.md](./docs/make-maintainer.md) for full build reference.
+See [docs/50-automation/50-make-maintainer.md](docs/50-automation/50-make-maintainer.md) for full build reference.
 
 ## v1 and v2 (two generations)
 
@@ -118,10 +118,10 @@ Within one generation, native / wrapper / compressed are mutually exclusive (pic
 
 ## Technical documentation
 
-- [docs/transplant.md](./docs/transplant.md) -- Runtime transplant pipeline
-- [docs/comparison-runtime-lines.md](./docs/comparison-runtime-lines.md) -- Runtime line comparison
-- [docs/dual-track-install.md](./docs/dual-track-install.md) -- Dual-track install guide
-- [docs/make-maintainer.md](./docs/make-maintainer.md) -- Makefile reference
+- [docs/10-build/14-transplant-pipeline.md](docs/10-build/14-transplant-pipeline.md) -- Runtime transplant pipeline
+- [docs/99-reference/comparison-runtime-lines.md](docs/99-reference/comparison-runtime-lines.md) -- Runtime line comparison
+- [docs/20-packaging/23-dual-track-install.md](docs/20-packaging/23-dual-track-install.md) -- Dual-track install guide
+- [docs/50-automation/50-make-maintainer.md](docs/50-automation/50-make-maintainer.md) -- Makefile reference
 
 ## 💬 Community & Discussions
 

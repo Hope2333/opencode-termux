@@ -16,7 +16,7 @@
  *      opencode's internal file watcher (when active, e.g. via
  *      OPENCODE_EXPERIMENTAL_FILEWATCHER=1) perceives the change and
  *      publishes file.watcher.updated on its event bus, which plugin
- *      `event` hooks receive (see docs/transplant.md "watcher 集成点").
+ *      `event` hooks receive (see docs/10-build/14-transplant-pipeline.md "watcher 集成点").
  *      Sentinel events are ignored to avoid a touch->event->touch loop,
  *      and touches are rate-limited to one per 200ms.
  *

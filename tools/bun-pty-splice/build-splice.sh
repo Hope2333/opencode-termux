@@ -3,7 +3,7 @@ set -euo pipefail
 
 # build-splice.sh -- 一键复刻 bionic pty 拼接成品（bun-pty 0.4.11 musl 变体）
 #
-# 管线（与 2026-10-01/02 oscar+本机验证台实证一致，见 docs/compressed-line.md）:
+# 管线（与 2026-10-01/02 oscar+本机验证台实证一致，见 docs/20-packaging/24-compressed-line-contract.md）:
 #   1. 取原件: npm bun-pty@0.4.11 tgz 内 rust-pty/target/release/librust_pty_arm64_musl.so
 #      （优先本地 vendor 副本 / OPENCODE_PTY_NPM_TGZ，否则从 registry.npmjs.org 下载；
 #       两种来源均校验 sha256）

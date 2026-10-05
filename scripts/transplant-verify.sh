@@ -3,7 +3,7 @@
 # transplant-verify.sh — agent-executable 7-point verification checklist
 # for native-android transplant binaries.
 #
-# Checklist source: docs/performance-optimization.md §4.4 (移植后每版本必须通过)
+# Checklist source: docs/30-testing/33-performance-optimization.md §4.4 (移植后每版本必须通过)
 #
 # Usage:
 #   scripts/transplant-verify.sh --runtime <path> [--offline] [--out <path>]
