@@ -1,0 +1,544 @@
+# glibc-cross.yml — linux-glibc 交叉目标构建与验收（PREPARED / 未启用 / 依赖未就绪）
+#
+# 状态：**草稿，未 push，且当前必然失败**。见下方「BLOCKER」段。
+#       需求来源：docs/cross-compile/plan.md §1.2 T7（"由 res-cicd 代理负责，
+#       本目录只提需求"）；验收配方来自 plan.md §1.3 + phase1-prereq.md P1–P15。
+#       实测与本文件冲突时**以 docs/cross-compile/ 的实测文档为准**。
+#
+# ── 与 build-fleet.yml 的关系（刻意分开，不合并） ──────────────────────
+# build-fleet.yml 是 **bionic/aarch64 产物线**，跑在自托管 Termux 真机 runner 上
+# （见 .github/README-build.md §1：NDK 交叉做不到那三件套）。
+# 本文件是 **glibc/x64 交叉目标线**，跑在 GitHub-hosted **原生 x64** runner 上，
+# 对应 docs/cross-compile/ci-and-emulation.md 方案 A「编译在本机、验证外移到 CI」。
+# 两者 runner 类别、产物语义、验收判据全不相同，混在一个 workflow 里会让
+# 「哪些 job 需要真机」这个问题失去边界。
+#
+# ── 验收 3 查（从 2 查收紧） ───────────────────────────────────────────
+#   查1  `readelf -l` 看 INTERP → glibc 必须是 `/lib64/ld-linux-x86-64.so.2`
+#   查2  `strings` 查烘焙 platform → 必须为 `linux`
+#   查3  opentui 平台包落地 → `@opentui/core-linux-x64` 内嵌 blob 存在
+# 查2 是**唯一**能拦住「阴险坏件」（组合 D）的一查：组合 D 的 ELF 完全合法，
+# `file`/`readelf` 全绿，只有烘焙常量检查能发现它。查1 单独用会漏。
+#
+# ── 负向验收第 5 项（构造反例证明 gate 真会拦） ─────────────────────────
+#   组合 D = `--target=bun-linux-x64`（glibc token）**只给 baseline 路径不给 musl
+#   token** → 实测产出：ELF 是合法 glibc（readelf 全绿）但 process.platform 烘成
+#   `android` → opentui 运行时 throw → **TUI 100% 起不来**。
+#   唯一正确组合 = `--target=<musl token>` + `--compile-executable-path=<glibc
+#   baseline>` **两者同给**（token 只管 JS 烘焙、路径只管 ELF，两个独立旋钮）。
+#   本 workflow 的 negative-acceptance job 会真编一个组合 D 产物并断言 gate 报错。
+#   **没跑过这一项，不能声称 gate 有效** —— 「恰好没触发」不等于「会拦」。
+#
+# ── 两条静默陷阱（写在这里是因为它们不报错，只会悄悄坏） ──────────────
+#   陷阱1  bionic 宿主上 `bun install` 会**静默跳过** x64 平台包：lockfile 有记录、
+#          exit 0、**无 warning**、`node_modules` 空。必须 `--cpu=x64 --os=linux`
+#          **且在干净目录**——只加 flag 会命中缓存不重解压（P15）。
+#   陷阱2  `tools/build-bionic/apply-platform-patch.sh` 把
+#          `if (process.platform === "linux")` 改成 `if (true)`，这是 **bionic 线专用
+#          补丁，glibc 线必须撤**；且**不能与 feature flag 无脑同条件执行**，
+#          否则踩坏 bionic 主线。
+#
+# ── 禁作验收依据的东西 ───────────────────────────────────────────────
+#   `compile` 进度行里的 baseline 名**会谎报**：组合 C/D 都打印
+#   `bun-linux-x64-android-v1.4.0`，但实际复制的二进制来自
+#   `--compile-executable-path`。**只认上面 3 查，不认日志。**
+
+name: glibc cross target (linux-x64) [PREPARED — blocked on T1/T3b]
+
+on:
+  workflow_dispatch:
+    inputs:
+      bun_version:
+        description: "bun 版本（baseline tgz 与 compile 都用它）"
+        required: false
+        default: "1.4.0"
+      opencode_ver:
+        description: "opencode v1 版本（源码 tag）"
+        required: false
+        default: "1.18.32"
+      run_negative:
+        description: "true=跑负向验收第 5 项（组合 D 反例，默认 true）"
+        type: boolean
+        required: false
+        default: true
+      baseline_sha256:
+        description: "glibc baseline tgz 的 sha256（留空=只下载不校验，见 BLOCKER B3）"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: glibc-cross-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # ══════════════════════════════════════════════════════════════════════
+  # BLOCKER —— 以下 T1/T3/T3b 均**尚未实现**，本 workflow 现在跑必失败。
+  # 已逐条核对 tools/a2/build-v1.sh 现状（行号为该文件）：
+  #   T1  A2_TARGET_FILTER 参数化      未做。build-v1.sh:129 sed 硬编码
+  #                                  `item.arch === "arm64"`，x64 目标会被过滤掉。
+  #   T3  platform 烘焙断言 gate      未做。build-v1.sh 全文无 strings/PLATFORM 断言。
+  #   T3b 撤 apply-platform-patch     未做。build-v1.sh:118-119 无条件调用
+  #                                  apply-platform-patch.sh（→ if (true)）。
+  #   T5  crhandler LIBC_NAME 参数化   未做（但本阶段 T4 明确**跳过** crhandler
+  #                                  路径，故不阻塞 glibc x64 验收）。
+  # 这些改动都在 tools/a2/build-v1.sh 与 tools/transplant/crhandler_patch.py，
+  # **不在本代理的写入范围**（只允许 .github/）。故本 job 现状为「prepared 且
+  # 诚实地失败」——它会在下面 Preflight 里指名道姓地报缺哪一项，而不是假装能跑。
+  # ══════════════════════════════════════════════════════════════════════
+  preflight:
+    name: preflight — check T1/T3b prerequisites
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assert the glibc path prerequisites exist in build-v1.sh
+        run: |
+          set -euo pipefail
+          B=tools/a2/build-v1.sh
+          [ -f "$B" ] || { echo "missing $B" >&2; exit 1; }
+          missing=0
+
+          # T1：A2_TARGET_FILTER 必须参数化。当前 :129 是 sed 硬编码 arch==arm64，
+          # 对 x64 目标会把 allTargets 过滤成空。
+          if grep -q 'item\.arch === "arm64"' "$B"; then
+            echo "BLOCKER T1: $B still hardcodes item.arch === \"arm64\" (target filter not parameterized)" >&2
+            echo "         -> x64 target would be filtered out of allTargets; compile has nothing to build." >&2
+            echo "         -> need: CROSS_TARGET-driven filter (plan.md T1)." >&2
+            missing=$((missing + 1))
+          fi
+
+          # T1b：compile 命令必须能同时给 musl token 与 --compile-executable-path。
+          if ! grep -q 'compile-executable-path' "$B"; then
+            echo "BLOCKER T1b: $B has no --compile-executable-path support" >&2
+            echo "         -> without it the glibc baseline cannot be paired with the musl token (combo C)." >&2
+            missing=$((missing + 1))
+          fi
+
+          # T3b：glibc 线必须能撤掉 apply-platform-patch 的 `if (true)`。
+          if ! grep -qE 'SKIP_PLATFORM_PATCH|CROSS_TARGET' "$B"; then
+            echo "BLOCKER T3b: $B applies apply-platform-patch.sh unconditionally (no glibc opt-out)" >&2
+            echo "         -> 'if (true)' is bionic-only; leaving it in makes the platform branch dead." >&2
+            echo "         -> need: a glibc-only opt-out that is NOT the same condition as the feature flag." >&2
+            missing=$((missing + 1))
+          fi
+
+          # 附带提醒（不是 blocker）：T3 的 gate 可以在 CI 侧做（就是本文件的 3 查），
+          # 不必等 build-v1.sh 内建。但内建更好——本机自检也能拦住。
+          if ! grep -q 'PLATFORM=' "$B"; then
+            echo "note: $B has no in-script platform assertion; the 3 checks in this workflow" >&2
+            echo "      will act as the gate instead. Consider adding T3 in-script for local runs." >&2
+          fi
+
+          if [ "$missing" -gt 0 ]; then
+            echo >&2
+            echo "=== $missing prerequisite(s) missing — see docs/cross-compile/plan.md T1/T1b/T3b ===" >&2
+            echo "=== this job is PREPARED, not runnable. Fix build-v1.sh first. ===" >&2
+            exit 1
+          fi
+          echo "all glibc prerequisites present"
+
+      - name: Report toolchain
+        run: |
+          set -euo pipefail
+          echo "node:   $(node --version)"
+          echo "npm:    $(npm --version)"
+          echo "bun:    $(bun --version 2>/dev/null || echo 'not installed — workflow installs its own')"
+          echo "runner: $(uname -m) / $(. /etc/os-release && echo "$PRETTY_NAME")"
+
+  # ── 阶段 1 主 job：组合 C 配方 + 3 查验收 ─────────────────────────────
+  build-and-verify:
+    name: linux-glibc-x64 (combo C) + 3 checks
+    needs: preflight
+    runs-on: ubuntu-24.04     # 原生 x64。docs/cross-compile/ci-and-emulation.md 方案 A。
+    env:
+      BUN_VER: ${{ inputs.bun_version }}
+      OPENCODE_VER: ${{ inputs.opencode_ver }}
+      BASELINE_SHA: ${{ inputs.baseline_sha256 }}
+      WORK: ${{ runner.temp }}/glibc
+      # 组合 C 的两个旋钮。token 只管 JS 烘焙，路径只管 ELF。
+      COMPILE_TARGET: bun-linux-x64-musl
+      BASELINE_URL: https://registry.npmjs.org/@oven/bun-linux-x64/-/bun-linux-x64-1.4.0.tgz
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch glibc baseline (npm tgz, NOT the bionic one)
+        run: |
+          set -euo pipefail
+          mkdir -p "$WORK/baseline"
+          cd "$WORK/baseline"
+          # 关键：这是 x64 **glibc** baseline。与仓库现有 bun-bind.json 绑定的
+          # bun-linux-aarch64-android 是两个不同的包，别拿错。
+          curl -fsSL "$BASELINE_URL" -o bun.tgz
+          sha256sum bun.tgz | tee baseline.sha256
+          if [ -n "$BASELINE_SHA" ]; then
+            echo "$BASELINE_SHA  bun.tgz" | sha256sum -c - || {
+              echo "baseline sha256 mismatch — refusing to build" >&2; exit 1; }
+            echo "baseline sha256 verified"
+          else
+            # plan.md P3 明确：1.3.14 的 a9a0d18d… 不能沿用，1.4.0 必须重取并
+            # 自行落 sha。留空输入时不阻塞，但把 sha 打出来供人工登记。
+            echo "::warning::baseline sha256 NOT verified (input empty). Record it before trusting this build."
+            echo "recorded sha: $(cut -d' ' -f1 baseline.sha256)"
+          fi
+          tar -xzf bun.tgz
+          find . -name 'bun' -type f | tee baseline-path.txt
+          BASELINE_ABS="$(find "$PWD" -name 'bun' -type f | head -1)"
+          [ -x "$BASELINE_ABS" ] || { echo "baseline bun not found in tgz" >&2; exit 1; }
+          echo "BASELINE_ABS=$BASELINE_ABS" >> "$GITHUB_ENV"
+          file "$BASELINE_ABS" | tee baseline-file.txt
+          # 交叉自检：baseline 本身就该是 glibc x64。若这一步就看到 bionic/android，
+          # 说明拿错了包，后面所有产物都不可信。
+          # 先断言 INTERP 读得出来，再判断它是什么——`readelf` 读不出 INTERP 时
+          # grep 同样会「无输入即通过」，那等于没检。
+          b_interp="$(readelf -l "$BASELINE_ABS" 2>/dev/null \
+            | sed -n 's/.*program interpreter: \(.*\)]/\1/p' | head -1 || true)"
+          if [ -z "$b_interp" ]; then
+            echo "baseline INTERP unreadable — cannot confirm this is the glibc package" >&2
+            echo "  readelf -l output was:" >&2
+            readelf -l "$BASELINE_ABS" 2>&1 | head -20 >&2
+            exit 1
+          fi
+          echo "baseline INTERP = $b_interp"
+          case "$b_interp" in
+            /system/bin/linker64)
+              echo "baseline is BIONIC — wrong package (this is the aarch64-android one)" >&2
+              exit 1 ;;
+            /lib64/ld-linux-x86-64.so.2)
+              echo "baseline confirmed glibc x64" ;;
+            *)
+              echo "baseline INTERP is unexpected: $b_interp" >&2
+              echo "  Expected /lib64/ld-linux-x86-64.so.2 for @oven/bun-linux-x64" >&2
+              exit 1 ;;
+          esac
+
+      - name: Checkout opencode source (clean tree)
+        run: |
+          set -euo pipefail
+          # 干净目录是 install 门控的一半要求（P15）：旧 bun.lock / node_modules 会让
+          # install 命中缓存而不重解压，x64 平台包就静默不落地。
+          SRC="$WORK/src"
+          rm -rf "$SRC"; mkdir -p "$SRC"
+          git clone --depth 1 --branch "v$OPENCODE_VER" \
+            https://github.com/anomalyco/opencode.git "$SRC" 2>/dev/null || \
+          git clone --depth 1 --branch "$OPENCODE_VER" \
+            https://github.com/anomalyco/opencode.git "$SRC"
+          echo "SRC=$SRC" >> "$GITHUB_ENV"
+          ls "$SRC/packages/opencode/script/build.ts" >/dev/null || {
+            echo "build.ts not found — wrong tag layout?" >&2; exit 1; }
+
+      - name: Install with x64 gate (P4/P15 — the silent-skip trap)
+        run: |
+          set -euo pipefail
+          cd "$SRC"
+          # ⚠️ 陷阱1：bionic 宿主裸 install 会**静默跳过** x64 平台包——exit 0、无
+          # warning、node_modules 空。两个 flag 必须一起给，且目录必须干净。
+          bun install --cpu=x64 --os=linux --ignore-scripts
+          # 立刻断言落地（查3 的前置）：平台包没落地就不要往下走，
+          # 否则会编出一个「看起来成功但 TUI 必崩」的产物。
+          n="$(find node_modules -path '*@opentui/core-linux-x64*' -name 'libopentui.so' | wc -l)"
+          echo "opentui linux-x64 blobs found: $n"
+          if [ "$n" -eq 0 ]; then
+            echo "install gate FAILED: @opentui/core-linux-x64 not materialized." >&2
+            echo "This is the P15 silent-skip. Check: clean dir? both --cpu and --os given?" >&2
+            exit 1
+          fi
+          # 反向断言：bionic 平台包不该被误装
+          nb="$(find node_modules -path '*core-linux-arm64-android*' -name 'libopentui.so' 2>/dev/null | wc -l)"
+          echo "bionic arm64 blobs present (should be 0 for a glibc build): $nb"
+
+      - name: Build with combo C (musl token + glibc baseline)
+        run: |
+          set -euo pipefail
+          cd "$SRC"
+          # 组合 C：两个旋钮同给。任一单独给都会产出坏件（见文件头）。
+          # 目标不设 CROSS_TARGET 污染 bionic 线——本 job 是独立 runner，不碰 arm64 基线。
+          bun build --compile \
+            --target="$COMPILE_TARGET" \
+            --compile-executable-path="$BASELINE_ABS" \
+            packages/opencode/script/build.ts \
+            --outfile "$WORK/out-linux-x64" \
+            --define OPENCODE_VERSION="$OPENCODE_VER" \
+            2>&1 | tee "$WORK/compile.log"
+          # ⚠️ compile.log 里的 baseline 名会谎报（组合 C/D 都打
+          # bun-linux-x64-android-v1.4.0）。**不据此判断成败**，只留档。
+          echo "--- NOTE: compile log baseline name is known to lie; only the 3 checks count ---"
+          ls -la "$WORK/out-linux-x64"
+
+      - name: CHECK 1 — readelf -l INTERP must be glibc
+        run: |
+          set -euo pipefail
+          B="$WORK/out-linux-x64"
+          readelf -l "$B" | tee "$WORK/readelf-l.txt"
+          interp="$(readelf -l "$B" | sed -n 's/.*program interpreter: \(.*\)]/\1/p' | head -1)"
+          echo "INTERP=$interp"
+          echo "$interp" > "$WORK/interp.txt"
+          if [ "$interp" != "/lib64/ld-linux-x86-64.so.2" ]; then
+            echo "CHECK1 FAILED: INTERP='$interp' (expected /lib64/ld-linux-x86-64.so.2)" >&2
+            echo "  /system/bin/linker64  => bionic product, wrong build" >&2
+            echo "  /lib64/ld-musl-*      => musl product (that is 阶段 3, not here)" >&2
+            exit 1
+          fi
+          # NEEDED 里出现裸 libc.so（bionic 名字）同样是坏件。
+          # ⚠️ 先断言 NEEDED 非空：否则 readelf -d 一旦无输出（文件不对/损坏），
+          #    grep 无输入 → 判定为「没有 bionic libc.so」→ **静默放行**。
+          #    「没检查到」和「检查通过」必须区分开。
+          needed="$(readelf -d "$B" 2>/dev/null | grep NEEDED || true)"
+          if [ -z "$needed" ]; then
+            echo "CHECK1 FAILED: readelf -d produced no NEEDED lines." >&2
+            echo "  Either the file is not a valid dynamically-linked ELF, or readelf failed." >&2
+            echo "  Refusing to treat 'nothing found' as 'nothing wrong'." >&2
+            exit 1
+          fi
+          printf '%s\n' "$needed" | tee "$WORK/needed.txt"
+          if printf '%s\n' "$needed" | grep -qE '\blibc\.so\b'; then
+            echo "CHECK1 FAILED: NEEDED contains bionic libc.so" >&2
+            printf '%s\n' "$needed" >&2
+            exit 1
+          fi
+          # 期望看到 glibc 的两个标志性依赖
+          printf '%s\n' "$needed" | grep -q 'libc\.so\.6' || {
+            echo "CHECK1 FAILED: NEEDED has no libc.so.6 — is this really a glibc build?" >&2
+            printf '%s\n' "$needed" >&2; exit 1; }
+          echo "CHECK1 PASS"
+
+      - name: "CHECK 2 — strings: baked platform must be linux (the combo-D gate)"
+        id: platform
+        run: |
+          set -euo pipefail
+          B="$WORK/out-linux-x64"
+          # 这一查是 readelf 查不出来的。组合 D 的 ELF 完全合法但 platform 烘成
+          # android → opentui resolveNativeLibraryPath throw → TUI 100% 起不来。
+          plat="$(strings -a "$B" | grep -oE 'PLATFORM=.{0,40}' | head -1 || true)"
+          arch="$(strings -a "$B" | grep -oE 'ARCH=" \+ "[a-z0-9]+' | head -1 || true)"
+          echo "baked: $plat"
+          echo "baked: $arch"
+          printf '%s\n' "$plat" > "$WORK/platform.txt"
+          if [ -z "$plat" ]; then
+            echo "CHECK2 FAILED: no PLATFORM= constant found — is this even a bun-compiled product?" >&2
+            exit 1
+          fi
+          if ! printf '%s' "$plat" | grep -q 'PLATFORM=" + "linux"'; then
+            echo "CHECK2 FAILED: baked platform is not linux -> $plat" >&2
+            echo "  This is exactly the combo-D failure mode: ELF legal, TUI dead." >&2
+            exit 1
+          fi
+          # 顺带查 arch：组合 E（只给路径不给 token）会把 arch 烘成宿主。
+          if ! printf '%s' "$arch" | grep -q 'x64'; then
+            echo "CHECK2b FAILED: baked arch is not x64 -> $arch (combo E: no --target given)" >&2
+            exit 1
+          fi
+          echo "CHECK2 PASS (platform=linux arch=x64)"
+
+      - name: CHECK 3 — opentui blob embedded in the product
+        run: |
+          set -euo pipefail
+          cd "${{ github.workspace }}"
+          B="$WORK/out-linux-x64"
+          # 内嵌 blob 存在性：用本仓的 swap_tui 探测器（tools/transplant/swap_tui.py），
+          # 它是 P6/P7 里定位 bunfs asset 的同一套逻辑。
+          python3 - "$B" <<'PY' | tee "$WORK/opentui-asset.txt"
+          import sys
+          sys.path.insert(0, "tools/transplant")
+          import swap_tui
+          off = swap_tui.find_libopentui_asset(open(sys.argv[1], "rb").read())
+          print(f"libopentui asset offset = {off}")
+          if off < 0:
+              print("MISSING: no libopentui asset in product")
+              sys.exit(1)
+          print("opentui asset PRESENT")
+          PY
+          # 该 .so 必须是 glibc 平台包（libc.so.6），不是 bionic 的。
+          # 同样先断言 NEEDED 非空，避免 grep 无输入导致静默放行。
+          SO="$(find "$SRC/node_modules" -path '*@opentui/core-linux-x64*' -name 'libopentui.so' | head -1)"
+          [ -n "$SO" ] || { echo "CHECK3 FAILED: no source .so to compare" >&2; exit 1; }
+          so_needed="$(readelf -d "$SO" 2>/dev/null | grep NEEDED || true)"
+          if [ -z "$so_needed" ]; then
+            echo "CHECK3 FAILED: readelf -d on the opentui .so produced no NEEDED lines" >&2
+            echo "  $SO" >&2
+            echo "  Refusing to treat an unreadable .so as a passing one." >&2
+            exit 1
+          fi
+          printf '%s\n' "$so_needed" | tee "$WORK/so-needed.txt"
+          if ! printf '%s\n' "$so_needed" | grep -q 'libc\.so\.6'; then
+            echo "CHECK3 FAILED: opentui .so is not a glibc build (no libc.so.6)" >&2
+            printf '%s\n' "$so_needed" >&2
+            exit 1
+          fi
+          echo "CHECK3 PASS"
+
+      - name: CHECK 4 — functional smoke (--version)
+        run: |
+          set -euo pipefail
+          B="$WORK/out-linux-x64"
+          chmod +x "$B"
+          # 上游 build.ts:230-238 自己就只 smoke 本机平台产物；本 job 跑在 x64
+          # 原生 runner 上，所以这里真的能跑（这正是方案 A 的价值）。
+          "$B" --version | tee "$WORK/version.txt"
+          grep -q "$OPENCODE_VER" "$WORK/version.txt" || {
+            echo "CHECK4 FAILED: --version does not contain $OPENCODE_VER" >&2; exit 1; }
+          echo "CHECK4 PASS"
+
+      - name: CHECK 5 — TUI smoke (x64 native)
+        run: |
+          set -euo pipefail
+          B="$WORK/out-linux-x64"
+          # 用本仓现成的 TUI 探测器；这是「TUI 真的能起来」的唯一证明，
+          # 也是组合 D 唯一会真正暴露的地方（--version 在组合 D 下照样过）。
+          python3 tools/transplant/tui_smoke.py "$B" --timeout 30 | tee "$WORK/tui-smoke.txt"
+          echo "CHECK5 PASS"
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "=== glibc-x64 acceptance summary ==="
+          for f in interp.txt platform.txt opentui-asset.txt version.txt; do
+            if [ -f "$WORK/$f" ]; then echo "--- $f ---"; cat "$WORK/$f"; fi
+          done
+          echo "=================================="
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: glibc-x64-${{ inputs.opencode_ver }}-evidence
+          path: |
+            ${{ env.WORK }}/readelf-l.txt
+            ${{ env.WORK }}/needed.txt
+            ${{ env.WORK }}/interp.txt
+            ${{ env.WORK }}/platform.txt
+            ${{ env.WORK }}/opentui-asset.txt
+            ${{ env.WORK }}/so-needed.txt
+            ${{ env.WORK }}/version.txt
+            ${{ env.WORK }}/tui-smoke.txt
+            ${{ env.WORK }}/compile.log
+            ${{ env.WORK }}/baseline.sha256
+          retention-days: 30
+          if-no-files-found: warn
+
+  # ── 负向验收第 5 项：构造组合 D，证明 gate 真会拦 ─────────────────────
+  negative-acceptance:
+    name: negative — combo D must be REJECTED by the platform gate
+    needs: preflight
+    if: ${{ inputs.run_negative }}
+    runs-on: ubuntu-24.04
+    env:
+      BUN_VER: ${{ inputs.bun_version }}
+      WORK: ${{ runner.temp }}/glibc-neg
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build combo D on purpose (glibc token + glibc path, NO musl)
+        id: build_d
+        run: |
+          set -euo pipefail
+          mkdir -p "$WORK/baseline" "$WORK/src"
+          cd "$WORK/baseline"
+          curl -fsSL "https://registry.npmjs.org/@oven/bun-linux-x64/-/bun-linux-x64-$BUN_VER.tgz" -o bun.tgz
+          tar -xzf bun.tgz
+          BASELINE_ABS="$(find "$PWD" -name 'bun' -type f | head -1)"
+          [ -n "$BASELINE_ABS" ] || { echo "baseline missing" >&2; exit 1; }
+          cd "$WORK/src"
+          git clone --depth 1 https://github.com/anomalyco/opencode.git . 2>/dev/null || true
+          # 最小探针即可，不需要整个 monorepo：验的是「烘焙常量」这层机制。
+          cat > probe.ts <<'EOF'
+          console.log(process.platform, process.arch);
+          EOF
+          # ★ 组合 D：glibc token（无 musl）+ glibc baseline 路径。
+          #   预期：ELF 合法 glibc，但 platform 烘成 android。
+          set +e
+          bun build --compile \
+            --target=bun-linux-x64 \
+            --compile-executable-path="$BASELINE_ABS" \
+            probe.ts --outfile "$WORK/o-combo-d" 2>&1 | tee "$WORK/combo-d-compile.log"
+          rc=${PIPESTATUS[0]}
+          set -e
+          if [ ! -f "$WORK/o-combo-d" ]; then
+            echo "::warning::combo D did not produce a file (rc=$rc). bun may have changed behavior;" >&2
+            echo "::warning::if so, this negative case needs re-measuring before it can prove anything." >&2
+            echo "combo_d_built=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "combo_d_built=true" >> "$GITHUB_OUTPUT"
+          echo "combo D built (this is the artifact that must NOT be accepted)"
+
+      - name: Verify combo D looks legal to readelf (why check 1 alone is not enough)
+        if: steps.build_d.outputs.combo_d_built == 'true'
+        run: |
+          set -euo pipefail
+          B="$WORK/o-combo-d"
+          interp="$(readelf -l "$B" | sed -n 's/.*program interpreter: \(.*\)]/\1/p' | head -1)"
+          echo "combo D INTERP = $interp"
+          if [ "$interp" = "/lib64/ld-linux-x86-64.so.2" ]; then
+            echo "CONFIRMED: combo D passes readelf check 1 completely."
+            echo "This is precisely why check 2 exists — a legal glibc ELF with a dead TUI."
+          else
+            echo "NOTE: combo D INTERP is '$interp', not the expected glibc one." >&2
+            echo "      bun's behavior may have shifted; re-measure P13 before trusting this case." >&2
+          fi
+
+      - name: CHECK 2 must REJECT combo D (the actual negative assertion)
+        if: steps.build_d.outputs.combo_d_built == 'true'
+        run: |
+          set -euo pipefail
+          B="$WORK/o-combo-d"
+          plat="$(strings -a "$B" | grep -oE 'PLATFORM=.{0,40}' | head -1 || true)"
+          echo "combo D baked: $plat"
+          if [ -z "$plat" ]; then
+            echo "NEGATIVE ASSERTION INCONCLUSIVE: no PLATFORM= constant to inspect." >&2
+            echo "The gate was not actually exercised — this does NOT prove the gate works." >&2
+            exit 1
+          fi
+          if printf '%s' "$plat" | grep -q 'PLATFORM=" + "linux"'; then
+            echo "NEGATIVE ASSERTION FAILED: combo D baked platform=linux." >&2
+            echo "  Expected android. bun may have changed; the P13 premise needs re-measuring." >&2
+            exit 1
+          fi
+          echo "CONFIRMED: combo D bakes a non-linux platform, exactly as P13 measured."
+          echo "CHECK 2 rejects it -> the gate is proven to catch this failure mode."
+
+      - name: Report
+        if: always()
+        run: |
+          echo "=== negative acceptance (item 5) ==="
+          echo "combo D = --target=bun-linux-x64 (glibc token) + glibc baseline path, no musl token"
+          echo "expected: readelf green, platform baked android, TUI 100% dead"
+          for f in combo-d-compile.log; do
+            [ -f "$WORK/$f" ] && { echo "--- $f ---"; cat "$WORK/$f"; }
+          done
+
+      # 防「假 PASS」：negative-acceptance 变绿却什么都没证明，是这类负向验收
+      # 最常见的失效形态（bun 行为变了 → 产物没编出来 → 前面的检查全被 if 跳过
+      # → job 绿色 → 看起来 gate 被验证过了）。宁可红，不可骗。
+      - name: Guard — negative case must actually have been exercised
+        if: always()
+        env:
+          COMBO_D_BUILT: ${{ steps.build_d.outputs.combo_d_built }}
+        run: |
+          set -euo pipefail
+          if [ "$COMBO_D_BUILT" != "true" ]; then
+            echo "::error::negative acceptance did NOT run (combo_d_built=$COMBO_D_BUILT)." >&2
+            echo "::error::A green negative-acceptance job that never built the counter-example" >&2
+            echo "::error::proves nothing. This job is now failing on purpose." >&2
+            echo "::error::Re-measure P13 (docs/cross-compile/phase1-prereq.md) before trusting the gate." >&2
+            exit 1
+          fi
+          echo "negative case was genuinely built and checked"
+
+# ─────────────────────────────────────────────────────────────────────────
+# 为什么不把 glibc job 并进 build-fleet.yml
+#   build-fleet = bionic/aarch64，需自托管 Termux 真机；本文件 = glibc/x64 交叉，
+#   跑 GitHub-hosted 原生 x64。合并会让「哪些 job 需要真机」这条边界消失，
+#   且两者产物语义不同（一个进 termux-pacman 绝对路径约定，一个进 glibc）。
+#
+# BLOCKER 汇总（启用前必做，均在 tools/a2/build-v1.sh，不在本代理写入范围）
+#   T1  A2_TARGET_FILTER 参数化        build-v1.sh:129 硬编码 item.arch==="arm64"
+#   T1b --compile-executable-path 支持  build-v1.sh 全文无此参数
+#   T3b glibc 线撤 platform patch      build-v1.sh:118-119 无条件调用
+#   T3  platform 断言 gate            未做（本 workflow 的 CHECK 2 可代偿，但内建更好）
+#   T4  glibc 跳过 epoll/sigsys/TLSDESC  未做（阶段 1 前提）
+#   T5  crhandler LIBC_NAME 参数化      未做（阶段 1 走 T4 跳过，暂不阻塞）
+#   P3  baseline sha256 需落库          1.3.14 的 a9a0d18d… 不可沿用，1.4.0 需重取
+#
+# 仍不 push、cron 不启用（本文件无 schedule）。
