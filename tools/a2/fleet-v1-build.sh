@@ -126,7 +126,10 @@ for VER in $VERS; do
 		FAILED="$FAILED $VER(checkout)"
 		continue
 	}
-	git -C "$FLEET_SRC" reset -f >>"$EVID" 2>&1
+	# `git reset --hard` 而不是 `reset -f`：后者不是合法选项组合（git 打印
+	# 一整页 usage 灌进 evidence，看着像出错了）。checkout -f 已经Discard 了
+	# 工作树改动，这里再 reset --hard 是为了连带重置 index。
+	git -C "$FLEET_SRC" reset --hard >>"$EVID" 2>&1
 	git -C "$FLEET_SRC" clean -xdf -q 2>/dev/null
 	say "    HEAD=$(git -C "$FLEET_SRC" rev-parse --short HEAD) free=$(df_free_mb)MB"
 
