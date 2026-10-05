@@ -14,7 +14,9 @@ set -uo pipefail
 #   → TLSDESC graft → hermetic-home-patch（分类断言内建）
 #   → 形态自证（零 UPX 魔数 / 零 glibc NEEDED）
 #   → package_pacman_native.sh（pkgrel=90 fleet 带）
-#   → 冒烟（--version / TUI）
+#   → 冒烟（--version / TUI，判据见 tools/a2/fleet-v2-tui-smoke.sh 文件头：
+#     v2 是全屏原地重绘，**不能**用 v1 的「键入字节增长」当活性判据 —— 对照
+#     实测 RC4 已实证的 2.0.18 在同一 harness 下同样 DELTA=0）
 #
 # 与 v1 的差异（为什么 v2 不做 A+ namespace bake）：
 #   single-elf-namespace-patch.sh bake 的是 `opencode1` 命名空间，是 v1 线专用；
@@ -79,6 +81,20 @@ for VER in $VERS; do
 		break
 	fi
 
+	# ── 0. 断线续接快路径：revived 件已在就直接复用，跳过 checkout+编译 ──
+	# **只省编译，不省任何断言**：2b 的 crhandler 硬门、3 的 graft 零漂移、
+	# 4 的 hermetic 分类、5 的形态自证、6 的打包门、7 的冒烟全都照跑。
+	# 不这么做的话，一次断线就得重付 15 分钟编译，而 15 分钟里磁盘峰值 7G。
+	if [[ "${RESUME:-1}" == "1" && -x "$REVIVED" ]]; then
+		say "-- [0/7] RESUME: reusing $REVIVED (all assertions + smoke still run) --"
+		RAW_SZ="$(stat -c%s "$REVIVED")"
+		RAW_SHA="$(sha256sum "$REVIVED" | awk '{print $1}')"
+		say "    revived: $RAW_SZ B  sha256=$RAW_SHA"
+	else
+		SKIP_BUILD=0
+	fi
+
+	if [[ "${SKIP_BUILD:-1}" -eq 0 ]]; then
 	# ── 1. 逐版 checkout ───────────────────────────────────────────────
 	say "-- [1/7] git checkout $TAG --"
 	git -C "$FLEET_SRC" rev-parse "$TAG" >/dev/null 2>&1 || {
@@ -115,6 +131,50 @@ for VER in $VERS; do
 	RAW_SZ="$(stat -c%s "$REVIVED")"
 	RAW_SHA="$(sha256sum "$REVIVED" | awk '{print $1}')"
 	say "    revived: $RAW_SZ B  sha256=$RAW_SHA"
+
+	# ── 2b. W11 seccomp harden（**v2 历史形态的组成件，不能省**） ─────────
+	# 实测教训：build-bionic.sh **不做** seccomp harden —— 那是 Makefile 的
+	# `transplant` 目标在 build 之后单独跑的一步（Makefile:296-299 →
+	# seccomp-harden）。漏掉的后果是静默的形态漂移：
+	#   2.0.18（RC4 件）: grep -c libopencode-crhandler = 1，DT_NEEDED 带 shim，
+	#     包里因此有 usr/lib/opencode/libopencode-crhandler.so
+	#   2.0.19（漏 harden）: = 0 → PKGBUILD 的 W11 判据为假 → **包不带
+	#     crhandler** → 与 2.0.0-2.0.18 的历史形态不一致，且 shim 机制
+	#     （spawn-child fd 卫生）失效。包能打出来、--version 也过，只有把
+	#     两代包并排比才看得出差别 —— 所以这里做成硬断言。
+	say "-- [2b/7] W11 seccomp harden (crhandler DT_NEEDED + shim) --"
+	if ! command -v clang >/dev/null 2>&1; then
+		say "STOP $VER: clang missing — cannot build libopencode-crhandler.so (v2 历史形态硬要求)"
+		FAILED="$FAILED $VER(no-clang)"
+		continue
+	fi
+	clang -shared -fPIC -O2 -o "$OUT_DIR/libopencode-crhandler.so" \
+		"$ROOT_DIR/tools/shim/sigsys_handler.c" 2>&1 | tee -a "$EVID"
+	[[ -s "$OUT_DIR/libopencode-crhandler.so" ]] || {
+		say "STOP $VER: libopencode-crhandler.so build produced nothing"
+		FAILED="$FAILED $VER(shim-build)"
+		continue
+	}
+	if ! grep -aqF libopencode-crhandler.so "$REVIVED"; then
+		cp -p "$REVIVED" "$REVIVED.pre-crhandler"
+		if ! python3 "$ROOT_DIR/tools/transplant/crhandler_patch.py" "$REVIVED" 2>&1 | tee -a "$EVID"; then
+			say "STOP $VER: crhandler_patch.py failed"
+			FAILED="$FAILED $VER(crhandler-patch)"
+			continue
+		fi
+	fi
+	CR_N="$(grep -ac libopencode-crhandler "$REVIVED" || true)"
+	say "    crhandler DT_NEEDED refs=$CR_N (expect >=1)  shim=$(stat -c%s "$OUT_DIR/libopencode-crhandler.so") B"
+	[[ "$CR_N" -ge 1 ]] || {
+		say "STOP $VER: runtime does not reference crhandler after harden — 形态与 v2 历史形态不符"
+		FAILED="$FAILED $VER(no-crhandler)"
+		continue
+	}
+	fi # end SKIP_BUILD==0（编译链）
+
+	# 续接路径也要报一次尺寸（前面 RESUME 分支已报过，这里补 shim 后的真实值）
+	RAW_SZ="$(stat -c%s "$REVIVED")"
+	RAW_SHA="$(sha256sum "$REVIVED" | awk '{print $1}')"
 
 	# ── 3. TLSDESC graft ──────────────────────────────────────────────
 	say "-- [3/7] TLSDESC graft --"
@@ -265,7 +325,7 @@ PYEOF
 		FAILED="$FAILED $VER(version)"
 		continue
 	fi
-	SMOKE_OUT="$(bash "$EV_DIR/task-3-smoke.sh" "$HERMETIC" "fleet-$VER" 2>&1)"
+	SMOKE_OUT="$(bash "$ROOT_DIR/tools/a2/fleet-v2-tui-smoke.sh" "$HERMETIC" "fleet-$VER" "$OUT_DIR" 2>&1)"
 	echo "$SMOKE_OUT" | tee -a "$EVID"
 	if ! echo "$SMOKE_OUT" | grep -q 'verdict=GREEN'; then
 		say "STOP $VER: TUI smoke not GREEN"
