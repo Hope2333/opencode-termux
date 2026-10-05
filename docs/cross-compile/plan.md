@@ -54,7 +54,7 @@
 | T1 | `A2_TARGET_FILTER` 参数化：从硬编码「linux+arm64+无abi+无avx2」改为按环境变量筛选 | `tools/a2/build-v1.sh:129` | E4.2 `:146-165` 上游同款 filter 逻辑 |
 | T2 | 编译命令 = `--target=bun-linux-x64-musl` **＋** `--compile-executable-path=<glibc baseline>`（**两者必须同时给**） | 同上 | P13 组合 C；见下方配方纠错 |
 | T3 | `process.platform` 烘焙断言：编译后 `strings` 查烘焙值，**不是** `"android"`，否则 fail | 同上（新增 gate） | P13 组合 D 是「readelf 全过但 platform 错」的静默坏件 |
-| T3b | glibc 线**撤掉** `apply-platform-patch.sh` 的 `if (true)` 补丁 | `tools/a2/build-v1.sh:118-119` | P3：`if (true)` 是 bionic 线专用，会让 platform 分支判断失效 |
+| T3b | glibc 线**撤掉** `apply-platform-patch.sh` 的**两处** patch：`platform: "linux"` 与 `if (true)`。**必须排在 T3 三查之前** | `tools/a2/build-v1.sh:118-119` | P16：它不只是地雷，是**bug 掩盖器**（见下） |
 | T4 | glibc 目标**跳过** epoll-compat / sigsys_handler / TLSDESC 路径 | `scripts/opencode-launcher.sh`、`tools/a2/build-v1.sh` | E3.1/E3.3/E3.6：目标机内核 ≥5.10 + glibc 链接器，三者全不需要 |
 | T5 | `crhandler_patch.py` 的 `LIBC_NAME` 参数化（`libc.so` ↔ `libc.so.6` ↔ `libc.musl-*.so.1`）+ 放宽「bionic aarch64 DYN」形状断言 | `tools/transplant/crhandler_patch.py:16-19,37-38` | E3.4（30–60 min） |
 | T6 | 打包元数据：`package.json` 的 `os`/`cpu`（上游 `build.ts:249-250` 同样写法） | 打包脚本 | E4.2 |
@@ -68,11 +68,49 @@
 > `--compile-executable-path=<glibc baseline>`。两个旋钮各管一头：
 > token 只管 JS 烘焙，路径只管 ELF。
 
+> ★★ **T3b 不是「清理」，是「保留失败信号」**（P16，据 res-n2n5 实测更正我原表述）。
+> `apply-platform-patch.sh` 有**两处** patch（`tools/build-bionic/apply-platform-patch.sh:21,28`）：
+> `platform: process.platform` → `platform: "linux"`，以及
+> `if (process.platform === "linux")` → `if (true)`。后者让 resolver **不再读
+> `process.platform`**，因此会**掩盖**上面的组合 D 配方错误：
+>
+> | 组合（烘焙 platform/arch） | patch 开着 | patch 撤掉 |
+> |---|---|---|
+> | C（linux/x64） | `core-linux-x64` ✅ | `core-linux-x64` ✅ 无差别 |
+> | D（android/x64） | `core-linux-x64` ← **被掩盖** | **THROW**（良性快速失败） |
+> | E（android/arm64） | `core-linux-arm64` ← **帮倒忙** | **THROW** |
+>
+> ⇒ patch 开着时，配方退回 `--target=<glibc token>` 是**零信号**：产物出、readelf 全对、
+> TUI 能起，直到某天换 glibc 版本才炸。**这比直接报错更危险。**
+> ⇒ 且 patch **能修 platform、修不了 arch**（arch 来自烘焙，patch 不干预 `process.arch`），
+> 组合 E 会让 arm64 的 `.so` 进 x86-64 产物 → dlopen 失败。
+> ⇒ **顺序硬要求：撤 patch 必须排在三查之前**，否则三查的静态部分被 `if (true)` 掩盖
+> → **虚假 PASS**。
+
+> ⚠ **不可用本仓 store 做未 patch 对照**（P16）：实测本仓
+> `$TMPDIR/a2-src/opencode-1.18.32` 的 store 里**两份 chunk 副本都已被上一轮 build 污染**
+> （`platform: process.platform` 命中 0、原始 pattern 全无匹配）。这正是
+> `build-v1.sh:118` 拿「已 patch」当跳过条件的原因。要取干净副本须从上游 fresh install。
+
 **明确不做**：不移植 `epoll-compat.c`、不移植 `sigsys_handler.c`、不移植
 `relax_tlsdesc.py`、不重编 bionic bun-pty、**不编译/移植 opentui**。
 前四项是本阶段节省 3–5 天的关键（E3.8 排序）；opentui 是因为上游有官方 glibc 预编译包。
 
 ### 1.3 验收
+
+**前置：T3b 已撤 patch**（否则以下是虚假 PASS，见上）。
+
+⚠ **撤 patch 的断言不能用 `grep -c 'if (true)'`**——本机实测
+`chunk-bun-tkm837n2.js` 本身就有 **9 处**与 patch 无关的 `if (true)`（P16）。
+必须按 patch 的**精确锚点**断言：
+
+```bash
+# T3b 前置断言：patch 已撤（按精确锚点，非裸 if (true)）
+CHUNK=$(ls -d node_modules/.bun/@opentui+core@*/node_modules/@opentui/core)
+grep -c 'platform: "linux",'        $CHUNK/chunk-bun-*.js   # 期望全 0
+grep -c 'platform: process.platform' $CHUNK/chunk-bun-*.js   # 期望全 >0（已复原）
+# resolver 那一处必须是真判断（用 resolver 上下文定位，勿用裸 if (true)）
+```
 
 在 CI 的原生 x64 runner 上执行（**不能在本机** —— E2.5 实测 qemu 无 sysroot）：
 
@@ -100,11 +138,20 @@ python3 tools/transplant/tui_smoke.py ./out-linux-x64 --timeout 30
 # 5. 负向验收：错误配方必须 fail 而不是静默产出坏件
 #   构造组合 D（--target=bun-linux-x64 + glibc executable-path）
 #   → readelf 全绿但 strings 查烘焙值是 "android" → 应触发 T3 的 gate 报错
+#   ⚠ 必须先断言 patch 已撤（见 1.3 前置），否则组合 D 在 patch 开着时
+#     「恰好能起 TUI」，反例看起来像 gate 没生效 —— 这是虚假 PASS。
+#   ⚠ 反例还要断言 resolver 真的落到 THROW：
+#     期望报 "OpenTUI is not supported on the current platform"
 ```
 
-**验收标准**：1–4 全过，且第 5 项证明 gate 真的会拦（不是恰好没触发）。
+**验收标准**：1–4 全过，第 5 项证明 gate 真会拦（不是恰好没触发/不是 patch 掩盖）。
 ⚠️ 第 5 项是**唯一能检出组合 D**的手段 —— 组合 D 的 ELF 完全合法，
 `file`/`readelf` 全部通过，只有烘焙常量检查能发现。
+⚠️ 若 T3b 没真撤掉 patch，第 5 项会**假通过**（组合 D 表面完全正常）。
+按 res-n2n5 的建议（P16 / N5-d），在原生 x64 runner 上补一次**反向对照**：
+撤 patch 跑组合 D → 断言 TUI 报 `OpenTUI is not supported`；
+装回 patch 跑同一组合 → 断言**反而能起**（反证掩盖行为）。
+这条同时给 N2-a 补上运行时证据。
 
 ### 1.4 回退
 

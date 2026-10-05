@@ -1,0 +1,492 @@
+# asset-push.yml — 构建产物 → release 资产推送（PREPARED / **默认 dry-run**）
+#
+# 状态：**草稿，未启用**。本文件未 push。
+#
+# 职责：把 build-fleet.yml 产出的 workflow artifact（termux-pacman 包）按
+#       tools/fleet-push.py 认得的资产命名推送到一个 release 上。
+#       **默认只 dry-run**：跑完所有校验、打印将要执行的动作，不写 release。
+#       真实推送必须显式 `confirm: true`，且默认还要 `environment: release`
+#       的保护规则批一次（仓库侧配置，workflow 里只声明 environment）。
+#
+# ── 与 fleet-push.py 的分工（重要） ────────────────────────────────────
+# tools/fleet-push.py 做的是**压制槽位**那条链：本机 → SSH 节点 → 节点解包取
+# ELF → upx --best → xz -9 → 节点直传 gh release。它需要多节点 SSH + 节点上
+# 已认证 gh，CI runner 上没有这些前提。它的资产模板目前硬绑
+# `opencode-native-<ver>-upx.xz`（见 fleet-push.py 的 ASSET_TMPL），而
+# discover_release 的资产正则是**未压缩包**名：
+#   ^(?:opencode|opencode1)-([\d.]+)-(\d+)-aarch64\.pkg\.tar\.xz$
+# 所以本 workflow 只负责**未压缩原包**这一半（纯 gh release upload，无需 SSH），
+# upx 槽位留给 fleet-push.py 在真机/节点侧跑；「改为未压缩原包 + 预留压制槽位」
+# 的改造是另一件独立任务，未完成前 upx 槽位不会被本 workflow 触碰。
+#
+# ── release tag 策略 ───────────────────────────────────────────────────
+# tools/fleet-push.py::discover_release 从**单个 tag** 的资产列表推导整个版本
+# 全集（用 pkg_re 扫该 release 的所有资产）。因此：
+#   * 主 tag 必须是**滚动 tag**（如 fleet-v1-20261005），因为 fleet 全集要从
+#     一个 release 里读出来；每版独立 tag 会让 discover_release 每次只看到一版，
+#     版本表退化成单条目。
+#   * 可选地给每版额外打**不可变 tag**（v1-1.18.32）作为溯源锚点，但它不是
+#     fleet-push 的输入，只给人看。默认关闭（immutable_tags: false）。
+#   * tag 不复用：同一天重跑用同一个滚动 tag 会被 --clobber 覆盖，风险是
+#     覆盖了别人已推的同名资产。默认 require_fresh_tag: true（tag 已存在就失败）。
+#
+# ── 幂等与半成品防护 ───────────────────────────────────────────────────
+#   1. 唯一入口闸：必须传 build-fleet 某次 run 的 `run_id`，且该 run 的
+#      `fleet-aggregate-summary` artifact 里 ready_for_push=true（部分成功判 false）。
+#   2. 资产名逐个过 discover_release 正则 + pkgrel 数字校验，不过就整轮失败。
+#   3. SHA256 对账：下载 artifact 内的 SHA256SUMS.txt，逐个 sha256sum 复核，
+#      复核不过 → 整轮失败，不推任何东西。
+#   4. 先 `--dry-run` 打印计划（默认路径），真实推送需 confirm=true。
+#   5. 真实推送默认 **不 --clobber**：目标 release 里已存在的同名资产会让 gh 失败，
+#      从而「不会悄悄覆盖已发布资产」。要覆盖必须显式 overwrite=true。
+#   6. 推送后再 `gh release view` 对账尺寸（fleet-push.py::release_crosscheck 同思路）。
+#
+# ── 密钥与权限最小化 ───────────────────────────────────────────────────
+#   * 只需 `contents: write`（release 资产上传）。build/plan 类 workflow 是
+#     `contents: read`。
+#   * 用 `${{ secrets.GITHUB_TOKEN }}` 占位，本文件不含任何真实 token。
+#     若要推**跨仓** release，改用 `secrets.RELEASE_PUSH_TOKEN`（fine-grained，
+#     只给目标仓 contents:write）——不要用 PAT。
+#   * `GH_TOKEN` 只在需要 gh 的 step 上做 step 级 env，不放 job/global env。
+
+name: Push Fleet Assets to Release [PREPARED — dry-run by default]
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_run_id:
+        description: "来源 build-fleet run id（用于取 artifact + ready_for_push 判据）"
+        required: true
+      release_tag:
+        description: "目标 release tag（滚动 tag；建议 fleet-<line>-<YYYYMMDD>）"
+        required: true
+      line:
+        description: "推送哪条线的资产：v1 | v2 | both"
+        required: false
+        default: "both"
+      confirm:
+        description: "true=真实推送（默认 false=dry-run，只校验与打印计划）"
+        type: boolean
+        required: false
+        default: false
+      overwrite:
+        description: "true=允许 --clobber 覆盖同名资产（默认 false）"
+        type: boolean
+        required: false
+        default: false
+      require_fresh_tag:
+        description: "true=tag 已存在则失败（默认 true，防覆盖他人资产）"
+        type: boolean
+        required: false
+        default: true
+      immutable_tags:
+        description: "true=额外为每版打不可变 tag（默认 false）"
+        type: boolean
+        required: false
+        default: false
+      push_checksums:
+        description: "true=合并上传 SHA256SUMS.txt（默认 true）"
+        type: boolean
+        required: false
+        default: true
+      sbom_release_asset:
+        description: "true=把 artifact 里的 SBOM 一并上传（默认 false）"
+        type: boolean
+        required: false
+        default: false
+
+# 写权限只在本 workflow 需要；其余 workflow 保持 contents: read。
+permissions:
+  contents: write
+
+concurrency:
+  group: asset-push-${{ inputs.release_tag }}
+  cancel-in-progress: false   # 推送不可中断：半推的 release 比不推更难收拾
+
+jobs:
+  push:
+    name: verify + push fleet assets
+    runs-on: ubuntu-latest
+    # 真实推送要走 environment 保护（仓库侧配置 required reviewers）。
+    # dry-run 也声明同一 environment，便于把「谁批准了推送」记在 deployment 上。
+    environment:
+      name: release
+    env:
+      BUILD_RUN_ID: ${{ inputs.build_run_id }}
+      RELEASE_TAG: ${{ inputs.release_tag }}
+      LINE_FILTER: ${{ inputs.line }}
+      CONFIRM: ${{ inputs.confirm }}
+      OVERWRITE: ${{ inputs.overwrite }}
+      REQUIRE_FRESH_TAG: ${{ inputs.require_fresh_tag }}
+      IMMUTABLE_TAGS: ${{ inputs.immutable_tags }}
+      PUSH_CHECKSUMS: ${{ inputs.push_checksums }}
+      SBOM_ASSET: ${{ inputs.sbom_release_asset }}
+      REPO: ${{ github.repository }}
+    steps:
+      - name: Preflight — tooling + script contract
+        run: |
+          set -euo pipefail
+          command -v gh >/dev/null || { echo "gh missing" >&2; exit 1; }
+          gh --version | head -1
+          # 资产命名契约的单一事实源是 fleet-push.py 里的 discover_release 正则。
+          # 这里从源码里抠出来，确保 workflow 与脚本不会各自漂移。
+          git clone --depth 1 "https://github.com/$REPO.git" src-checkout >/dev/null 2>&1 || {
+            echo "note: could not clone repo for regex extraction; falling back to literal"; }
+          if [ -f src-checkout/tools/fleet-push.py ]; then
+            grep -n 'pkg_re = re.compile' src-checkout/tools/fleet-push.py || true
+          fi
+          echo "asset name contract: ^(?:opencode|opencode1)-([\d.]+)-(\d+)-aarch64\.pkg\.tar\.xz$"
+
+      - name: Gate — source run must have ready_for_push=true
+        id: gate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # 不信任 build-fleet 的 job 结论文本，去拉它落盘的 aggregate artifact。
+          # 找不到 artifact / ready_for_push!=true → 整轮拒跑（防半成品上 release）。
+          mkdir -p agg
+          if gh run download "$BUILD_RUN_ID" -n fleet-aggregate-summary -D agg >/dev/null 2>&1; then
+            :
+          else
+            echo "cannot download fleet-aggregate-summary from run $BUILD_RUN_ID" >&2
+            echo "(was build-fleet run with push_artifact=true? is the run id correct?)" >&2
+            exit 1
+          fi
+          cat agg/summary.txt
+          grep -q '^ready_for_push=true$' agg/summary.txt || {
+            echo "build run $BUILD_RUN_ID is not push-ready (partial or failed matrix)" >&2
+            exit 1; }
+          # 来源 run 必须属于本仓，避免拿别的 workflow 的同名 artifact 混进来
+          gh run view "$BUILD_RUN_ID" --repo "$REPO" -q '.conclusion' | tee -a agg/verify.log
+          conclusion="$(gh run view "$BUILD_RUN_ID" --repo "$REPO" -q '.conclusion')"
+          [ "$conclusion" = "success" ] || { echo "source run conclusion=$conclusion" >&2; exit 1; }
+
+      - name: Download fleet-pkg artifacts from source run
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ inputs.build_run_id }}
+          pattern: fleet-pkg-*
+          path: pkgs
+          merge-multiple: false
+
+      - name: Normalize + validate asset names
+        id: names
+        run: |
+          set -euo pipefail
+          mkdir -p stage
+          shopt -s nullglob
+          for d in pkgs/*/; do
+            for f in "$d"*.pkg.tar.xz; do
+              base="$(basename "$f")"
+              # discover_release 的正则：包名前缀 opencode|opencode1 + 版本 + pkgrel。
+              # 这里刻意逐字复刻它的 `([\d.]+)`（版本段允许任意点分数字，不强制
+              # 三段），而不是收紧成三段：收紧会在 fleet-push 本来能认出的包上
+              # 制造分歧，让 CI 成为比真实消费者更严的守门人。两个正则必须同形。
+              if ! printf '%s' "$base" | grep -Eq '^(opencode|opencode1)-[0-9.]+-[0-9]+-aarch64\.pkg\.tar\.xz$'; then
+                echo "OFF-CONTRACT asset name: $base" >&2; exit 1
+              fi
+              pkg="$(printf '%s' "$base" | sed -E 's/^(opencode1?)-.*/\1/')"
+              ver="$(printf '%s' "$base" | sed -E 's/^opencode1?-([0-9.]+)-[0-9]+-aarch64\.pkg\.tar\.xz$/\1/')"
+              case "$LINE_FILTER" in
+                v1) [ "$pkg" = "opencode1" ] || { echo "skip $base (line filter v1)"; continue; } ;;
+                v2) [ "$pkg" = "opencode" ]  || { echo "skip $base (line filter v2)"; continue; } ;;
+                both) : ;;
+                *) echo "bad line filter: $LINE_FILTER" >&2; exit 1 ;;
+              esac
+              cp -f "$f" "stage/$base"
+              echo "$base" >> names.txt
+            done
+          done
+          shopt -u nullglob
+          test -s names.txt || { echo "no assets matched line filter '$LINE_FILTER'" >&2; exit 1; }
+          echo "count=$(wc -l < names.txt)" >> "$GITHUB_OUTPUT"
+          cat names.txt
+
+      - name: Download authoritative SHA256SUMS from the source run's status artifacts
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ inputs.build_run_id }}
+          pattern: fleet-status-*
+          path: sums
+          merge-multiple: false
+
+      - name: Verify checksums (sha256) before any upload
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # 逐条 sha256 复核。权威清单来自 build-fleet 各条目的 status artifact
+          # （每个含 SHA256SUMS.txt）。拿不到权威清单时**不降级放行**——宁可
+          # 拒绝推送，也不让「没校验」看起来像「校验通过」。
+          echo "authoritative manifests found:"
+          # `|| true`：目录整体缺失时 find 自身会非零退出（pipefail 下同样），
+          # 那样报错就变成 find 的信息而不是下面那句可读的诊断。真正的判定在
+          # n_sums 检查上。
+          { find sums -name 'SHA256SUMS.txt' -print 2>/dev/null || true; } | tee authoritative-list.txt
+          n_sums="$(wc -l < authoritative-list.txt | tr -d ' ')"
+          if [ "$n_sums" -eq 0 ]; then
+            echo "no authoritative SHA256SUMS.txt in the source run's status artifacts" >&2
+            echo "(build-fleet must have uploaded status artifacts; check push_artifact/retention)" >&2
+            exit 1
+          fi
+
+          cd stage
+          sha256sum ./*.pkg.tar.xz | tee ../computed-SHA256SUMS.txt
+
+          # 权威清单里的文件名可能带 kit 前缀，按 basename 匹配。
+          # 用进程替换而非管道：管道里的 exit 1 只退子 shell，进程替换能让
+          # 失败真正终止本 step。
+          mismatch=0
+          while read -r sha name; do
+            b="$(basename "$name")"
+            [ -f "$b" ] || { echo "  skip $b (not in this stage set)"; continue; }
+            got="$(sha256sum "$b" | cut -d' ' -f1)"
+            if [ "$got" != "$sha" ]; then
+              echo "SHA MISMATCH $b: manifest=$sha actual=$got" >&2
+              mismatch=$((mismatch + 1))
+            else
+              echo "  ok $b"
+            fi
+          done < <(cat ../sums/*/SHA256SUMS.txt ../sums/SHA256SUMS.txt 2>/dev/null || true)
+          cd ..
+          [ "$mismatch" -eq 0 ] || { echo "$mismatch checksum mismatch(es) — refusing to push" >&2; exit 1; }
+          echo "all staged assets match an authoritative manifest"
+
+      - name: SBOM presence check
+        if: ${{ inputs.sbom_release_asset }}
+        run: |
+          set -euo pipefail
+          find pkgs -name 'SBOM.spdx.json' -print | tee sbom-list.txt
+          echo "sbom_count=$(wc -l < sbom-list.txt)"
+
+      - name: Release preflight (tag freshness + existing assets)
+        id: rel
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          exists=false
+          if gh release view "$RELEASE_TAG" --repo "$REPO" >/dev/null 2>&1; then
+            exists=true
+            echo "release $RELEASE_TAG already exists"
+            if [ "$REQUIRE_FRESH_TAG" = "true" ]; then
+              echo "require_fresh_tag=true and tag exists → refusing (use a new rolling tag," >&2
+              echo "or set require_fresh_tag=false + overwrite=true knowingly)" >&2
+              exit 1
+            fi
+            echo "existing assets:"
+            gh release view "$RELEASE_TAG" --repo "$REPO" --json assets \
+              -q '.assets[] | .name + " " + (.size|tostring)' | tee existing-assets.txt || true
+            # 冲突检测：不 overwrite 时同名资产必须不存在。
+            # 用固定字符串比较（awk 精确匹配），不能用 `grep "^$n "`——
+            # 资产名里的 `.` 在正则里是通配符，会产生假阳性冲突。
+            if [ "$OVERWRITE" != "true" ]; then
+              clash=0
+              while read -r n; do
+                [ -n "$n" ] || continue
+                if awk -v want="$n" '$1 == want { found = 1 } END { exit !found }' existing-assets.txt; then
+                  echo "asset already on release: $n (overwrite=false → would fail)" >&2
+                  clash=1
+                fi
+              done < names.txt
+              [ "$clash" -eq 0 ] || exit 1
+            fi
+          else
+            echo "release $RELEASE_TAG does not exist yet → will be created on confirm"
+          fi
+          echo "exists=$exists" >> "$GITHUB_OUTPUT"
+
+      - name: DRY RUN — print exact plan, touch nothing
+        if: ${{ !inputs.confirm }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "=========================================="
+          echo " DRY RUN — no release write will happen"
+          echo "=========================================="
+          echo "source run   : $BUILD_RUN_ID"
+          echo "release tag  : $RELEASE_TAG (exists=${{ steps.rel.outputs.exists }})"
+          echo "line filter  : $LINE_FILTER"
+          echo "overwrite    : $OVERWRITE"
+          echo "assets (${{ steps.names.outputs.count }}):"
+          while read -r n; do
+            [ -n "$n" ] || continue
+            sz="$(stat -c%s "stage/$n" 2>/dev/null || stat -f%z "stage/$n")"
+            printf '  %-52s %8.1f MiB\n' "$n" "$(awk -v b="$sz" 'BEGIN{print b/1048576}')"
+          done < names.txt
+          echo
+          echo "would run:"
+          echo "  gh release create $RELEASE_TAG --repo \$REPO --title ... --notes-file ...   # if new"
+          echo "  gh release upload $RELEASE_TAG stage/<asset> --repo \$REPO [--clobber]"
+          # 用 if 而非 `[ ... ] && echo`：后者在 set -e 下会把整个 step 的退出码
+          # 变成 1（最后一条命令失败），使 dry-run 步骤自身失败。
+          if [ "$PUSH_CHECKSUMS" = "true" ]; then
+            echo "  gh release upload $RELEASE_TAG computed-SHA256SUMS.txt --repo \$REPO --clobber"
+          fi
+          if [ "$IMMUTABLE_TAGS" = "true" ]; then
+            echo "  per-version immutable tags: opencode-<ver>"
+          fi
+          echo
+          echo "re-run with confirm=true to execute."
+
+      - name: Create release (only on confirm)
+        if: ${{ inputs.confirm && steps.rel.outputs.exists == 'false' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          {
+            echo "opencode-termux fleet assets — $RELEASE_TAG"
+            echo
+            echo "Built by GitHub Actions from run $BUILD_RUN_ID (commit ${GITHUB_SHA:-see run})."
+            echo "Package form: termux-pacman absolute-path members"
+            echo "  (data/data/com.termux/files/usr/...; see tools/pkg-abs-repack.sh)."
+            echo "Checksums: SHA256SUMS.txt (same release)."
+            echo
+            echo "Final runtime acceptance happens on a real Termux device, not in CI."
+          } > notes.md
+          gh release create "$RELEASE_TAG" --repo "$REPO" \
+            --title "$RELEASE_TAG" --notes-file notes.md
+          cat notes.md
+
+      - name: Upload assets (only on confirm)
+        if: ${{ inputs.confirm }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OVERWRITE_FLAG: ${{ inputs.overwrite && '--clobber' || '' }}
+        run: |
+          set -euo pipefail
+          # 分批上传：单次 gh release upload 传几十 MiB × N 在慢网下容易超时，
+          # 且失败时难以判断推到哪。逐个上传 + 逐个确认，失败点明确。
+          # overwrite 通过 step env 传 '--clobber' 或空串（不用 set -- / "$@"，
+          # 避免与 set -u 的空 "$@" 语义纠缠）。
+          while read -r n; do
+            [ -n "$n" ] || continue
+            echo "==> uploading $n"
+            gh release upload "$RELEASE_TAG" "stage/$n" --repo "$REPO" $OVERWRITE_FLAG
+            echo "    ok"
+          done < names.txt
+
+      - name: Upload SHA256SUMS.txt (only on confirm)
+        if: ${{ inputs.confirm && inputs.push_checksums }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # 与 fleet-push.py::update_checksums 同样的意图：并入而非覆盖。
+          # --clobber 覆盖的是「我们自己刚写的清单」，资产本身没被覆盖。
+          if gh release view "$RELEASE_TAG" --repo "$REPO" --json assets \
+               -q '.assets[].name' | grep -qx 'SHA256SUMS.txt'; then
+            gh release download "$RELEASE_TAG" -p SHA256SUMS.txt -O merged.txt --repo "$REPO"
+            cat merged.txt computed-SHA256SUMS.txt | sort -u > merged2.txt
+            gh release upload "$RELEASE_TAG" merged2.txt --repo "$REPO" --clobber
+          else
+            gh release upload "$RELEASE_TAG" computed-SHA256SUMS.txt --repo "$REPO"
+          fi
+
+      - name: Upload SBOMs (optional, only on confirm)
+        if: ${{ inputs.confirm && inputs.sbom_release_asset }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          n=0
+          for s in pkgs/*/SBOM.spdx.json; do
+            [ -f "$s" ] || continue
+            # 重命名为 <line>-<ver>.spdx.json 后上传：release 资产名必须唯一，
+            # 而 artifact 里的文件名统一是 SBOM.spdx.json。
+            entry="$(basename "$(dirname "$s")")"          # fleet-pkg-v1-1.18.32
+            asset="SBOM-${entry#fleet-pkg-}.spdx.json"      # SBOM-v1-1.18.32.spdx.json
+            cp -p "$s" "$asset"
+            gh release upload "$RELEASE_TAG" "$asset" --repo "$REPO" --clobber
+            echo "  uploaded $asset"
+            n=$((n + 1))
+          done
+          shopt -u nullglob
+          [ "$n" -gt 0 ] || { echo "SBOM upload requested but no SBOM.spdx.json found in artifacts" >&2; exit 1; }
+          echo "sbom uploaded: $n"
+
+      - name: Per-version immutable tags (optional, only on confirm)
+        if: ${{ inputs.confirm && inputs.immutable_tags }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # 溯源锚点，非 fleet-push 的输入（discover_release 读滚动 tag）。
+          while read -r n; do
+            [ -n "$n" ] || continue
+            ver="$(printf '%s' "$n" | sed -E 's/^opencode1?-([0-9.]+)-[0-9]+-aarch64\.pkg\.tar\.xz$/\1/')"
+            tag="opencode-$ver"
+            if gh release view "$tag" --repo "$REPO" >/dev/null 2>&1; then
+              echo "immutable tag $tag already exists → skip (不可变)"
+            else
+              gh release create "$tag" --repo "$REPO" --title "opencode $ver" \
+                --notes "Immutable snapshot for opencode $ver. Fleet index: $RELEASE_TAG." \
+                "$n" >/dev/null 2>&1 || \
+              gh release create "$tag" --repo "$REPO" --title "opencode $ver" \
+                --notes "Immutable snapshot for opencode $ver. Fleet index: $RELEASE_TAG." \
+                --target "$RELEASE_TAG"
+              echo "created immutable tag $tag"
+            fi
+          done < names.txt
+
+      - name: Post-push reconciliation (sizes)
+        if: ${{ inputs.confirm }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # 与 fleet-push.py::release_crosscheck 同思路：信息性核查，不阻塞。
+          gh release view "$RELEASE_TAG" --repo "$REPO" --json assets \
+            -q '.assets[] | .name + " " + (.size|tostring)' | tee after-assets.txt
+          bad=0
+          while read -r n; do
+            [ -n "$n" ] || continue
+            remote_sz="$(awk -v want="$n" '$1==want {print $2}' after-assets.txt | head -1)"
+            local_sz="$(stat -c%s "stage/$n" 2>/dev/null || stat -f%z "stage/$n")"
+            if [ -z "$remote_sz" ]; then echo "MISSING on release: $n"; bad=$((bad+1));
+            elif [ "$remote_sz" != "$local_sz" ]; then
+              echo "SIZE MISMATCH $n remote=$remote_sz local=$local_sz"; bad=$((bad+1));
+            else
+              awk -v b="$local_sz" 'BEGIN{printf "  ok %-52s %8.1f MiB\n", "'"$n"'", b/1048576}'
+            fi
+          done < names.txt
+          echo "reconcile mismatches: $bad"
+
+      - name: Upload push evidence (plan / names / sums)
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: asset-push-evidence-${{ inputs.release_tag }}
+          path: |
+            names.txt
+            computed-SHA256SUMS.txt
+            existing-assets.txt
+            after-assets.txt
+            notes.md
+            sbom-list.txt
+          retention-days: 90
+          if-no-files-found: warn
+
+# ─────────────────────────────────────────────────────────────────────────
+# 为什么不直接调 tools/fleet-push.py 做推送
+#   fleet-push.py 的链依赖「本机 → SSH 节点」的压制拓扑（HOME_BASE=~/opc-fleet、
+#   INBOX、节点已认证 gh、多节点槽位调度）。GitHub-hosted runner 上这些前提
+#   都不成立，硬跑会卡在 SSH 阶段。因此：
+#     * 未压缩原包上传（本 workflow）：纯 gh release upload，无 SSH 依赖。
+#     * upx 压制槽位（fleet-push.py）：留给真机侧 / 自托管 ARM runner 跑，
+#       或在 fleet-push.py 完成「未压缩原包 + 预留压制槽位」改造后，由本
+#       workflow 在自托管 runner 上转调（后续改动）。
+#   启用顺序：先 dry-run 打通 → 再在真机跑 fleet-push.py 的 upx 槽位 →
+#   最后才考虑把 fleet-push.py 纳入 CI。
+#
+# 供应链校验现状
+#   - 已有：SHA256SUMS.txt（并入式上传，与 fleet-push.py::update_checksums 同策略）。
+#   - 可选：SBOM（syft 生成 SPDX JSON，随包上传）。默认关闭，因为需要 runner
+#     预装 syft，且 Termux 上的 syft 版本需自行验证。
+#   - 未做：签名（cosign/minisign）、SLSA provenance。若要加，cosign keyless
+#     在自托管 ARM runner 上需要 OIDC（`id-token: write`），届时本 workflow 的
+#     permissions 要再扩一条，并在 fleet-push.py 侧加校验步骤。

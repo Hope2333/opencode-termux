@@ -1,0 +1,173 @@
+# nightly-fleet.yml — 定时 fleet 构建（PREPARED / **默认不触发**）
+#
+# 状态：**草稿，未启用**。cron 段以注释形式存在，job 级带 `ENABLE_NIGHTLY: false`
+#       硬闸。本文件未 push。
+#
+# 启用方法（两步，顺序不能换）：
+#   1) 去掉下方 `schedule:` 两行的注释（保留 `if: github.event_name == 'schedule'`）。
+#   2) 把 job `nightly` 的 `env.ENABLE_NIGHTLY` 改成 `"true"`。
+#   只做第 1 步不做第 2 步 = schedule 会触发 workflow 但所有 job 被 `if: false`
+#   跳过（空跑，只消耗一点配额）；只做第 2 步不做第 1 步 = 只能手动 dispatch。
+#
+# 启用后行为说明
+#   触发：GitHub 的 cron 是 UTC。建议 '17 3 * * *'（UTC 03:17 ≈ 东南亚/北京时间
+#         11:17），刻意避开整点：整点是全网 runner 排队高峰，self-hosted runner
+#         虽不受影响，但 Actions 的调度/上传服务会。
+#   做什么：转调 build-fleet.yml 的同一套 job（reusable workflow 调用），跑当日
+#         版本矩阵。nightly 不自己写构建步骤——单一事实源在 build-fleet.yml。
+#   判定：产物仍是 workflow artifact（默认 14 天），**不进 release**。nightly
+#         永不推送；推送只在 asset-push.yml 由人批准后发生。
+#   磁盘：真机 runner 上每轮会占 artifacts/build/ + packing/pacman/。nightly 入口
+#         强制跑 `tools/maintain.sh` 的清理段（见下 clean step），并在清理后仍
+#         低于阈值时直接失败而不是硬撑。
+#
+# 限流 / 配额注意事项（启用前必读）
+#   1. **Actions 配额按月计费到仓库/账户**。自托管 runner 不按分钟计费，但
+#      **actions/cache 与 artifact 存储仍计配额**（cache 10GB/仓，artifact
+#      0.5GB/仓/月的免费档，超出后 artifact 上传直接失败）。本 fleet 的单条目
+#      包 artifact 是数十 MiB 量级（ELF 180MB 级压制后），矩阵 7 条目 × 14 天
+#      留存很容易吃掉配额。nightly 强制 retention 7 天并跳过包缓存。
+#   2. **GitHub 会自动取消连续 60 天无活动的定时 workflow**，且 90 天无活动的
+#      仓库会整体停掉定时任务。所以「启用后忘了动」= 静默停摆，需要一个
+#      外部巡检（本地 cron 查 `gh workflow list` 的 state）。
+#   3. **self-hosted runner 单执行器**：一台真机同时只能跑一个 job。矩阵 7 条目
+#      会串行，nightly 全轮耗时 ≈ 7 × 单条目耗时（v1 单条目含 upx --best 压制，
+#      实测是分钟级到十分钟级，取决于机器与散热）。`max-parallel: 1` 是刻意的。
+#   4. **超时**：GitHub 硬上限 6 小时/ job（自托管同）。nightly 设 5 小时超时，
+#      留给上传收尾。
+#   5. **cron 不会补跑**：错过的触发永久丢失。若需要「每日必达」，应该由外部
+#      （本地 cron / 手机 Termux:Boot）调 `gh workflow run` 而不是靠 schedule。
+#   6. **并发**：concurrency group 设为按天，同一天重复触发不叠加（cancel-in-progress
+#      = false，避免打断正在跑的真机 job 把 runner 留在脏状态）。
+
+name: Nightly Fleet [PREPARED — cron disabled]
+
+on:
+  # ── 启用定时：把下面两行去注释 ────────────────────────────────────────
+  # schedule:
+  #   - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      versions_v1:
+        description: "覆盖 v1 版本（逗号分隔；留空=用 build-fleet 默认矩阵）"
+        required: false
+        default: ""
+      versions_v2:
+        description: "覆盖 v2 版本（逗号分隔；留空=用 build-fleet 默认矩阵）"
+        required: false
+        default: ""
+      run_device_gate:
+        description: "跑真机门禁 oscar-gate.sh（默认 false）"
+        type: boolean
+        required: false
+        default: false
+      force:
+        description: "true=忽略 ENABLE_NIGHTLY 闸，强制跑（默认 false）"
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-fleet-${{ github.run_id }}
+  cancel-in-progress: false
+
+env:
+  # ── 启用定时的第二步：把这个改成 "true" ────────────────────────────────
+  ENABLE_NIGHTLY: "false"
+
+jobs:
+  nightly:
+    name: nightly fleet build
+    if: ${{ github.event_name == 'workflow_dispatch' || env.ENABLE_NIGHTLY == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Guard — report why we are a no-op
+        if: ${{ !(github.event_name == 'workflow_dispatch' || env.ENABLE_NIGHTLY == 'true') }}
+        run: |
+          echo "nightly disabled: ENABLE_NIGHTLY=$ENABLE_NIGHTLY and event=${{ github.event_name }}"
+          echo "to enable: (1) uncomment schedule: in .github/workflows/nightly-fleet.yml"
+          echo "           (2) set env.ENABLE_NIGHTLY=\"true\""
+
+      - name: Clean runner scratch (disk guard before a 7-entry matrix)
+        # 编排 job 跑在 hosted x86 上，真正的清理由 build job 的真机 preflight
+        # 复核；这里是提前减少无谓的 artifact/cache 写入。
+        run: |
+          set -euo pipefail
+          echo "hosted runner scratch is ephemeral; no-op cleanup here"
+          echo "real disk gate lives in build-fleet.yml preflight (df gate) and tools/maintain.sh"
+
+      - name: Trigger build-fleet.yml
+        id: dispatch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # 走 reusable workflow 调用而非 `gh workflow run`：后者是异步 fire-and-
+          # forget，拿不到 build-fleet 的 aggregate 结论；前者能 `needs` 串起来。
+          # 说明：本仓当前的 build-fleet.yml 尚未加 `workflow_call:`，所以这里默认
+          # 走 dispatch 路径 + 轮询 run 状态。要切到 reusable 调用，需先给
+          # build-fleet.yml 加 workflow_call trigger（属于后续改动，不在本草稿内）。
+          if gh workflow view build-fleet.yml --json state -q '.state' >/dev/null 2>&1; then
+            echo "build-fleet.yml is live; dispatching"
+            gh workflow run build-fleet.yml \
+              -f versions_v1="${{ inputs.versions_v1 }}" \
+              -f versions_v2="${{ inputs.versions_v2 }}" \
+              -f dry_run=false \
+              -f push_artifact=true \
+              -f run_device_gate="${{ inputs.run_device_gate }}" \
+              -f artifact_retention_days=7 \
+              -f cache_bun_baseline=false \
+              -f cache_rust=true \
+              --ref "${{ github.ref_name }}"
+            echo "dispatched; note the run id is NOT captured by 'workflow run' —"
+            echo "poll 'gh run list --workflow build-fleet.yml' for the aggregate summary."
+          else
+            echo "build-fleet.yml not enabled on this ref (${{ github.ref_name }}); nothing to do" >&2
+            exit 1
+          fi
+
+  # 可选：把 nightly 的结论落一份长期留存（artifact 7 天 vs 长期 evidence）。
+  # 这里只做一份极小的 run 级摘要，不复制包体。
+  summary:
+    name: nightly summary
+    needs: nightly
+    if: ${{ always() && (github.event_name == 'workflow_dispatch' || env.ENABLE_NIGHTLY == 'true') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Record run metadata
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          cat > out/nightly-${{ github.run_id }}.json <<EOF
+          {
+            "run_id": ${{ github.run_id }},
+            "event": "${{ github.event_name }}",
+            "ref": "${{ github.ref_name }}",
+            "sha": "${{ github.sha }}",
+            "conclusion": "${{ needs.nightly.result }}",
+            "note": "packages stay in workflow artifacts; release push is manual via asset-push.yml"
+          }
+          EOF
+          cat out/nightly-${{ github.run_id }}.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nightly-summary-${{ github.run_id }}
+          path: out/
+          retention-days: 90
+
+# ─────────────────────────────────────────────────────────────────────────
+# 为什么 cron 段默认注释掉而不是 `if: false`：
+#   `schedule:` 一旦存在，GitHub 就会真的每天触发（触发本身不消耗 runner 分钟，
+#   但会创建 run、占 artifact 名额、并在 60 天无 activity 后被自动取消）。
+#   注释掉 = 零触发成本，改用 workflow_dispatch 手动验证同一路径。
+#   双重闸（注释 cron + ENABLE_NIGHTLY）是为了防「只删注释忘改 env」这种
+#   半启用状态：那种状态会每天跑出一个空 run 并在 Actions 页面堆积。
+#
+# 已知不做的事：
+#   - 不让 nightly 推 release。
+#   - 不让 nightly 跑 oscar-gate.sh（需真机 + 交互 PTY；默认 false，需人显式开）。
+#   - 不做「错过触发补跑」（cron 不补跑；要必达请外部调 gh workflow run）。

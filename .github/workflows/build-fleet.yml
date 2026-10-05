@@ -1,0 +1,485 @@
+# build-fleet.yml — 版本矩阵构建（PREPARED / 未启用推送）
+#
+# 状态：**草稿，未启用**。本文件只存在于 rc6-a2/docs-ci 分支，未 push。
+# 启用方法见文件末尾「如何启用」段。
+#
+# 职责：把 v1 线（1.18.x，单文件 ELF）与 v2 线（2.0.x，runtime+crhandler+pty shims）
+#       的构建按「线 × 版本」矩阵铺开，缓存重资产（bun baseline / bun store /
+#       cargo registry / 源码 tarball），逐条目上传产物 artifact，并聚合失败。
+#       **不推送 release**（推送是 asset-push.yml 的职责，且需人工批准）。
+#
+# 为什么不按版本单轴切分：
+#   两条线的构建链、依赖、门禁完全不同（v1 = tools/a2/build-v1.sh +
+#   press-v5.sh；v2 = scripts/build-bionic.sh + package_pacman_native.sh）。
+#   单轴 flatten 会把两套 toolchain 混进同一个 job definition，无法分别注入
+#   门禁与超时。矩阵用 line × version 双轴，`include` 里带上每条目专属的
+#   构建命令块（bash heredoc 片段），由 line 分派。
+#
+# runner 策略（详见 .github/README-build.md）：
+#   build-*  job **必须** 跑在自托管真机 ARM runner（本仓库路线图为 Termux
+#   Android aarch64）。理由是硬证据，不是偏好：
+#     1. 构建脚本 shebang 硬编码 Termux 路径（`#!/data/data/com.termux/...`），
+#        x86 hosted runner 连解释器都找不到。
+#     2. build-v1.sh / scripts/build-bionic.sh 需要**执行** aarch64-android 的
+#        bun baseline 来编译；x86 host 无法 exec aarch64 ELF（与
+#        .github/workflows/build-native-android.yml 里 --no-execve 的存在
+#        同因）。
+#     3. build-libopentui.sh 依赖 BIONIC_SYSROOT=$PREFIX 与 LD_PRELOAD
+#        w7b-shim.so（绕 Android SELinux 的 hardlink EPERM），二者只在真机成立。
+#     4. press-v5.sh 依赖 Termux upx / readelf，且 `df -k /data/user/0` 门禁
+#        是 Android 专有路径。
+#   plan/aggregate 为纯编排 + 元数据 job，可跑在 GitHub-hosted x86 runner。
+#
+# 幂等与半成品防护（关键）：
+#   - 每个矩阵条目只在 `success()` 时上传**包** artifact；状态 artifact 用
+#     `if: always()` 始终上传，聚合 job 靠状态 artifact 得到逐条目成败。
+#   - 每个条目先写 `status/<line>-<ver>.json`（含 sha256 + 门禁结论）到
+#     `$RUNNER_TEMP`，成功才连同包一起打包上传。
+#   - aggregate job 输出 `ready-for-push` 布尔结论，asset-push.yml 以它为
+#     唯一前置条件；因此「构建半成品」不可能被推成 release 资产。
+
+name: Build Fleet (matrix) [PREPARED]
+
+on:
+  workflow_dispatch:
+    inputs:
+      lines:
+        description: "要构建的线，逗号分隔：v1,v2（空=两线都跑）"
+        required: false
+        default: "v1,v2"
+      versions_v1:
+        description: "v1 线版本，逗号分隔（留空则用下方默认矩阵）"
+        required: false
+        default: "1.18.30,1.18.31,1.18.32,1.18.33,1.18.34"
+      versions_v2:
+        description: "v2 线版本，逗号分隔（留空则用下方默认矩阵）"
+        required: false
+        default: "2.0.0,2.0.22"
+      dry_run:
+        description: "true=只做 plan/工具链探测，不产出包（默认 true）"
+        type: boolean
+        required: false
+        default: true
+      push_artifact:
+        description: "true=把包作为 workflow artifact 上传（默认 true，dry_run 时忽略）"
+        type: boolean
+        required: false
+        default: true
+      run_device_gate:
+        description: "true=跑真机门禁 oscar-gate.sh（默认 false：需真机 + 真 PTY）"
+        type: boolean
+        required: false
+        default: false
+      cache_bun_baseline:
+        description: "true=启用 bun baseline 缓存（默认 true）"
+        type: boolean
+        required: false
+        default: true
+      cache_rust:
+        description: "true=启用 cargo registry/git 缓存（默认 true）"
+        type: boolean
+        required: false
+        default: true
+      artifact_retention_days:
+        description: "包 artifact 留存天数（默认 14；产物很大，勿留太久）"
+        required: false
+        default: "14"
+      sbom:
+        description: "true=为每个包生成 SBOM（默认 false：需在 runner 上装 syft）"
+        type: boolean
+        required: false
+        default: false
+      fail_fast:
+        description: "矩阵 fail-fast（默认 false：一条失败不掩盖其余条目状态）"
+        type: boolean
+        required: false
+        default: false
+
+# 最小权限：默认只读。写 release 不是本 workflow 的职责。
+permissions:
+  contents: read
+
+concurrency:
+  group: build-fleet-${{ github.ref }}
+  cancel-in-progress: false   # 不打断在制品：半成品会被上面的 success() 门禁挡住，但打断会浪费真机机时
+
+env:
+  # 矩阵默认值。docs/fleet-matrix.md 落盘后可改为从那里读；当前用 dispatch
+  # 输入覆盖，避免对尚未存在的文件产生硬依赖。
+  DEFAULT_V1: "1.18.30,1.18.31,1.18.32,1.18.33,1.18.34"
+  DEFAULT_V2: "2.0.0,2.0.22"
+  # 自托管真机 runner 标签。装 runner 时必须打齐这几个 label，见 README-build.md。
+  RUNNER_LABELS: "self-hosted,linux,ARM64,android,termux"
+  # bun baseline 版本。与 tools/transplant/config/bun-bind.json 的 target 保持一致。
+  BUN_VERSION: "1.4.0"
+  TERMUX_PREFIX: "/data/data/com.termux/files/usr"
+
+jobs:
+  # ── 1. plan：把 dispatch 输入展开成矩阵，并做 x86 侧可做的静态校验 ──────
+  plan:
+    name: plan matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.emit.outputs.matrix }}
+      entry_count: ${{ steps.emit.outputs.entry_count }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build matrix JSON
+        id: emit
+        env:
+          LINES: ${{ inputs.lines }}
+          V1: ${{ inputs.versions_v1 }}
+          V2: ${{ inputs.versions_v2 }}
+        run: |
+          set -euo pipefail
+          lines="$(echo "${LINES:-v1,v2}" | tr -d ' ')"
+          v1="${V1:-$DEFAULT_V1}"
+          v2="${V2:-$DEFAULT_V2}"
+          # v1 的包名是 opencode1（与 v2 的 opencode 共存），见
+          # scripts/package/package_pacman_native.sh 的 1.* 分支。
+          python3 - "$lines" "$v1" "$v2" <<'PY' > matrix.json
+          import json, sys
+          lines, v1, v2 = sys.argv[1], sys.argv[2], sys.argv[3]
+          want = [s for s in lines.split(",") if s]
+          entries = []
+          if "v1" in want:
+              for v in [s for s in v1.split(",") if s]:
+                  entries.append({"line": "v1", "ver": v, "pkg": "opencode1"})
+          if "v2" in want:
+              for v in [s for s in v2.split(",") if s]:
+                  entries.append({"line": "v2", "ver": v, "pkg": "opencode"})
+          if not entries:
+              sys.exit("no matrix entries: check `lines` input")
+          json.dump({"include": entries}, sys.stdout)
+          PY
+          cat matrix.json
+          echo "entry_count=$(python3 -c 'import json;print(len(json.load(open("matrix.json"))["include"]))')" >> "$GITHUB_OUTPUT"
+
+      - name: Verify every path the matrix jobs will touch exists
+        run: |
+          set -euo pipefail
+          # 纪律：workflow 里出现的脚本名必须真实存在。此处 fail-fast 能在
+          # PR 阶段就抓到「文档/脚本漂移」，而不是等真机 runner 上才炸。
+          for f in \
+            tools/a2/build-v1.sh \
+            tools/a2/press-v5.sh \
+            tools/a2/pty-embed-store-patch.sh \
+            tools/a2/hermetic-home-patch.py \
+            tools/a2/oscar-gate.sh \
+            tools/transplant/swap_tui.py \
+            tools/transplant/tui_smoke.py \
+            tools/build-bionic/apply-platform-patch.sh \
+            scripts/build-bionic.sh \
+            scripts/package/package_pacman_native.sh \
+            tools/pkg-abs-repack.sh \
+            tools/fleet-push.py ; do
+            [ -e "$f" ] || { echo "MISSING $f"; exit 1; }
+            echo "ok  $f"
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fleet-plan-matrix
+          path: matrix.json
+          retention-days: 30
+
+  # ── 2. build：真机 ARM runner 上的逐条目构建 ───────────────────────────
+  build:
+    name: ${{ matrix.line }} ${{ matrix.ver }}
+    needs: plan
+    if: ${{ !inputs.dry_run }}
+    runs-on: [self-hosted, linux, ARM64, android, termux]
+    strategy:
+      fail-fast: ${{ inputs.fail_fast }}
+      matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
+    env:
+      LINE: ${{ matrix.line }}
+      VER: ${{ matrix.ver }}
+      PKG_NAME: ${{ matrix.pkg }}
+      DRY_RUN: ${{ inputs.dry_run }}
+      RUN_DEVICE_GATE: ${{ inputs.run_device_gate }}
+      SBOM: ${{ inputs.sbom }}
+      # 每条目独立工作根：避免同机多版本互相覆盖（build-v1.sh / build-bionic.sh
+      # 都往 artifacts/build/<ver> 写，但 libopentui/bun-pty 资产是共享槽位）。
+      WORK: ${{ runner.temp }}/fleet/${{ matrix.line }}/${{ matrix.ver }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Preflight — identity, disk gate, toolchain probe
+        id: pre
+        run: |
+          set -euo pipefail
+          mkdir -p "$WORK" "$WORK/status"
+          {
+            echo "uname: $(uname -a)"
+            echo "prefix: ${TERMUX_PREFIX}"
+            echo "work: $WORK"
+            for t in bash python3 readelf upx make pkg ar tar xz; do
+              printf '%-8s %s\n' "$t" "$(command -v "$t" || echo MISSING)"
+            done
+            df -h /data 2>/dev/null || df -h .
+          } | tee "$WORK/status/preflight.txt"
+          # Termux 前缀存在性是「确实在 Android 上」的最便宜证明。
+          [ -d "$TERMUX_PREFIX" ] || { echo "not a Termux/Android host ($TERMUX_PREFIX absent)" >&2; exit 1; }
+          command -v upx >/dev/null || { echo "upx missing — press stage cannot run" >&2; exit 1; }
+
+      - name: Cache bun baseline (tarball, not extracted tree)
+        if: ${{ inputs.cache_bun_baseline }}
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/fleet-cache/bun-${{ env.BUN_VERSION }}.zip
+          key: bun-android-${{ env.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+          # 缓存的是下载物而非解包树：解包树在 Android 上会撞 SELinux 的
+          # hardlink EPERM（见 tools/transplant/build-libopentui.sh 头注），
+          # 缓存解包树会把「必须重解」的目录状态一起冻进 cache。
+          restore-keys: |
+            bun-android-${{ env.BUN_VERSION }}-
+
+      - name: Cache bun install store (node_modules/.bun)
+        if: ${{ inputs.cache_bun_baseline }}
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/fleet-cache/bun-store
+          key: bun-store-${{ matrix.line }}-${{ matrix.ver }}-${{ runner.os }}-${{ runner.arch }}
+          restore-keys: |
+            bun-store-${{ matrix.line }}-
+
+      - name: Cache cargo registry + git deps (bun-pty / libopentui 链)
+        if: ${{ inputs.cache_rust }}
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-${{ runner.os }}-${{ runner.arch }}
+          restore-keys: |
+            cargo-${{ runner.os }}-
+
+      - name: Fetch opencode source tarball for ${{ matrix.line }} ${{ matrix.ver }}
+        env:
+          NPM_PKG: ${{ matrix.line == 'v1' && 'opencode-linux-arm64' || 'opencode' }}
+        run: |
+          set -euo pipefail
+          cd "$WORK"
+          # v1 线发布物是 opencode-linux-arm64 的单文件包（与
+          # .github/workflows/build-native-android.yml 同源）；v2 线是 monorepo，
+          # 由 V2_SRC 指向 checkout，构建脚本自身负责解析。
+          if [ "$LINE" = "v1" ]; then
+            npm pack "$NPM_PKG@$VER" --pack-destination . || {
+              echo "npm pack failed for $NPM_PKG@$VER (upstream may not publish this tag)" >&2
+              exit 1; }
+            ls -la ./*.tgz
+          else
+            echo "v2: source tree provided via V2_SRC (default \$HOME/develop/opencode-src/opencode-$VER)"
+          fi
+
+      - name: Build — v1 line (build-v1.sh + press-v5.sh)
+        if: ${{ matrix.line == 'v1' }}
+        env:
+          V1_SRC: ${{ runner.temp }}/fleet-src/v1/opencode-${{ matrix.ver }}
+          ANDROID_BUN: ${{ runner.temp }}/fleet/bun-${{ env.BUN_VERSION }}/bun
+          BUILTIN_SO: ${{ github.workspace }}/artifacts/transplant/opentui-bionic/libopentui.so
+          EFFECT_VER: 4.0.0-beta.103
+        run: |
+          set -euo pipefail
+          cd "${{ github.workspace }}"
+          mkdir -p "$V1_SRC" "$WORK"
+          if [ -n "$(ls -A "$WORK"/*.tgz 2>/dev/null || true)" ]; then
+            tar -xzf "$WORK"/*.tgz -C "$V1_SRC" --strip-components=1
+          fi
+          echo "==> [v1] build-v1.sh VER=$VER"
+          VER="$VER" bash tools/a2/build-v1.sh
+          echo "==> [v1] press-v5.sh (TLSDESC graft + hermetic remap + upx + smoke)"
+          # KNOWN BLOCKER: press-v5.sh 目前把 VER 硬编码为 1.18.32，且
+          # pty-embed-store-patch.sh 的默认 V1_SRC / vendor sha 同样钉在
+          # 1.18.32。跑非 1.18.32 的 v1 条目前必须先把这两处参数化。
+          VER="$VER" bash tools/a2/press-v5.sh
+          ls -la artifacts/build/"$VER"/*/runtime/ 2>/dev/null || true
+
+      - name: Build — v2 line (build-bionic.sh + package_pacman_native.sh + abs repack)
+        if: ${{ matrix.line == 'v2' }}
+        env:
+          ANDROID_BUN: ${{ runner.temp }}/fleet/bun-${{ env.BUN_VERSION }}/bun
+        run: |
+          set -euo pipefail
+          cd "${{ github.workspace }}"
+          echo "==> [v2] build-bionic.sh VER=$VER"
+          VER="$VER" bash scripts/build-bionic.sh
+          echo "==> [v2] package_pacman_native.sh VERSION=$VER"
+          VERSION="$VER" bash scripts/package/package_pacman_native.sh
+          # termux-pacman 绝对路径成员约定（data/data/com.termux/files/usr/...）：
+          # 在 RootDir=/ 的标准 termux-pacman 上，relative usr/... 成员会落到 /
+          # 触发只读分区错误。守卫脚本见 tools/pkg-abs-repack.sh 头注。
+          PKG="$(ls -t packing/pacman/${PKG_NAME}-${VER}-*-aarch64.pkg.tar.xz 2>/dev/null | head -1 || true)"
+          [ -n "$PKG" ] || { echo "no pacman package produced for $VER" >&2; exit 1; }
+          echo "==> [v2] pkg-abs-repack.sh $PKG"
+          bash tools/pkg-abs-repack.sh "$PKG"
+          ls -la packing/pacman/${PKG_NAME}-${VER}-*-aarch64.pkg.tar.xz
+
+      - name: Collect package + manifest into $WORK/out
+        id: collect
+        run: |
+          set -euo pipefail
+          cd "${{ github.workspace }}"
+          mkdir -p "$WORK/out"
+          shopt -s nullglob
+          if [ "$LINE" = "v1" ]; then
+            # v1 的「包」是 press 产物的 candidate kit 目录（单文件 ELF + launcher + MANIFEST）。
+            for kit in artifacts/build/"$VER"/*press*/; do
+              [ -d "$kit" ] || continue
+              d="$WORK/out/${PKG_NAME}-${VER}-kit-$(basename "$kit")"
+              mkdir -p "$d"
+              cp -a "$kit"/. "$d"/ 2>/dev/null || true
+            done
+          else
+            for p in packing/pacman/${PKG_NAME}-${VER}-*-aarch64.pkg.tar.xz; do
+              cp -p "$p" "$WORK/out/"
+            done
+          fi
+          shopt -u nullglob
+          found="$(ls -A "$WORK/out" 2>/dev/null || true)"
+          [ -n "$found" ] || { echo "no artifact collected for $LINE $VER" >&2; exit 1; }
+          ( cd "$WORK/out" && sha256sum ./* > ../SHA256SUMS.txt 2>/dev/null || true )
+          ls -la "$WORK/out"
+
+      - name: Generate SBOM (optional)
+        if: ${{ inputs.sbom }}
+        run: |
+          set -euo pipefail
+          # 需要 runner 上预装 syft；未装则显式失败而不是静默跳过（静默跳过会
+          # 让「SBOM 已启用」的假象留在 release 上）。
+          command -v syft >/dev/null || { echo "SBOM requested but syft not installed on runner" >&2; exit 1; }
+          ( cd "$WORK/out" && syft dir:. -o spdx-json > "$WORK/out/SBOM.spdx.json" )
+
+      - name: Write per-entry status
+        if: ${{ always() }}
+        run: |
+          set -euo pipefail
+          cd "${{ github.workspace }}"
+          ok=true
+          msg="build+collect ok"
+          if [ ! -s "$WORK/SHA256SUMS.txt" ] && [ "$LINE" = "v2" ]; then ok=false; msg="missing SHA256SUMS"; fi
+          # 资产命名必须匹配 tools/fleet-push.py::discover_release 的正则：
+          #   ^(?:opencode|opencode1)-([\d.]+)-(\d+)-aarch64\.pkg\.tar\.xz$
+          bad="$(cd "$WORK/out" 2>/dev/null && ls *.pkg.tar.xz 2>/dev/null \
+                 | grep -Ev '^(opencode|opencode1)-[0-9.]+-[0-9]+-aarch64\.pkg\.tar\.xz$' || true)"
+          if [ -n "$bad" ]; then ok=false; msg="asset name off-contract: $bad"; fi
+          cat > "$WORK/status/$LINE-$VER.json" <<EOF
+          {
+            "line": "$LINE",
+            "ver": "$VER",
+            "pkg_name": "$PKG_NAME",
+            "runner": "$(uname -m)",
+            "ok": $ok,
+            "message": "$msg",
+            "sha256sums": $( [ -f "$WORK/SHA256SUMS.txt" ] && echo true || echo false ),
+            "commit": "${{ github.sha }}"
+          }
+          EOF
+          cat "$WORK/status/$LINE-$VER.json"
+
+      - name: Device gate (oscar-gate.sh) — opt-in
+        if: ${{ inputs.run_device_gate && success() }}
+        run: |
+          set -euo pipefail
+          cd "${{ github.workspace }}"
+          # kernel 3.18 / Android 9 真机门禁：真 PTY 渲染 + DELTA>0 + LLM 往返。
+          # 默认关闭：它要求真机在线 + 交互式 PTY，不能在无人值守 runner 上当门禁。
+          BIN="$(ls -1 artifacts/build/"$VER"/*press*/runtime/opencode-v1-* 2>/dev/null | head -1 || true)"
+          [ -n "$BIN" ] || { echo "no pressed runtime found for device gate" >&2; exit 1; }
+          bash tools/a2/oscar-gate.sh "ci-$LINE-$VER" "$BIN" raw /dev/pts/0
+
+      - name: Upload PACKAGE artifact (only on success — half-product gate)
+        if: ${{ success() && inputs.push_artifact }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: fleet-pkg-${{ matrix.line }}-${{ matrix.ver }}
+          path: ${{ env.WORK }}/out/
+          retention-days: ${{ inputs.artifact_retention_days }}
+          if-no-files-found: error
+
+      - name: Upload STATUS + SHA256SUMS artifact (always)
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: fleet-status-${{ matrix.line }}-${{ matrix.ver }}
+          path: |
+            ${{ env.WORK }}/status/
+            ${{ env.WORK }}/SHA256SUMS.txt
+            ${{ env.WORK }}/status/preflight.txt
+          retention-days: 30
+          if-no-files-found: warn
+
+  # ── 3. aggregate：矩阵失败聚合 + push 就绪判据 ──────────────────────────
+  aggregate:
+    name: aggregate matrix result
+    needs: [plan, build]
+    if: ${{ always() && !inputs.dry_run }}
+    runs-on: ubuntu-latest
+    outputs:
+      ready_for_push: ${{ steps.summarize.outputs.ready_for_push }}
+      summary: ${{ steps.summarize.outputs.summary }}
+    steps:
+      - name: Download all per-entry status artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: fleet-status-*
+          path: statuses
+          merge-multiple: true
+
+      - name: Summarize
+        id: summarize
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' | tee summary.txt
+          import glob, json, os, sys
+          rows, bad = [], []
+          for p in sorted(glob.glob("statuses/*.json")):
+              try:
+                  d = json.load(open(p))
+              except Exception as e:
+                  bad.append((os.path.basename(p), f"unreadable: {e}")); continue
+              rows.append(d)
+          ok = [r for r in rows if r.get("ok")]
+          ng = [r for r in rows if not r.get("ok")]
+          print(f"entries={len(rows)} ok={len(ok)} failed={len(ng)}")
+          for r in sorted(rows, key=lambda r: (r.get("line",""), r.get("ver",""))):
+              print(f"  {'OK ' if r.get('ok') else 'FAIL'} {r.get('line')} {r.get('ver')} {r.get('message','')}")
+          for name, why in bad:
+              print(f"  FAIL <unreadable> {name} {why}")
+          # 只有「全部条目齐备且无失败」才允许下游推送；部分成功也判 false，
+          # 避免半矩阵被当成完整 fleet 推上 release。
+          ready = (len(rows) > 0 and not ng and not bad)
+          print(f"ready_for_push={str(ready).lower()}")
+          PY
+          ready="$(grep -o 'ready_for_push=[a-z]*' summary.txt | cut -d= -f2)"
+          summary="$(grep -E '^entries=' summary.txt || echo 'entries=0')"
+          echo "ready_for_push=$ready" >> "$GITHUB_OUTPUT"
+          echo "summary=$summary" >> "$GITHUB_OUTPUT"
+          [ "$ready" = "true" ] || echo "::warning::matrix incomplete — asset-push must not run"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fleet-aggregate-summary
+          path: summary.txt
+          retention-days: 30
+
+# ─────────────────────────────────────────────────────────────────────────
+# 如何启用（当前**未**启用）
+#
+# 1) 自托管 runner：在真机 Termux（aarch64 Android）上注册 runner，label 必须是
+#    self-hosted, linux, ARM64, android, termux。步骤见 .github/README-build.md。
+# 2) 把本文件 push 到默认分支（或手动 dispatch）。
+# 3) 首次运行务必 dry_run=true：它只跑 plan + preflight，不进 build job，
+#    用来确认 runner 标签、磁盘门禁、工具链（upx/readelf）齐备。
+# 4) dry_run=false + push_artifact=true 得到包 artifact；此时 release 上仍无任何
+#    资产（推送需另跑 asset-push.yml 并显式批准）。
+# 5) v1 多版本的前置：press-v5.sh 与 pty-embed-store-patch.sh 目前把 VER 钉在
+#    1.18.32。矩阵里 1.18.30/31/33/34 的 v1 条目在参数化之前会失败——这是已知
+#    阻塞，不是 runner 配置问题。
+#
+# 不做的事（有意）：
+#   - 不在 CI 里宣称 Termux 运行时兼容性/最终发布权威（.github/ACTIONS_DISABLED.md）。
+#   - 不在 CI 里推 release（职责在 asset-push.yml，且需人工批准）。
+#   - 不启用 schedule（定时形态见 nightly-fleet.yml，同样默认不触发）。
