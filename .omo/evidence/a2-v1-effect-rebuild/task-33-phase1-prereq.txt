@@ -1,0 +1,332 @@
+task-33-phase1-prereq — N2/N5 阶段-1 前置不确定性实测证据
+日期: 2026-10-05
+工作目录: ~/develop/ot-docs-ci  (branch rc6-a2/docs-ci)
+宿主: Termux aarch64 Android (bionic), disk 起始 avail=12G
+被测对象: bun 1.4.0 android blob (artifacts/transplant/android-bun/bun-1.4.0/bun, 版本串 1.4.0+34cbb9a40)
+          对照组: 本机 bun 1.3.14 (bionic/aarch64)
+编号说明: P* 与前一代理的 E1–E5 编号区分开，本文件不重做 E* 的实测。
+声明: 全部【实测】条目为本机真实命令输出；凡未取到证据的一律显式标注「未取到证据」。
+
+════════════════════════════════════════════════════════════════
+P0. 结论摘要（TL;DR）
+════════════════════════════════════════════════════════════════
+N2 结论：**opentui 在 glibc x64 下以「预编译独立 .so 内嵌进 bunfs」形态存在，
+        但完全不需要我们交叉编译** —— 上游 npm 已有官方预编译 glibc x64 包
+        `@opentui/core-linux-x64@0.4.5`（含 x86-64 glibc libopentui.so）。
+        它以 `import()` 动态解析 + `new URL('./libopentui.so', import.meta.url)`
+        嵌入，**不进 DT_NEEDED**。故阶段 1 不需要把 opentui 源带进跨构管线，
+        也不需要为 glibc 重编 opentui。前置代理的「未取到证据 N2」到此结清。
+
+N5 结论：**bun 1.4.0 与 1.3.14 是同款坑，且更严重**。三坑在 1.4.0 全部复现。
+        但纠正配方在 1.4.0 上**照旧成立**，且实测发现一个前代理未识别的关键约束：
+        `--target` token 与 `--compile-executable-path` 是**两个独立旋钮** ——
+        token 只决定 JS 层烘焙（process.platform），baseline 路径只决定 ELF。
+        想要「glibc ELF + linux 烘焙」必须**同时**给 musl token + glibc 路径（组合 C）。
+        只给 glibc 路径仍会把 process.platform 烘成 "android"（组合 D/E）。
+
+阶段 1 判断：**GO（有条件）**。opentui 不构成阻塞，bun 版本也不构成阻塞。
+        真正的新增前置是 P8 的 `bun install --cpu=x64 --os=linux` 门控。
+
+════════════════════════════════════════════════════════════════
+N2. opentui 在 glibc x64 下的存在形态
+════════════════════════════════════════════════════════════════
+
+【实测 P1】opentui 的 .so 不在 @opentui/core 包内，而在**平台兄弟包**
+  $ V=/data/data/com.termux/files/usr/tmp/a2-src/opencode-1.18.32
+  $ ls -d $V/node_modules/.bun/@opentui*
+  @opentui+core-linux-arm64-musl@0.4.5
+  @opentui+core-linux-arm64@0.4.5
+  @opentui+core@0.4.5+2240c214a0f33214
+  @opentui+keymap@0.4.5+7d6e87549fe33b7e
+  @opentui+solid@0.4.5+b9027845aeff97b0
+  $ ls $V/node_modules/.bun/@opentui+core@0.4.5*/node_modules/@opentui/core/
+  → 只有 *.js / *.d.ts / lib/ / package.json，**无任何 .so**
+
+【实测 P2】core 的 package.json 把 8 个平台全声明为 optionalDependencies
+  $ python3 -c "import json;print(json.load(open(core/package.json))['optionalDependencies'])"
+  {
+   "@opentui/core-darwin-x64": "0.4.5",
+   "@opentui/core-darwin-arm64": "0.4.5",
+   "@opentui/core-linux-x64": "0.4.5",      ← 正是我们要的
+   "@opentui/core-linux-arm64": "0.4.5",
+   "@opentui/core-win32-x64": "0.4.5",
+   "@opentui/core-win32-arm64": "0.4.5",
+   "@opentui/core-linux-x64-musl": "0.4.5",
+   "@opentui/core-linux-arm64-musl": "0.4.5"
+  }
+  dependencies 只有纯 JS 包（bun-ffi-structs / diff / marked / string-width / strip-ansi）
+  → 即 **linux-x64 glibc 路线是上游一等公民支持路径**，不是我们发明的偏门。
+
+【实测 P3】运行时解析逻辑（chunk-bun-t2myhmwd.js 内 resolveNativeLibraryPath）
+  async function resolveNativeLibraryPath() {
+    const asset = getNativeAssetDescriptor(getCurrentNodeAssetTarget());
+    const configuredPath = resolveAssetRootPath(asset.key);
+    if (configuredPath !== undefined) return configuredPath;
+    if (process.platform === "darwin") { ... }
+    if (true) {                                        // ← 原为 process.platform==="linux"，被本仓 apply-platform-patch.sh 改成 true
+      if (process.arch === "x64") {
+        if (process.env.OPENTUI_LIBC === "musl") return (await import("@opentui/core-linux-x64-musl")).default;
+        return (await import("@opentui/core-linux-x64")).default;      ← glibc 命中
+      }
+      if (process.arch === "arm64") { ... }
+    }
+    if (process.platform === "win32") { ... }
+    throw new Error(`OpenTUI is not supported on the current platform: ${asset.packageName}`);
+  }
+  ★ 注意 `if (true)`：那是 tools/a2/build-v1.sh:118-119 调的
+    tools/build-bionic/apply-platform-patch.sh 的产物（bionic 线专用补丁）。
+    跨构 glibc 时**这个补丁必须撤掉**，否则 platform 分支判断完全失效。
+
+【实测 P4】平台包只含一个 .so + 一个把路径导成字符串的 index.js
+  $ cat node_modules/@opentui/core-linux-arm64/index.js
+  import { fileURLToPath } from "node:url"
+  export default fileURLToPath(new URL("./libopentui.so", import.meta.url))
+  $ cat .../package.json | (os,cpu 字段)
+  "os": ["linux"], "cpu": ["arm64"]
+  → 平台包 = { libopentui.so, index.js, index.bun.js, index.d.ts }，无 JS 逻辑。
+  → 嵌入靠 `new URL(..., import.meta.url)` 这个 **bun 静态可分析模式**。
+
+【实测 P5】上游官方 glibc x64 预编译 .so 真实存在且是货真价实的 glibc
+  $ curl -fsSL https://registry.npmjs.org/@opentui/core-linux-x64/-/core-linux-x64-0.4.5.tgz
+  tgz OK 3659329 B；unpackedSize=13747319；os=['linux'] cpu=['x64']
+  $ readelf -d libopentui.so | grep -E "NEEDED|SONAME"
+   NEEDED  [libm.so.6]
+   NEEDED  [libpthread.so.0]
+   NEEDED  [libc.so.6]          ← glibc 6，不是 bionic 的 libc.so
+   NEEDED  [libdl.so.2]
+   NEEDED  [ld-linux-x86-64.so.2]
+   SONAME  [libopentui.so]
+  $ file → ELF 64-bit LSB shared object, x86-86-64, dynamically linked, with debug_info
+  ★ 与本仓自建 bionic 版对比（artifacts/transplant/opentui-bionic/libopentui.so）：
+    NEEDED [libm.so] [libc.so] [libdl.so]   ← bionic 风格（无 .so.N 后缀）
+  → 两者是完全不同的 ABI 家族，**不可互换**，也**不需要**我们再造一个。
+
+【实测 P6】决定性：真实安装 + opentui 真实 import 模式 → .so 被逐字节内嵌进 bunfs
+  $ bun140 install --cpu=x64 --os=linux   # 见 P8 为什么需要这两个 flag
+  + @opentui/core-linux-x64@0.4.5
+  1 package installed [2.73s]
+  $ cat probe.ts
+  import soPath from "@opentui/core-linux-x64";
+  console.log("SO_PATH=" + soPath);
+  $ bun140 build --compile --target=bun-linux-x64-musl \
+      --compile-executable-path=<glibc baseline> probe.ts --outfile o-final
+  [59ms]  bundle 3 modules
+  [401ms] compile  o-final  bun-linux-x64-musl-v1.4.0
+
+  产物 96,281,800 B；.so 13,745,312 B
+  $ readelf -d o-final | grep NEEDED
+   libc.so.6 / ld-linux-x86-64.so.2 / libpthread.so.0 / libdl.so.2 / libm.so.6
+   → **没有 libopentui.so**（既非 DT_NEEDED，也无动态依赖）
+  $ python3 -c "swap_tui.find_libopentui_asset(...)"
+   offset = 82,482,855
+   前置字节: b' + index_bun_default);\n\x00/$bunfs/root/libopentui-h3hyjpa5.so\x00'
+   内嵌 blob vs 安装的 .so: **前 13,745,312 字节完全一致**（= 整个 .so，n=min 均全长）
+  → 结论：.so 以 **RAW（未压缩）** 存进 bunfs，路径名 `/$bunfs/root/libopentui-<hash>.so`。
+    与 tools/transplant/swap_tui.py:29-53 文档化的布局完全一致
+    （`\x00/$bunfs/root/libopentui-<hash>.so\x00<ELF bytes>`）。
+
+【实测 P7】交叉验证：拿本仓**真实产物**跑同一个探测器
+  $ B=artifacts/build/1.18.32/opencode-v1-1.18.32-beta83-baseline   (136M, bionic v1 build)
+  $ readelf -d $B | grep NEEDED → libc.so / libm.so / libdl.so （无 opentui）
+  $ readelf -d $B | grep -c opentui → 0
+  $ find_libopentui_asset → offset 130,095,105 / 136,246,944
+    prefix: b'L=parser.worker.js.map\n\x00/$bunfs/root/libopentui-kcckf2nc.so\x00'
+  提取该 blob → file: ELF 64-bit aarch64, for Android 24, NDK r29
+                  NEEDED [libm.so] [libc.so] [libdl.so], SONAME [libopentui.so]
+  与本仓 artifacts/transplant/opentui-bionic/libopentui.so 比对：
+    embedded len 6,151,839 / grafted len 6,037,032
+    前 6,037,032 字节完全一致 → 内嵌的就是我们 graft 进去的那份（后面多出的
+    ~114KB 是 bunfs 后续其它资产，不是 .so 的一部分）
+  ★ 这解释了 tools/a2/build-v1.sh:96-111 的 graft 机制：
+    把 bionic libopentui.so 覆盖到 store 里每个 libopentui.so 位置，
+    bun 编译时按 new URL 模式把它原样吞进 bunfs。**graft 的是「文件」，
+    不是「链接」** —— 所以 glibc 线的对应动作不是移植代码，
+    而是让 store 里出现**正确的那个文件**（P8）。
+
+【N2 未取到证据 N2-a】**未验证 glibc x64 产物真机运行**。
+  本机是 aarch64，跑不了 x86-64 二进制。以上全部为静态取证
+  （readelf / bunfs 字节比对），未在真实 linux-x64 机器上执行过 opencode。
+  → 阶段 1 必须补：CI 原生 x64 runner 上跑 `--version` + TUI 渲染。
+【N2 未取到证据 N2-b】**未验证 v1.18.32 完整 build.ts 路径**下的内嵌行为。
+  P6 用的是最小复现（单文件 probe + 真实平台包）。opencode 真实构建里
+  opentui 还经由 @opentui/solid preload、parser.worker.js、tree-sitter.wasm
+  等多路资产，bunfs 资产表更复杂。形态应相同（同一 new URL 模式），
+  但**未在完整 opencode glibc 构建上取证**。
+
+════════════════════════════════════════════════════════════════
+N5. bun 1.4.0 是否同款坑 / 纠正配方是否照旧
+════════════════════════════════════════════════════════════════
+
+【实测 P8-前置】bionic 宿主上 1.4.0 的 libc 推断代码位置已变
+  前代理 E1.4 引用的是 ~/develop/bun-src-1.4.2/src/options_types/compile_target.rs:40-46。
+  本机实测行为与该源码一致（宿主 IS_ANDROID → Libc::Android），
+  但**行号属于 1.4.2 源码，不能当作 1.4.0 的行号引用**。
+  → 阶段 1 若要引源码行号，需另取 1.4.0 tag 对应行号（未取到证据 N5-a）。
+
+【实测 P8】坑1 复现：--target=bun-linux-x64 在 bionic 宿主静默产出 bionic
+  $ bun140 build --compile --target=bun-linux-x64 probe.ts --outfile o140-linux-x64
+  Downloading [35844993] / Downloading [36107137] / Downloading [36844417] / Decompressing...
+  [18.198s] compile  o140-linux-x64  bun-linux-x64-android-v1.4.0    ← ★ android！
+  $ file o140-linux-x64
+  ELF 64-bit LSB pie executable, x86-64, interpreter /system/bin/linker64,
+  for Android 28, built by NDK r27c, BuildID[sha1]=e531a52388122a9d12bcca2bfbb09f299c14c405
+  $ readelf -d | grep NEEDED → libc.so / libm.so / libdl.so       ← bionic，无 .so.6
+  → 与 1.3.14 完全同款（P5 对照：1.3.14 同样产出 linker64 + libc.so）。
+  → 静默性确认：**无任何 warning/error**，退出码 0，只是产物是 bionic。
+
+【实测 P9】坑1 的 BuildID 铁证：plain-x64 与 android token 同源
+  $ readelf -n o140-linux-x64 | awk '/Build ID/{print $3}'
+  e531a52388122a9d12bcca2bfbb09f299c14c405
+  $ readelf -n o140-android   | awk '/Build ID/{print $3}'
+  e531a52388122a9d12bcca2bfbb09f299c14c405      ← ★ 逐位相同 = 同一 baseline
+  且 o140-android 编译耗时 [740ms]（走缓存），o140-linux-x64 耗时 [18.198s]
+  → 后者先下载了 android baseline，前者复用。与 1.3.14 的 E1.3 现象一致。
+
+【实测 P10】坑1 的根因验证：glibc baseline 根本没被请求
+  $ ls ~/.bun/install/cache/ | grep -i "bun-linux"
+  bun-linux-x64-android-v1.3.14
+  bun-linux-x64-musl-v1.3.14
+  （1.4.0 跑完后新增：bun-linux-x64-android-v1.4.0 / bun-linux-x64-musl-v1.4.0）
+  → cache 里**从来就没有** glibc 的 bun-linux-x64（无 -android 无 -musl 后缀那个）。
+    即 target 串里没写 musl/android token 时，registry URL 被解析成
+    @oven/bun-linux-x64-android。**注意**：1.4.0 自己会去请求
+    @oven/bun-linux-x64（glibc）的**可能性已排除**——见 P12 证明该包在 npm 上存在，
+    但 1.4.0 在 bionic 宿主上不会去取它。
+
+【实测 P11】坑2 复现：process.platform 被烘焙成 "android" 而非 "linux"
+  probe.ts: console.log("PLATFORM=" + process.platform + " ARCH=" + process.arch)
+  $ strings -a <产物> | grep -oE 'PLATFORM=.{0,40}'
+  o140-linux-x64 : PLATFORM=" + "android" + " ARCH=" + "x64" + " LI
+  o140-musl       : PLATFORM=" + "linux"  + " ARCH=" + "x64" + " LI
+  o140-android    : PLATFORM=" + "android" + " ARCH=" + "x64" + " LI
+  1.3.14 同 combo  : PLATFORM=" + "android" + " ARCH=" + "x64" + " LI
+  → 1.4.0 与 1.3.14 **完全一致**：plain-x64 烘 android，只有 musl token 烘 linux。
+  → ★ 直接后果（P3 联动）：若带着 "android" 烘焙去跑 glibc 产物，
+    opentui 的 `if (process.platform === "linux")` 分支为假 → 落到
+    `throw new Error("OpenTUI is not supported...")`，**TUI 100% 起不来**。
+    这比「产物是 bionic」更隐蔽：产物本身合法、能跑，只是 TUI 挂。
+
+【实测 P12】纠正配方在 1.4.0 上照旧成立（--compile-executable-path 生效）
+  $ curl -fsSL https://registry.npmjs.org/@oven/bun-linux-x64-baseline/-/bun-linux-x64-baseline-1.4.0.tgz
+  tgz OK 37,174,022 B → package/bin/bun (78M)
+  $ file <glibc baseline>
+  ELF 64-bit LSB executable, x86-64, interpreter /lib64/ld-linux-x86-64.so.2, for GNU/Linux 3.2.0
+  $ bun140 build --compile --target=bun-linux-x64 \
+      --compile-executable-path=<glibc baseline> probe.ts --outfile o140-glibc
+  [319ms] compile  o140-glibc  bun-linux-x64-android-v1.4.0      ← 日志仍写 android（误导！）
+  $ file o140-glibc
+  ELF 64-bit LSB executable, x86-64, interpreter /lib64/ld-linux-x86-64.so.2, for GNU/Linux 3.2.0
+  $ readelf -d | grep NEEDED
+   libc.so.6 / ld-linux-x86-64.so.2 / libpthread.so.0 / libdl.so.2 / libm.so.6   ← ★ 真 glibc
+  → ★★ **compile 进度行里的 baseline 名是 LIE**：`bun-linux-x64-android-v1.4.0`
+    只是 target 推断出的标签，实际复制的二进制来自 --compile-executable-path。
+    **不要拿这行日志判断成功与否**，必须 readelf -l 看 INTERP。
+  → 纠正配方在 1.4.0 上**有效**：ELF 层面确实换成了 glibc。
+
+【实测 P13】★★★ 关键发现：token 与 baseline-path 是两个独立旋钮
+  这是前代理（E1–E5）**未识别**的约束，也是本任务最重要的增量。
+  5 组对照（同一 probe，同一 1.4.0，同一 glibc baseline）：
+
+  组合  --target              --compile-executable-path   烘焙 platform/arch   实际 ELF INTERP
+  A     bun-linux-x64         (无)                        android / x64        /system/bin/linker64
+  B     bun-linux-x64-musl    (无)                        linux   / x64        /lib/ld-musl-x86_64.so.1
+  C     bun-linux-x64-musl    <glibc>                     linux   / x64        /lib64/ld-linux-x86-64.so.2  ★
+  D     bun-linux-x64         <glibc>                     android / x64        /lib64/ld-linux-x86-64.so.2
+  E     (无)                  <glibc>                     android / arm64      /lib64/ld-linux-x86-64.so.2
+
+  读法：
+  · 「烘焙列」由 --target token 单独决定（A/D/E=android，B/C=linux）
+  · 「INTERP 列」由 --compile-executable-path 单独决定（A/B=宿主或 musl 缓存，C/D/E=glibc）
+  · ★ 唯一同时得到「linux 烘焙 + glibc ELF」的是组合 C：
+      --target=bun-linux-x64-musl --compile-executable-path=<glibc baseline>
+  · ★ 组合 D 是**最阴的失败模式**：ELF 看起来完全正确（glibc interp + glibc NEEDED），
+    但 process.platform 烘成 "android" → 按 P11 后果，opentui 运行时 throw。
+    **只 readelf 验收会漏掉它**。
+  · ★ 组合 E 复现了坑3：不给 --target 时连 arch 都烘成宿主（arm64），
+    产物却是 x86-64 glibc ELF —— arch 层面自相矛盾。
+  → 结论：纠正配方**不是**「--target + --compile-executable-path」这么泛，
+    而是**必须带 musl token**。前代理文档里的「--target=<glibc token>」表述
+    在 bionic 宿主上**不可用**（那就是组合 A/D，自相矛盾）。
+
+【实测 P14】1.4.0 vs 1.3.14 行为对照总表
+  维度                        1.3.14 (本机 bun)        1.4.0 (android blob)        同款?
+  --target=bun-linux-x64      bionic/linker64/android  bionic/linker64/android      是
+  该组合 BuildID               = android token 同源      = android token 同源         是
+  process.platform 烘焙       "android"                 "android"                  是
+  --target=...-musl           musl/ld-musl + "linux"    musl/ld-musl + "linux"      是
+  --compile-executable-path   生效（1.3.14 已实测）      生效（P12）                 是
+  token/path 独立性           未测                      独立（P13）                 —（新增）
+  compile 日志谎报 baseline  未测                      谎报（P12）                 —（新增）
+  → 1.4.0 **没有修掉任何坑**，且同样静默（退出码 0、无 warning）。
+  → 阶段 1 可继续用仓内 bun 1.4.0，无需回退 1.3.14，也无需升级/降级 bun。
+
+【实测 P15】★★★ 新增前置：bun install 的 os/cpu 门控会静默跳过 x64 平台包
+  这条前代理完全未提，是阶段 1 真正会**卡住**的地方（在 bionic 宿主上做 glibc 构建）。
+  $ cat package.json
+  { "name": "opentui-embed-probe", "dependencies": { "@opentui/core-linux-x64": "0.4.5" } }
+  $ bun140 install --ignore-scripts
+  Resolving dependencies
+  Resolved, downloaded and extracted [2]
+  Saved lockfile
+  [900.00ms] done
+  $ find node_modules
+  node_modules                       ← ★ **空目录！包没落地**
+  $ grep core-linux-x64 bun.lock
+  "@opentui/core-linux-x64": ["@opentui/core-linux-x64@0.4.5", "",
+                               { "os": "linux", "cpu": "x64" }, "sha512-SNyu..."]
+  → 解析进 lockfile 了（含 os/cpu 约束），但**因宿主是 android/aarch64 而跳过解压**。
+    退出码 0，无 warning。若只看 lockfile 会误判为「装好了」。
+  $ bun140 install --cpu=x64 --ignore-scripts   # 已缓存，不重试
+  bun install v1.4.0 (34cbb9a40)
+  [8.00ms] done
+  find node_modules -name '*.so' → 仍空        ← ★ 光加 flag 不够，lockfile 命中缓存
+  $ 全新空目录 + bun140 install --cpu=x64 --os=linux --ignore-scripts
+  + @opentui/core-linux-x64@0.4.5 (v0.5.14 available)
+  1 package installed [2.73s]
+  $ find node_modules -name "*.so"
+  node_modules/@opentui/core-linux-x64/libopentui.so      ← ★ 成功
+  → 配方：`bun install --cpu=x64 --os=linux`，且**必须在没有旧 lockfile 的干净目录**
+    （或先删 bun.lock / node_modules），否则命中缓存不会重新解压。
+  → 这是 P6 内嵌得以成功的前置条件。
+
+【N5 未取到证据 N5-b】1.4.0 的 compile_target.rs 精确行号（见 P8-前置）。
+【N5 未取到证据 N5-c】BUN_COMPILE_TARGET_TARBALL_URL 覆盖在 1.4.0 上的行为
+  （前代理 E1.4 只证了 1.3.14 源码支持该 env）。本任务未实测。
+  由于 P13 已证明 --compile-executable-path 足够，该 env 不是必需路径，
+  优先级低。
+
+════════════════════════════════════════════════════════════════
+阶段 1 go/no-go
+════════════════════════════════════════════════════════════════
+
+**GO（有条件）。** 逐条依据：
+
+| 阶段 1 隐含前置 | 判断 | 依据 |
+|---|---|---|
+| opentui 需要交叉编译/移植吗 | **不需要** | P2/P5：上游有官方 glibc x64 预编译包 |
+| opentui 需要以独立 .so 存在吗 | **是，但上游已提供** | P4/P6：raw 存进 bunfs，不进 DT_NEEDED |
+| 需要把 opentui 源带进跨构管线吗 | **不需要** | P2：optionalDependencies 覆盖 x64 |
+| 需要为 glibc 重编 opentui 吗 | **不需要** | P5：官方 .so 是 x86-64 glibc ABI |
+| 需要移植 epoll-compat / relax_tlsdesc 吗 | **不需要** | 承前代理 shim-porting.md 结论，本任务未推翻 |
+| 仓内 bun 1.4.0 能用吗 | **能，同坑，配方照旧** | P8–P14 |
+| 有无新增阻塞 | **有 1 个**：install 门控 | P15 |
+
+阶段 1 必须遵守的三条（否则静默产出坏产物）：
+  1. `bun install --cpu=x64 --os=linux` 且在干净目录（无旧 lockfile）  [P15]
+  2. `--target=bun-linux-x64-musl` + `--compile-executable-path=<glibc baseline>` 同给
+     —— 只给其一会产出「arch 对但 platform 错」的坏件              [P13]
+  3. 撤掉 `apply-platform-patch.sh` 的 `if (true)` 补丁（那是 bionic 线专用）[P3]
+  验收判据：**不能看 compile 日志的 baseline 名**（谎报），必须
+     `readelf -l` 看 INTERP + `strings` 查烘焙 platform + opentui 解析分支。
+
+下一验证动作（阶段 1 开工时按序做）：
+  V1. 干净 clone v1.18.32 → `bun install --cpu=x64 --os=linux` → 断言
+      `find node_modules -name libopentui.so` **非空**且 readelf  NEEDED 是 libc.so.6
+      （若空 → 门控配方失败，阶段 1 停）
+  V2. 用组合 C 跑完整 `packages/opencode/script/build.ts`，产出真 glibc x64 opencode
+  V3. `find_libopentui_asset` 断言内嵌 blob 与 store 里那份**逐字节一致**
+      （P6 已在最小复现验证，V3 补完整 opencode 语境，对应未取到证据 N2-b）
+  V4. 必须在真 linux-x64 上跑 `--version` + TUI 渲染（对应未取到证据 N2-a）；
+      本机 aarch64 只能静态验收
+  V5. bionic 线回归：确认撤掉 platform patch 后 arm64 产物仍能起 TUI
+      （防止 glibc 修复踩坏现有主线）
