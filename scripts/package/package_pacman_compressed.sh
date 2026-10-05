@@ -31,6 +31,21 @@ case "$FAMILY" in
 	opencode1 | opencode) ;;
 	*) echo "Error: OCOMP_FAMILY must be 'opencode1' or 'opencode' (got: $FAMILY)" >&2; exit 1 ;;
 esac
+# Package layout knob (OCOMP_LAYOUT):
+#   launcher   (default) — historical: bin/<family> is the bash launcher
+#               (XDG_*_HOME isolation + optional LD_PRELOAD/BUN_PTY_LIB) and the
+#               v1 family also ships migrate-to-opencode1.sh + a check-gated
+#               .INSTALL hook.
+#   single-elf — press6 line: the runtime is hermetic (pty inside the bun store
+#               chunk, no external .so), so the wrapper has no job left. Ships
+#               bin/<family> as a symlink to the runtime, drops the launcher,
+#               the migrate helper and the .INSTALL hook. Zero .sh members.
+#               Baked as a PKGBUILD literal so the recipe stays self-describing.
+OCOMP_LAYOUT="${OCOMP_LAYOUT:-launcher}"
+case "$OCOMP_LAYOUT" in
+	launcher | single-elf) ;;
+	*) echo "Error: OCOMP_LAYOUT must be 'launcher' or 'single-elf' (got: $OCOMP_LAYOUT)" >&2; exit 1 ;;
+esac
 PKG_NAME="${FAMILY}-compressed"
 PACKAGER_NAME="${PACKAGER_NAME:-Hope2333(幽零小喵) <u0catmiao@proton.me>}"
 PKGREL="${PKGREL:-1}"
@@ -144,9 +159,15 @@ fi
 # function without install= never ships) and is gated by a BUILD-TIME literal
 # (MIGRATE_HOOK), because .INSTALL executes at install time where build env
 # does not exist.
-if [[ "$FAMILY" == "opencode1" ]]; then
+#
+# single-elf layout ships NEITHER: the naming isolation is compiled into the
+# binary (A2 namespace bake) and there is no shell hook to run the helper from.
+if [[ "$FAMILY" == "opencode1" && "$OCOMP_LAYOUT" != "single-elf" ]]; then
 	MIGRATE_SHIP=1
 	echo "v1 migration helper: shipping (migrate-to-opencode1.sh + check-gated .INSTALL hook)"
+elif [[ "$OCOMP_LAYOUT" == "single-elf" ]]; then
+	MIGRATE_SHIP=0
+	echo "single-elf layout: migrate helper + .INSTALL hook NOT shipped (isolation is compiled in)"
 fi
 
 
@@ -189,6 +210,7 @@ sed -i \
 	-e "s/^SHIP_CR_HANDLER=.*/SHIP_CR_HANDLER=$SHIP_CR_HANDLER/" \
 	-e "s/^SHIP_PTY=.*/SHIP_PTY=$SHIP_PTY/" \
 	-e "s/^SHIP_EPOLL=.*/SHIP_EPOLL=$SHIP_EPOLL/" \
+	-e "s/^LAYOUT=.*/LAYOUT=$OCOMP_LAYOUT/" \
 	"$TMP_PKGBUILD"
 if [[ "${MIGRATE_SHIP:-0}" == "1" ]]; then
 	sed -i 's/^MIGRATE_HOOK=.*/MIGRATE_HOOK=1/' "$TMP_PKGBUILD"
@@ -198,18 +220,26 @@ fi
 # Bake the .INSTALL (install= directive) with the family literal. Both
 # families get the hook file; the v2 bake keeps MIGRATE_HOOK=0, making its
 # post_install echo-only (zero-hook contract).
-sed -e "s/^MIGRATE_HOOK=.*/MIGRATE_HOOK=${MIGRATE_SHIP:-0}/" \
-	"$ROOT_DIR/packing/pacman/opencode1-compressed.install" >"$TMP_INSTALL"
-sed -i "s|^pkgdesc=|install=\".INSTALL.opencode1-compressed.tmp\"\npkgdesc=|" "$TMP_PKGBUILD"
-grep -qF 'install=".INSTALL.opencode1-compressed.tmp"' "$TMP_PKGBUILD" || {
-	echo "Error: install= injection failed" >&2
-	exit 1
-}
-if [[ "${MIGRATE_SHIP:-0}" == "1" ]]; then
-	grep -q '^MIGRATE_HOOK=1$' "$TMP_INSTALL" || {
-		echo "FATAL: .INSTALL bake missing MIGRATE_HOOK=1" >&2
+#
+# single-elf layout ships NO .INSTALL at all: the hook's only real work is
+# invoking migrate-to-opencode1.sh, and the single-elf package ships neither the
+# helper nor any shell member (the "no .sh in package" guard below asserts it).
+if [[ "$OCOMP_LAYOUT" == "single-elf" ]]; then
+	echo "single-elf layout: install= (.INSTALL) NOT injected"
+else
+	sed -e "s/^MIGRATE_HOOK=.*/MIGRATE_HOOK=${MIGRATE_SHIP:-0}/" \
+		"$ROOT_DIR/packing/pacman/opencode1-compressed.install" >"$TMP_INSTALL"
+	sed -i "s|^pkgdesc=|install=\".INSTALL.opencode1-compressed.tmp\"\npkgdesc=|" "$TMP_PKGBUILD"
+	grep -qF 'install=".INSTALL.opencode1-compressed.tmp"' "$TMP_PKGBUILD" || {
+		echo "Error: install= injection failed" >&2
 		exit 1
 	}
+	if [[ "${MIGRATE_SHIP:-0}" == "1" ]]; then
+		grep -q '^MIGRATE_HOOK=1$' "$TMP_INSTALL" || {
+			echo "FATAL: .INSTALL bake missing MIGRATE_HOOK=1" >&2
+			exit 1
+		}
+	fi
 fi
 
 OPENCODE_COMPRESSED_BIN="$COMPRESSED_BIN" REPO_ROOT="$ROOT_DIR" makepkg --config "$TMP_MAKEPKG_CONF" -f --noconfirm -p "$TMP_PKGBUILD"
@@ -258,17 +288,51 @@ if [[ -n "$BUILT_PKG" ]]; then
     echo "payload guard: OK (runtime sha256 $WANT_SHA matches $COMPRESSED_BIN)"
 fi
 
-# launcher guard (unconditional): the launcher is the ONLY supported entry —
-# the UPX stub maps segments under /memfd:upx where DT_RUNPATH $ORIGIN
-# resolution dies, so a direct runtime exec cannot find libopencode-crhandler.so.
+# entry-point guard (unconditional): the package MUST ship a
+# data/data/com.termux/files/usr/bin/$FAMILY member — under the launcher layout
+# that is the bash launcher (the ONLY supported entry for shimmed UPX builds: the
+# stub maps segments under /memfd:upx where DT_RUNPATH $ORIGIN resolution dies),
+# under single-elf it is the symlink to the hermetic runtime.
 if [[ -n "$BUILT_PKG" ]]; then
     # grep -q would SIGPIPE bsdtar mid-listing under pipefail (race, order
     # dependent) — consume full listing with a redirect instead.
     if ! bsdtar -tf "$BUILT_PKG" | grep -E "data/data/com.termux/files/usr/bin/${FAMILY}\$" >/dev/null; then
-        echo "FATAL: package does not ship the data/data/com.termux/files/usr/bin/$FAMILY launcher (launcher-only contract)" >&2
+        echo "FATAL: package does not ship the data/data/com.termux/files/usr/bin/$FAMILY entry point (layout=$OCOMP_LAYOUT)" >&2
         exit 1
     fi
-    echo "launcher guard: OK (data/data/com.termux/files/usr/bin/$FAMILY shipped)"
+    echo "entry-point guard: OK (data/data/com.termux/files/usr/bin/$FAMILY shipped)"
+fi
+
+# single-elf guards: the whole point of the layout is a package with no shell in
+# the call chain. Assert the entry is a symlink to the runtime (not a script),
+# that the link target is right, and that NO .sh member escaped anywhere in the
+# package (launcher / migrate helper / .INSTALL would all show up here).
+if [[ -n "$BUILT_PKG" && "$OCOMP_LAYOUT" == "single-elf" ]]; then
+    ENTRY_MEMBER="data/data/com.termux/files/usr/bin/$FAMILY"
+    # bsdtar -xOf on a symlink member yields no bytes (it has none), so the
+    # target has to come from the verbose listing's "-> target" field.
+    ENTRY_LINE=$(bsdtar -tvf "$BUILT_PKG" "$ENTRY_MEMBER" 2>/dev/null | head -1)
+    ENTRY_TYPE=$(printf '%s' "$ENTRY_LINE" | awk '{print $1}')
+    ENTRY_LINK=$(printf '%s' "$ENTRY_LINE" | sed -n 's/.* -> //p')
+    if [[ "$ENTRY_TYPE" != lrwxrwxrwx* ]]; then
+        echo "FATAL: single-elf layout requires $ENTRY_MEMBER to be a symlink (got type: ${ENTRY_TYPE:-<unreadable>})" >&2
+        exit 1
+    fi
+    EXPECT_LINK="../lib/$FAMILY/runtime/opencode"
+    if [[ "$ENTRY_LINK" != "$EXPECT_LINK" ]]; then
+        echo "FATAL: single-elf symlink target mismatch" >&2
+        echo "  packaged: $ENTRY_MEMBER -> $ENTRY_LINK" >&2
+        echo "  expected: $ENTRY_MEMBER -> $EXPECT_LINK" >&2
+        exit 1
+    fi
+    echo "single-elf guard: OK ($ENTRY_MEMBER is a symlink -> $EXPECT_LINK)"
+    SH_MEMBERS=$(bsdtar -tf "$BUILT_PKG" | grep -E '\.sh$' || true)
+    if [[ -n "$SH_MEMBERS" ]]; then
+        echo "FATAL: single-elf layout leaked .sh member(s):" >&2
+        printf '  %s\n' "$SH_MEMBERS" >&2
+        exit 1
+    fi
+    echo "single-elf guard: OK (no .sh members in package)"
 fi
 
 # crhandler guard (conditional on OCOMP_SHIMS): asserted when the build

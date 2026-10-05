@@ -14,6 +14,18 @@ pkgrel=1
 # pkgname/pkgver/pkgrel/MIGRATE_HOOK are rewritten there.
 # MIGRATE_HOOK also gates the migrate helper install in package() below.
 MIGRATE_HOOK=0
+# Package LAYOUT, rewritten per build by package_pacman_compressed.sh from its
+# OCOMP_LAYOUT knob:
+#   launcher   (default, historical) — bin/opencode1 is scripts/opencode1-launcher.sh,
+#               a bash wrapper that exports the XDG_*_HOME isolation prefix and
+#               optionally LD_PRELOAD/BUN_PTY_LIB before exec'ing the runtime.
+#   single-elf (press6 line) — bin/opencode1 is a SYMLINK straight to
+#               lib/opencode1/runtime/opencode. The runtime is hermetic (pty
+#               inside the bun store chunk, no external .so), so the wrapper has
+#               no remaining job: the call chain becomes one real ELF with zero
+#               bash, and isolation is carried by the A2 namespace bake instead
+#               of env injection. Ships no .sh member at all.
+LAYOUT=launcher
 # Optional-shim switches, rewritten per build by package_pacman_compressed.sh
 # from its OCOMP_SHIMS knob. Defaults below are the historical contract (all
 # three shims embedded); a zero-external-.so runtime (e.g. the A2 todo16
@@ -46,7 +58,7 @@ package() {
         return 1
     fi
 
-    msg "Installing compressed runtime from $OPENCODE_COMPRESSED_BIN"
+    msg "Installing compressed runtime from $OPENCODE_COMPRESSED_BIN (layout=$LAYOUT)"
     # phase0 absolute convention (2026-10-04): stage under
     # $pkgdir/data/data/com.termux/files/usr/ so tar members are the
     # termux-pacman official absolute form `data/data/com.termux/files/usr/...`
@@ -54,7 +66,16 @@ package() {
     mkdir -p "$pkgdir/data/data/com.termux/files/usr/bin"
     # v12.1 layered: UPX runtime under lib/opencode1/runtime/ + XDG-isolating launcher
     install -D -m755 "$OPENCODE_COMPRESSED_BIN" "$pkgdir/data/data/com.termux/files/usr/lib/opencode1/runtime/opencode"
-    install -D -m755 "${REPO_ROOT:?REPO_ROOT must point at the repo root}/scripts/opencode1-launcher.sh" "$pkgdir/data/data/com.termux/files/usr/bin/opencode1"
+    if [[ "$LAYOUT" == "single-elf" ]]; then
+        # press6 line: one real ELF, zero bash. bin/opencode1 is a symlink to
+        # the runtime — the command name is unchanged, but the call chain has
+        # no shell interpreter anywhere. Relative target so the member stays
+        # valid under termux-pacman's absolute-member convention.
+        ln -s ../lib/opencode1/runtime/opencode "$pkgdir/data/data/com.termux/files/usr/bin/opencode1"
+        msg "single-elf layout: bin/opencode1 -> ../lib/opencode1/runtime/opencode (no launcher, no migrate helper)"
+    else
+        install -D -m755 "${REPO_ROOT:?REPO_ROOT must point at the repo root}/scripts/opencode1-launcher.sh" "$pkgdir/data/data/com.termux/files/usr/bin/opencode1"
+    fi
     # crhandler shim: REQUIRED whenever SHIP_CR_HANDLER=1 (the DT_NEEDED string
     # is hidden inside the UPX-compressed payload, so the shim ships
     # unconditionally for UPX inputs). Skipped only for a zero-external-.so

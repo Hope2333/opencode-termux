@@ -572,7 +572,7 @@ pacman-compressed:
 	fi
 	@bin="$${OPENCODE_COMPRESSED_BIN:-$(NATIVE_DIR)/opencode-native-$(VER)-upx}"; \
 	shim="$${OPENCODE_CRHANDLER_SO:-$(NATIVE_DIR)/libopencode-crhandler.so}"; \
-	VERSION=$(VER) OPENCODE_COMPRESSED_BIN="$$bin" OPENCODE_CRHANDLER_SO="$$shim" OCOMP_SHIMS='$(OCOMP_SHIMS)' PKGREL='$(PKGREL)' bash scripts/package/package_pacman_compressed.sh
+	VERSION=$(VER) OPENCODE_COMPRESSED_BIN="$$bin" OPENCODE_CRHANDLER_SO="$$shim" OCOMP_SHIMS='$(OCOMP_SHIMS)' OCOMP_LAYOUT='$(OCOMP_LAYOUT)' PKGREL='$(PKGREL)' bash scripts/package/package_pacman_compressed.sh
 	@# phase0 兜底: repack a relative-convention output to absolute members
 	@# (idempotent skip on absolute input). Scoped to the EXACT pkgver just
 	@# built — a broad *-compressed-$(VER)-* glob also matches every historical
