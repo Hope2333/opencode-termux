@@ -131,8 +131,9 @@ for VER in $VERS; do
 	RAW_SZ="$(stat -c%s "$REVIVED")"
 	RAW_SHA="$(sha256sum "$REVIVED" | awk '{print $1}')"
 	say "    revived: $RAW_SZ B  sha256=$RAW_SHA"
+	fi # end SKIP_BUILD==0（编译链）
 
-	# ── 2b. W11 seccomp harden（**v2 历史形态的组成件，不能省**） ─────────
+	# ── 2b. W11 seccomp harden（**v2 历史形态的组成件，两条路径都要跑**） ──
 	# 实测教训：build-bionic.sh **不做** seccomp harden —— 那是 Makefile 的
 	# `transplant` 目标在 build 之后单独跑的一步（Makefile:296-299 →
 	# seccomp-harden）。漏掉的后果是静默的形态漂移：
@@ -142,6 +143,11 @@ for VER in $VERS; do
 	#     crhandler** → 与 2.0.0-2.0.18 的历史形态不一致，且 shim 机制
 	#     （spawn-child fd 卫生）失效。包能打出来、--version 也过，只有把
 	#     两代包并排比才看得出差别 —— 所以这里做成硬断言。
+	#
+	# **必须在 SKIP_BUILD 块之外**：RESUME 路径复用的 revived 件同样没被
+	# harden 过，把这段放进编译链里会导致 RESUME 静默跳过它（实测踩到：
+	# 第一次加这步时放在块内，RESUME 打出���包**仍然不带 crhandler**，
+	# 而 driver 报了 DONE —— 又是一个「不报错但结果错」）。
 	say "-- [2b/7] W11 seccomp harden (crhandler DT_NEEDED + shim) --"
 	if ! command -v clang >/dev/null 2>&1; then
 		say "STOP $VER: clang missing — cannot build libopencode-crhandler.so (v2 历史形态硬要求)"
@@ -170,7 +176,6 @@ for VER in $VERS; do
 		FAILED="$FAILED $VER(no-crhandler)"
 		continue
 	}
-	fi # end SKIP_BUILD==0（编译链）
 
 	# 续接路径也要报一次尺寸（前面 RESUME 分支已报过，这里补 shim 后的真实值）
 	RAW_SZ="$(stat -c%s "$REVIVED")"
@@ -308,6 +313,13 @@ PYEOF
 	MEMBERS="$(bsdtar -tf "$OUT_PKG")"
 	echo "$MEMBERS" | grep -qxF "data/data/com.termux/files/usr/bin/$FAMILY" || {
 		say "STOP $VER: missing bin/$FAMILY"; FAILED="$FAILED $VER(member-bin)"; continue; }
+	# crhandler 成员断言：harden 过了 DT_NEEDED，PKGBUILD 就**必须**把 shim
+	# 装进包（否则装机的 opencode 找不到 DT_NEEDED 的库 → 直接起不来）。
+	# 反向也成立：harden 漏了的话这里不会少成员、只是 assert 提前在 2b 拦下。
+	# 两个方向都断言，才能保证「包形态 == 历史形态」。
+	echo "$MEMBERS" | grep -qxF "data/data/com.termux/files/usr/lib/opencode/libopencode-crhandler.so" || {
+		say "STOP $VER: package missing libopencode-crhandler.so (harden 过了但 shim 没进包)"
+		FAILED="$FAILED $VER(member-shim)"; continue; }
 	if echo "$MEMBERS" | grep -qE '^usr/'; then
 		say "STOP $VER: RELATIVE usr/ members — absolute convention required"
 		FAILED="$FAILED $VER(rel-usr)"; continue
