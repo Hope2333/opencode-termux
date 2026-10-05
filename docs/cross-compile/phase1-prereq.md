@@ -59,6 +59,60 @@ store 里出现正确的那个文件**——即用 `@cpu=x64 --os=linux` 装上�
 
 只有 **C** 同时拿到「linux 烘焙 + glibc ELF」。
 
+> **组合 D 的严重性取决于 `apply-platform-patch.sh` 是否还在**：该 patch 会把
+> opentui 的 platform 判定**硬编码成 linux**（`if (true)`），
+> **从而掩盖 D 的烘焙错误**（详见 §1.5）。撤掉 patch 后 D 才是「TUI 必起不来」。
+
+### 1.5 `apply-platform-patch.sh` 是** bug 掩盖器**，不只是地雷
+
+`tools/build-bionic/apply-platform-patch.sh` 实测改的是**两处**，不是一处：
+
+| 站点 | 原始（上游） | 被改成 | 作用 |
+|---|---|---|---|
+| site1 | `platform: process.platform,` | `platform: "linux",` | 资产描述符的字面量 |
+| site2 | `if (process.platform === "linux") {` | `if (true) {` | **无条件走 linux 分支** |
+
+**关键后果：site2 使 resolver 不再读 `process.platform`**，因此组合 D 那层
+「烘焙成 android」的错误**被完全掩盖**。实测真值表（P16，纯 JS 复刻
+`resolveNativeLibraryPath`）：
+
+| 场景 | 烘焙 platform/arch | patch **关**（glibc 线应有） | patch **开**（bionic 线现状） |
+|---|---|---|---|
+| C 正确 | linux / x64 | `@opentui/core-linux-x64` | 同左（无差别） |
+| **D 烘焙错** | android / x64 | `THROW(unsupported)` | `@opentui/core-linux-x64` ← **被掩盖** |
+| **E 无 target** | android / **arm64** | `THROW(unsupported)` | `@opentui/core-linux-arm64` ← **掩盖后更糟** |
+
+所以对本任务的 N5 结论有一处**修正**（重要）：
+
+- 我最初写「组合 D 必然 TUI 起不来」——**只在 patch 撤掉后成立**。
+- patch **开着**时，D 表面上能跑（它选到了正确的 x64 glibc 包），
+  **代价是掩盖了 recipe 错误**：配方一旦回归到 `--target=<glibc token>`，
+  产物照样出、readelf 照样全对、TUI 照样起，**没有任何信号**。
+- 组合 E 则是 patch **帮了倒忙**：它让 resolver 选中 **arm64 的 .so**，
+  塞进 x86-64 产物 → dlopen 失败。即 patch 能修 platform，**但修不了 arch**
+  （arch 来自烘焙，patch 并不干预 `process.arch`）。
+
+**⇒ 对阶段 1 的指令更正为（比原文更严）**：
+
+1. glibc 线**必须撤掉** `apply-platform-patch.sh`（原文已写，此处给出**原因**：
+   它会掩盖配方回归）；
+2. 撤掉后，**组合 C 才是唯一正确配方**，且 D/E 会在 TUI 启动时立刻
+   `throw` —— 这是**好事**，属于快速失败，优于静默产出错架构 `.so`；
+3. 因此「三查」里第 3 查（opentui 落地）实际由**运行时**完成，
+   静态三查负责的是**在 CI 上快速定位**是哪个旋钮错了。
+
+**通则（本任务最有价值的可复用结论）**：
+
+> **bionic 线的每个 patch 都是 glibc 线的地雷，因为它们的存在理由是
+> 「宿主=目标」，而跨构恰恰打破这个前提。**
+> `if (true)` 与 TLSDESC 离线手术（[shim-porting.md §2](shim-porting.md)）是同一类：
+> 前者把「运行时探测」换成「硬编码假设」，后者把「链接期放松」换成「离线改写」。
+> 两者都**编码了 bionic 宿主这一前提**。
+> 推广到阶段 1：**任何** bionic 线 patch/surgery 在 glibc 目标上都必须**逐个显式
+> 判定撤or留**，不能因为「看起来相关」就带上——带上最坏的结果不是报错，而是
+> **掩盖配方错误**（`if (true)`）或**改错架构**（arch 不受控）。
+> 对应动作：阶段 1 的 patch 清单要像 §2 那样**逐条列明**，而非整体套用 bionic 配方。
+
 **组合 D 是最阴的失败模式**：ELF 看起来完全正确（glibc interpreter + 全套 glibc
 `NEEDED`），但 `process.platform` 被烘成 `"android"`。按 P11，它落到
 `resolveNativeLibraryPath` 的 `throw new Error("OpenTUI is not supported...")`
@@ -200,10 +254,25 @@ find node_modules -name '*.so'
 1. `bun install --cpu=x64 --os=linux` 且在干净目录 —— 否则 opentui 平台包不落地（P15）
 2. `--target=bun-linux-x64-musl` **与** `--compile-executable-path=<glibc baseline>`
    **同时**给 —— 只给其一出「arch 对但 platform 错」的坏件（P13）
-3. 撤掉 `apply-platform-patch.sh` 的 `if (true)` 补丁 —— 它是 bionic 线专用（P3）
+3. 撤掉 `apply-platform-patch.sh`（**两处都要撤**：`platform: "linux"` 与 `if (true)`）——
+   它是 bionic 线专用，且 `if (true)` 会**掩盖**第 2 条的配方回归（P16）
+
+**关于第 3 条的重要性排序**（P16 实测后修正）：
+
+- 撤 patch 后，违反第 2 条会在 TUI 启动时**快速失败**（`throw`）——良性。
+- 不撤 patch，违反第 2 条会**静默通过**（产物出、readelf 全对、TUI 能起）——
+  配方一旦回归无人发现，直到某天换 glibc 版本才炸。
+- patch 对组合 E（arch 烘成 arm64）**帮倒忙**：会让 resolver 选 arm64 `.so`
+  塞进 x86-64 产物 → dlopen 失败。
+
+⇒ **第 3 条不是「清理」，是「保留失败信号」**。它必须排在三查之前执行。
 
 **验收判据**：不能看 compile 日志的 baseline 名（谎报，P12），必须三查：
 `readelf -l` 看 INTERP + `strings` 查烘焙 platform + opentui 解析分支命中情况。
+
+⚠ **但注意**：若 `apply-platform-patch.sh` 仍在，第 3 查的**静态**部分会被
+`if (true)` 掩盖（P16）——patch 开着时 D 也能选到正确包，静态查不出来。
+所以**先撤 patch，再做三查**；顺序反了会得到虚假的 PASS。
 
 ## 3. 剩余未知
 
@@ -221,7 +290,13 @@ E1.4 引的是 `bun-src-1.4.2` 的 `:40-46`——行为实测一致，但行号�
 不能当 1.4.0 的行号引用。
 
 ⚠ **未取到证据 N5-c：`BUN_COMPILE_TARGET_TARBALL_URL` 在 1.4.0 上的行为**
-（E1.4 只证 1.3.14 源码支持）。因 `--compile-executable-path` 已足够，非必需路径。
+  （E1.4 只证 1.3.14 源码支持）。因 `--compile-executable-path` 已足够，非必需路径。
+
+⚠ **未取到证据 N5-d：§1.5 真值表是纯 JS 复刻 + 逻辑推演**，未在
+  「真实 glibc 产物 + 真实 patched chunk」上端到端跑过（本机 aarch64 跑不了
+  x86-64 产物，与 N2-a 同源限制）。阶段 1 在原生 x64 runner 上补：
+  撤 patch 跑组合 D → 断言 TUI 报 `OpenTUI is not supported`；
+  装回 patch 跑同一组合 → 断言**反而能起**（反证掩盖行为）。
 
 ## 4. 下一验证动作
 

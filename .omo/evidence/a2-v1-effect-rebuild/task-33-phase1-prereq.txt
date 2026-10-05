@@ -330,3 +330,81 @@ N5. bun 1.4.0 是否同款坑 / 纠正配方是否照旧
       本机 aarch64 只能静态验收
   V5. bionic 线回归：确认撤掉 platform patch 后 arm64 产物仍能起 TUI
       （防止 glibc 修复踩坏现有主线）
+
+════════════════════════════════════════════════════════════════
+P16. 【自我更正 + 追加】apply-platform-patch.sh 是 bug 掩盖器，不只是地雷
+     —— 这条修正本文件 P11/P13 对「组合 D 后果」的表述
+════════════════════════════════════════════════════════════════
+
+【实测 P16.1】该 patch 改的是**两处**，不是一处
+  $ cat tools/build-bionic/apply-platform-patch.sh
+  # 1) platform literal present?
+  sed -i 's/platform: process\.platform,/platform: "linux",/'          "$CHUNK_JS"
+  # 2) linux branch force
+  sed -i 's/if (process\.platform === "linux") {/if (true) {/'        "$CHUNK_JS"
+  → 站点1 = 资产描述符字面量；站点2 = **无条件走 linux 分支**
+
+【实测 P16.2】本仓 store 里的副本**已被 patch 过**（所以 build-v1.sh:118 用它做 gate）
+  $ grep -c 'platform: "linux",'   chunk-bun-t2myhmwd.js   → 1
+  $ grep -c 'if (true) {'          chunk-bun-t2myhmwd.js   → 1
+  $ grep -n 'platform: process\.platform,' chunk-bun-t2myhmwd.js → (无匹配)
+  $ grep -n 'if (process\.platform === "linux") {' chunk-bun-t2myhmwd.js → (无匹配)
+  $ sed -n '7929p;7963p'
+    platform: "linux",
+    if (true) {
+  ★ 结论：**未 patch 的原始形态只能从上游 fresh install 拿**，
+    本仓 store 里的两份副本都已被上一轮 build 污染（两份内容相同）。
+
+【实测 P16.3】★★ 关键：site2 使 resolver **不再读 process.platform**，
+  因此会**掩盖** P13 组合 D 的烘焙错误
+  纯 JS 复刻 resolveNativeLibraryPath 的真值表（host bun 跑，无编译参与）：
+
+  场景                              烘焙 platform/arch  patch 关(应有)        patch 开(bionic 现状)
+  ------------------------------------------------------------------------------------------------
+  C  token=musl      (正确)         linux / x64         @opentui/core-linux-x64   同左（无差别）
+  D  token=plain     (烘焙错)       android / x64       THROW(unsupported)  ←   @opentui/core-linux-x64  ← 被掩盖
+  E  no --target     (烘焙错)       android / arm64     THROW(unsupported)  ←   @opentui/core-linux-arm64 ← 掩盖后更糟
+
+【实测 P16.4】patch 能修 platform，**修不了 arch**（arch 来自烘焙，patch 不干预 process.arch）
+  设产物真实机器架构恒为 x86-64（由 --compile-executable-path 决定），patch 开着时：
+
+  场景                              patch 开启时解析到的包      .so 架构   产物架构   判定
+  -------------------------------------------------------------------------------------------
+  C  token=musl      (linux/x64)    @opentui/core-linux-x64     x86-64    x86-64     OK
+  D  token=plain     (android/x64)  @opentui/core-linux-x64     x86-64    x86-64     OK（表面正常）
+  E  no --target     (android/arm64) @opentui/core-linux-arm64  arm64      x86-64     *** 错架构 .so → dlopen 失败 ***
+
+★ 对 P11/P13 的【自我更正】：
+  本文件 P11 写「组合 D → TUI 100% 起不来」、P13 写 D 是「最阴的失败模式」——
+  这两条**只在 apply-platform-patch.sh 撤掉后成立**。
+  patch **开着**时 D 表面上完全正常（选中正确的 x64 glibc 包，产物出、
+  readelf 全对、TUI 能起），代价是**掩盖了配方回归**：配方一旦退回
+  `--target=<glibc token>` 没有任何信号，直到某天换 glibc 版本才炸。
+  即 patch 在 glibc 线的作用不是「破坏」而是**「让错误静默通过」**，
+  这比直接报错更危险。
+
+【实测 P16.5】patch 两侧对「可嵌入平台包集合」无影响
+  $ 对 chunk 原文与已 patch 副本分别正则提取平台包引用
+  UNPATCHED: 8 refs -> [core-darwin-arm64, core-darwin-x64, core-linux-arm64,
+                       core-linux-arm64-musl, core-linux-x64, core-linux-x64-musl,
+                       core-win32-arm64, core-win32-x64]
+  PATCHED  : 8 refs -> （同上，逐项相同）
+  → patch 只改**判定条件**，不改 import 列表。真正决定内嵌哪个 .so 的是
+    运行时烘焙值 + 平台包是否已安装（P15），不是 patch 本身。
+
+【通则（本任务最可复用的结论）】
+  **bionic 线的每个 patch 都是 glibc 线的地雷，因为它们的存在理由是
+  「宿主 == 目标」，而跨构恰恰打破这个前提。**
+  · `if (true)`（本条）：把「运行时探测」换成「硬编码假设」
+  · TLSDESC 离线手术（shim-porting.md §2）：把「链接期放松」换成「离线改写」
+  两者都编码了 bionic 宿主这一前提。
+  推广：阶段 1 的 patch 清单必须**逐条显式判定撤/留**，不能整体套用 bionic 配方；
+  带上最坏的结果不是报错，而是**掩盖配方错误**（if (true)）或**改错架构**（arch 不受控）。
+  判据：凡「把运行时探测换成常量」的 patch，在目标≠宿主时一律撤；
+      凡「离线改写产物」的 surgery，在目标 arch≠宿主 arch 时一律撤。
+
+【N5 未取到证据 N5-d】P16.3/P16.4 的真值表是**纯 JS 复刻 + 逻辑推演**，
+  未在「真实 glibc 产物 + 真实 patched chunk」上端到端跑过 —— 因为本机
+  aarch64 跑不了 x86-64 产物（与 N2-a 同源限制）。
+  阶段 1 可在原生 x64 runner 上补：撤 patch 后跑组合 D，断言 TUI 报
+  "OpenTUI is not supported"；再装回 patch 跑同一组合，断言**反而能起**（反证掩盖）。
