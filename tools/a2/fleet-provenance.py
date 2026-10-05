@@ -202,11 +202,24 @@ def main():
             lines.append("- 每版包内 payload 的 `--version` 与包名/目标版本一致")
 
     text = "\n".join(lines) + "\n"
-    os.makedirs(os.path.dirname(PROV), exist_ok=True)
-    with open(PROV, "w") as fh:
-        fh.write(text)
+    # 只在**实质内容**变化时写文件：--check 会被反复跑，而证据文件每跑一次
+    # 就多一行新时间戳的话，工作树会一直脏着，CI 也会误报「有改动」。
+    # 时间戳是元数据不是结论，故不参与比较 —— 保留旧文件里的那行时间。
+    def substantive(t):
+        return "\n".join(l for l in t.splitlines() if not l.startswith("生成："))
+
+    old = ""
+    if os.path.isfile(PROV):
+        with open(PROV) as fh:
+            old = fh.read()
+    if substantive(old) == substantive(text):
+        print(f"—— 内容无变化，保留 {os.path.relpath(PROV, ROOT)}（不重写时间戳）")
+    else:
+        os.makedirs(os.path.dirname(PROV), exist_ok=True)
+        with open(PROV, "w") as fh:
+            fh.write(text)
+        print(f"—— 写入 {os.path.relpath(PROV, ROOT)}")
     print(text)
-    print(f"—— 写入 {os.path.relpath(PROV, ROOT)}")
     return 1 if problems else 0
 
 
