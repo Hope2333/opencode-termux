@@ -19,7 +19,7 @@
 | [`20-packaging/`](20-packaging/) | 打包、分发与服务 | 9 |
 | [`30-testing/`](30-testing/) | 测试、验证与性能测量 | 5 |
 | [`40-release/`](40-release/) | 发布与迁移运行手册 | 4 |
-| [`50-automation/`](50-automation/) | CI 交接、Make 维护面、插件运维 | 5 |
+| [`50-automation/`](50-automation/) | CI 交接、Make 维护面、插件运维 | 6 |
 | [`80-handover/`](80-handover/) | 交接快照（D1–D4 + 回忆包） | 5 |
 | [`90-incidents/`](90-incidents/) | 事故与复盘 | 3 |
 | [`99-reference/`](99-reference/) | 参考表、上游同步与研究 | 6 |
@@ -118,6 +118,7 @@
 | [`51-ci-prebuild-armv7.md`](50-automation/51-ci-prebuild-armv7.md) | automation | Phase A armv7 CI 预构建交接范围（attempt-based，非发布路径） | 维护者 |
 | [`52-armv7-native-runner-setup.md`](50-automation/52-armv7-native-runner-setup.md) | automation | armv7 self-hosted runner 最小可用配置 | 维护者 |
 | [`53-plugin-management.md`](50-automation/53-plugin-management.md) | automation | 插件安装 / 自更新 / 回滚（优先 `file://` 本地路径） | 维护者 |
+| [`54-ci-fleet-switches.md`](50-automation/54-ci-fleet-switches.md) | automation | CI fleet 开关清单：位置、启用前置与风险（PREPARED 态登记，不含翻转） | 维护者 |
 | [`quick-build.sh`](50-automation/quick-build.sh) | automation | 快速构建脚本（辅助脚本，非文档） | 维护者 |
 
 ### `80-handover/` — 交接快照（基线 2026-09-30）
