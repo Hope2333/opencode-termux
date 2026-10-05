@@ -248,6 +248,7 @@ v2 走 `scripts/build-bionic.sh` + TLSDESC graft + hermetic remap。关键锚点
 |---|---:|---:|---|---|
 | v1 | 5 | **5** | R1 真编译 | 1.18.30–1.18.34，TUI 冒烟逐版 GREEN |
 | v2 | 23 | **23** | R2 重打包 19 + R3 真编译 4 | 2.0.0–2.0.18 重打包；2.0.19–2.0.22 真编译 |
+| — | — | — | 独立审计 | 28 包：命名形态违规 0 / 含 `UPX!` 0 / 相对 `usr/` 成员 0 |
 | 合计 | 28 | **28** | — | 跳过 0 |
 
 包体总量 **≈ 2.0 GiB**（v1 5×30.7 MB + v2 23×53–72 MB）。命名一律
@@ -280,11 +281,47 @@ checkout 同时满足两条（源树不是「每版一棵树」，是一棵树�
 2. **冷装树缺 `@opentui/core` linux-arm64 平台包**：android bun 报 `platform=android`，`bun install` 不拉该平台变体 → `build-v1.sh` 报 `no libopentui.so found in store`。A2 的 1.18.32 树是 warm node_modules，早就带上了，所以只在冷装树暴露。须显式 `--os=linux --cpu=arm64` 补装。
 3. **诱饵 XDG 判据「字节数 = 0」会误杀**：诱饵 cache 里那 15 条是 **bun 自己的转译缓存** `bun/@t@/*.pile`（A+ 只改 `global.ts` 四根派生，管不到 bun 运行时）。对照实测 A2 参照件（**无** A+ bake）诱饵 cfg=3922/data=7/state=2/cache=3 —— opencode 四根被 XDG 全量重定向，那才是真泄漏。改为判「诱饵下出现 `opencode1|opencode` 命名空间路径 = FAIL」，bun 自身缓存记 informational。
 
+### 5.4b v2 真编译链的两处静默缺陷（比 §2 判定更隐蔽）
+
+`scripts/build-bionic.sh` **不是** v2 的完整构建链 —— 它**不做 W11 seccomp harden**
+（那是 `Makefile` 的 `transplant` 目标在 build 之后单独跑的一步，`Makefile:296-299`）。
+直编 2.0.19 时漏掉它，后果**不报错**：
+
+| 版本 | `grep -c libopencode-crhandler` | 包内 shim 成员 |
+|---|---:|---|
+| 2.0.18（RC4 件） | 1 | 有 |
+| 2.0.19（漏 harden） | 0 | **无** |
+
+PKGBUILD 的 W11 判据是「binary 引用 shim 才装 shim」，所以引用为 0 时它**合法地**
+不装 —— 包能打出来、`--version` 也过、TUI 也出画，**只有把两代包并排比才看得出差别**，
+而 shim 的 spawn-child fd 卫生机制已经失效。已做成双向硬断言：harden 后
+`DT_NEEDED refs>=1`，且包**必须**含 `usr/lib/opencode/libopencode-crhandler.so`。
+
+**自己踩的第二个坑**：harden 步骤最初放在 `SKIP_BUILD`（RESUME）块**内**，于是
+RESUME 路径静默跳过它 —— 打出的包**仍然不带 shim**，而 driver 报了 DONE。
+「不报错但结果错」的第二次实例。教训：**续接快路径必须逐项检查哪些步骤是
+「产物相关」而非「编译相关」**，前者永远不能被跳过。
+
+**v2 TUI 冒烟判据不适用**：v2 TUI 是**全屏原地重绘**，typescript 字节数恒定，
+所以 v1 那套「键入窗内字节增长 > 0」永远判 RED。对照实验（关键在第二条）：
+
+| 件 | S1@25s | S3 键入后 | DELTA |
+|---|---:|---:|---:|
+| 2.0.19（本 fleet 新编） | 12288 | 12288 | **0** |
+| 2.0.18（**RC4 已实证在架件**） | 12288 | 12288 | **0** |
+
+第二条证明是 harness 对 v2 的不适配，不是编译件缺陷。捕获里 TUI 完整出画。
+另测渲染窗 25s→45s、键入 `z`→`hello`，DELTA 仍 0 且画面哈希不变。
+故 v2 判据改为「出画 + 无崩溃 + **画面完整**（输入框提示语 + 状态栏键位提示 +
+版本号可见）+ `rc != 139`」，**键入活性明确记为不可测**，见
+`tools/a2/fleet-v2-tui-smoke.sh`。
+
 ### 5.5 其他实测教训
 
 - **zsh 吃 `$t:r`**：`"$t:refs/tags/$t"` 被 zsh 当成 `:r`（root 修饰符）→ `couldn't find remote ref refs/tags/v1.18efs/tags/...`。写 `${t}:refs/...`。
 - **git fetch 单 tag ≈ 15 min**（≈290 KB/s），28 tag 全量 ≈ 7 h；**但后续 tag 走增量共享对象后大幅变快**（5 个 v1 tag 落地后 v2 的 23 个 tag 很快齐）。codeload tarball ≈ 4 min/版，是 git 的 3–4 倍速度。
 - **makepkg 固定临时名互删**：`package_pacman_native.sh` 用 `packing/pacman/.makepkg-opencode-native.conf` / `.PKGBUILD.opencode-native.tmp` / `{pkg,src}`，且开头 `rm -rf` 后两个。v1 与 v2 driver 并发跑会互删对方 conf（实测 v2 报 `conf not found`、v1 报 `User signal 1`）。已加 `flock` 跨 driver 串行。
+- **`git reset -f` 不是合法选项组合**：git 打印一整页 usage 灌进 evidence，看着像构建出错（实际无副作用）。用 `reset --hard`。
 - **不要在运行中的 bash 脚本上编辑**：bash 按 fd 读脚本，编辑会导致运行中的实例在后续行语法错乱（实测 v2 driver 跑到末尾 `syntax error near unexpected token fi`）。要么等它跑完，要么 kill 后再改。
 - **包体被 .gitignore 排除**（`*.pkg.tar.*`）：逐版 commit 落的必须是 manifest TSV 行 + evidence，不是包体。
 

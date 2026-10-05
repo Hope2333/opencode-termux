@@ -107,7 +107,9 @@ for VER in $VERS; do
 		FAILED="$FAILED $VER(checkout)"
 		continue
 	}
-	git -C "$FLEET_SRC" reset -f >>"$EVID" 2>&1
+	# `git reset --hard` 而不是 `reset -f`：后者不是合法选项组合（git 打印
+	# 一整页 usage 灌进 evidence，看着像构建出错，实际无副作用）。
+	git -C "$FLEET_SRC" reset --hard >>"$EVID" 2>&1
 	git -C "$FLEET_SRC" clean -xdf -q 2>/dev/null
 	say "    HEAD=$(git -C "$FLEET_SRC" rev-parse --short HEAD) free=$(df_free_mb)MB"
 	[[ -f "$FLEET_SRC/packages/cli/script/build.ts" ]] || {
