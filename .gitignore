@@ -52,3 +52,6 @@ packing/deb-compressed/
 tools/__pycache__/
 # Node modules (local install only)
 node_modules/
+
+# fleet 打包锁（跨 driver flock 串行用，运行期产物）
+packing/pacman/.fleet-pkg.lock
