@@ -23,7 +23,7 @@
 | [`80-handover/`](80-handover/) | 交接快照（D1–D4 + 回忆包） | 5 |
 | [`90-incidents/`](90-incidents/) | 事故与复盘 | 3 |
 | [`99-reference/`](99-reference/) | 参考表、上游同步与研究 | 6 |
-| [`cross-compile/`](cross-compile/) | 交叉编译线（独立工作流） | — |
+| [`cross-compile/`](cross-compile/) | 跨架构 / 交叉编译体系（独立工作流） | 6 |
 
 ---
 
@@ -149,9 +149,26 @@
 | [`native-android-research.md`](99-reference/native-android-research.md) | reference | Bun 原生 Android 二进制可行性研究（2026-05 结论，已被后续推翻） | 维护者 |
 | [`octplugin-prebranch-research.md`](99-reference/octplugin-prebranch-research.md) | reference | OCTPlugin 拆独立开发线前的单文件研究基线 | 维护者 |
 
-### `cross-compile/` — 交叉编译线
+### `cross-compile/` — 跨架构 / 交叉编译体系
 
-独立工作流子树，入口见 [`cross-compile/README.md`](cross-compile/README.md)。
+调研快照 2026-10-05。回答「本仓要扩到非 Android Linux / 其他架构，要动的是**打包**还是**工具链**？」
+——结论是**打包活**：bun `--compile --target` 走 npm 预编译 baseline 下载，
+aarch64 Android 本机零交叉工具链即产出 x86_64 glibc / musl / bionic 产物。
+推荐路线 = **bun baseline 打包 + CI 原生 runner 验证**（风险低，不引入 Rust/Zig/容器/模拟器），
+**首目标 `linux-x64` glibc**（1–2 天，且让自研 shim 层几乎全部退休）。
+`linux-riscv64` 判定**不可行**（bun `Architecture` 枚举不含 riscv64，`raw_syscall6` 编译错误）。
+
+本族由跨架构调研工作流独立维护，**不在本文档重组范围内**；此处仅作索引登记。
+实测原始输出见 `.omo/evidence/a2-v1-effect-rebuild/task-31-crossarch.txt`（证据编号 E1–E5）。
+
+| 文件 | 类型 | 一句话摘要 | 受众 |
+|---|---|---|---|
+| [`README.md`](cross-compile/README.md) | plan | 总览：成熟度矩阵摘要 + 三个实测坑 + 推荐方案（首目标 `linux-x64` glibc） | 决策者 |
+| [`targets.md`](cross-compile/targets.md) | reference | 逐目标成熟度矩阵（7 个目标的工具链 / 评级 / 阻塞点 / 工作量） | 决策者 |
+| [`toolchains.md`](cross-compile/toolchains.md) | reference | bun `--target` 语义、可用 target 清单、交叉编译配方与三个坑的规避 | 实现者 |
+| [`shim-porting.md`](cross-compile/shim-porting.md) | reference | 自研 shim 层逐项跨构阻塞判定（结论：shim 存在理由是「Android 3.18 + bionic<11」，非 aarch64） | 实现者 |
+| [`ci-and-emulation.md`](cross-compile/ci-and-emulation.md) | plan | Docker / qemu / binfmt / 自托管 runner 各方案边界与代价（本机做不了交叉+模拟闭环） | 实现者 |
+| [`plan.md`](cross-compile/plan.md) | plan | 分阶段实施计划（A/B/C 三方案对比 + 阶段 / 前置 / 验收 / 回退） | 执行者 |
 
 ---
 
