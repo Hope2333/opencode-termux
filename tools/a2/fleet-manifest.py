@@ -48,14 +48,17 @@ def vkey(v):
 
 
 def load_rows():
-    """TSV 列（v1 与 v2 不同宽，故按下标取、不做定长断言）：
-        0 ver  1 line  2 status  3 path  4 bytes  5 sha256
-        6 v1: elf_bytes        | v2: 未压缩 runtime 字节
-        7 v1: elf_sha256       | v2: 未压缩 runtime sha256
-        8 v1: 隔离结论         | （v2 缺省）
-        9 v1: TUI 冒烟结论
-    v2 的 7/8 列没有额外含义，但 driver 照样落了 —— 一份 TSV 一种宽度，
-    免得下游按列号取值时踩空。
+    """读 driver 落的 TSV。
+
+    **列序按线不同**（历史遗留：v2 repack driver 写成 sha→bytes，v1 build
+    driver 写成 bytes→sha），所以这里**按 line 分派**而不是按固定下标硬取 ——
+    错一列不会报错，只会把 sha256 渲染成尺寸这种静默错误，比崩掉更坏。
+    期望列序（0 起）：
+      0 ver 1 line 2 status 3 path 4 pkg_bytes 5 pkg_sha256
+      6 v1: elf_bytes      | v2: runtime_sha256
+      7 v1: elf_sha256     | v2: runtime_bytes
+      8 v1: 隔离结论       | v2: hermetic 分类
+      9 v1: TUI 冒烟结论
     """
     rows = []
     if not os.path.isfile(TSV):
@@ -68,14 +71,24 @@ def load_rows():
             p = line.split("\t")
             if len(p) < 6:
                 sys.exit(f"malformed TSV row ({len(p)} cols, need >=6): {line!r}")
-            rows.append({
+            r = {
                 "ver": p[0], "line": p[1], "status": p[2], "path": p[3],
                 "bytes": int(p[4]), "sha": p[5],
-                "elf_bytes": int(p[6]) if len(p) > 6 and p[6].isdigit() else 0,
-                "elf_sha": p[7] if len(p) > 7 else "",
-                "isolation": p[8] if len(p) > 8 else "",
-                "tui": p[9] if len(p) > 9 else "",
-            })
+                "elf_bytes": 0, "elf_sha": "", "isolation": "", "tui": "",
+            }
+            if r["line"] == "v1":
+                r["elf_bytes"] = int(p[6]) if len(p) > 6 and p[6].isdigit() else 0
+                r["elf_sha"] = p[7] if len(p) > 7 else ""
+                r["isolation"] = p[8] if len(p) > 8 else ""
+                r["tui"] = p[9] if len(p) > 9 else ""
+            elif r["line"] == "v2":
+                # v2 历史列序是 6=sha 7=bytes，与 v1 相反
+                r["elf_sha"] = p[6] if len(p) > 6 else ""
+                r["elf_bytes"] = int(p[7]) if len(p) > 7 and p[7].isdigit() else 0
+                r["isolation"] = p[8] if len(p) > 8 else ""
+            else:
+                sys.exit(f"unknown line {r['line']!r} for {r['ver']} (expected v1|v2)")
+            rows.append(r)
     return rows
 
 

@@ -226,8 +226,11 @@ PYEOF
 $VER	OK	$PKG_SZ	$PKG_SHA	hermetic=$N_T/$N_P/$N_C	$VER"
 	# 机器可读 manifest 行（包体本身被 .gitignore 排除，逐版 commit 落的是
 	# 这行 + evidence，这样断线续接只需重读 manifest 知道做到哪一版）。
+	# 列序与 v1 driver 对齐：6=runtime_bytes 7=runtime_sha 8=hermetic。
+	# （早期版本这里写成 6=sha 7=bytes，与 v1 相反；fleet-manifest.py 已按
+	# line 分派兼容，但新行一律按对齐后的序写。）
 	printf '%s\tv2\tOK\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-		"$VER" "$OUT_PKG" "$PKG_SZ" "$PKG_SHA" "$SHA" "$SZ" "hermetic=$N_T/$N_P/$N_C" \
+		"$VER" "$OUT_PKG" "$PKG_SZ" "$PKG_SHA" "$SZ" "$SHA" "hermetic=$N_T/$N_P/$N_C" \
 		>>"$ROOT_DIR/.omo/evidence/a2-v1-effect-rebuild/task-30-fleet-manifest.tsv"
 	say "    ==> v2 $VER DONE"
 done
