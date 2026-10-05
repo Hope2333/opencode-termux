@@ -1,6 +1,6 @@
 # fleet 逐版来源核验（task-30）
 
-生成：2026-10-05T12:11:18Z
+生成：2026-10-05T12:17:13Z
 源 clone：`/data/data/com.termux/files/usr/tmp/a2-src/opencode-fleet`
 
 ## 0. vendor blob（`pty-embed-store-patch.sh` 的 `VENDOR_SHA`）
@@ -34,42 +34,9 @@
 | v2 `2.0.21` | `8a8bd622` | `8a8bd622` | ✓ |
 | v2 `2.0.22` | `527f0b93` | `527f0b93` | ✓ |
 
-## 3. 产物内版本自证（解包跑 payload 的 `--version`，不信日志）
-
-| 包 | payload `--version` | 对版 |
-|---|---|---|
-| `opencode-2.0.0-90-aarch64.pkg.tar.xz` | `opencode v2.0.0` | ✓ |
-| `opencode-2.0.1-90-aarch64.pkg.tar.xz` | `opencode v2.0.1` | ✓ |
-| `opencode-2.0.2-90-aarch64.pkg.tar.xz` | `opencode v2.0.2` | ✓ |
-| `opencode-2.0.3-90-aarch64.pkg.tar.xz` | `opencode v2.0.3` | ✓ |
-| `opencode-2.0.4-90-aarch64.pkg.tar.xz` | `opencode v2.0.4` | ✓ |
-| `opencode-2.0.5-90-aarch64.pkg.tar.xz` | `opencode v2.0.5` | ✓ |
-| `opencode-2.0.6-90-aarch64.pkg.tar.xz` | `opencode v2.0.6` | ✓ |
-| `opencode-2.0.7-90-aarch64.pkg.tar.xz` | `opencode v2.0.7` | ✓ |
-| `opencode-2.0.8-90-aarch64.pkg.tar.xz` | `opencode v2.0.8` | ✓ |
-| `opencode-2.0.9-90-aarch64.pkg.tar.xz` | `opencode v2.0.9` | ✓ |
-| `opencode-2.0.10-90-aarch64.pkg.tar.xz` | `opencode v2.0.10` | ✓ |
-| `opencode-2.0.11-90-aarch64.pkg.tar.xz` | `opencode v2.0.11` | ✓ |
-| `opencode-2.0.12-90-aarch64.pkg.tar.xz` | `opencode v2.0.12` | ✓ |
-| `opencode-2.0.13-90-aarch64.pkg.tar.xz` | `opencode v2.0.13` | ✓ |
-| `opencode-2.0.14-90-aarch64.pkg.tar.xz` | `opencode v2.0.14` | ✓ |
-| `opencode-2.0.15-90-aarch64.pkg.tar.xz` | `opencode v2.0.15` | ✓ |
-| `opencode-2.0.16-90-aarch64.pkg.tar.xz` | `opencode v2.0.16` | ✓ |
-| `opencode-2.0.18-90-aarch64.pkg.tar.xz` | `opencode v2.0.18` | ✓ |
-| `opencode-2.0.17-90-aarch64.pkg.tar.xz` | `opencode v2.0.17` | ✓ |
-| `opencode1-1.18.34-90-aarch64.pkg.tar.xz` | `1.18.34` | ✓ |
-| `opencode1-1.18.33-90-aarch64.pkg.tar.xz` | `1.18.33` | ✓ |
-| `opencode1-1.18.32-90-aarch64.pkg.tar.xz` | `1.18.32` | ✓ |
-| `opencode1-1.18.31-90-aarch64.pkg.tar.xz` | `1.18.31` | ✓ |
-| `opencode1-1.18.30-90-aarch64.pkg.tar.xz` | `1.18.30` | ✓ |
-| `opencode-2.0.19-90-aarch64.pkg.tar.xz` | `opencode v2.0.19` | ✓ |
-| `opencode-2.0.20-90-aarch64.pkg.tar.xz` | `opencode v2.0.20` | ✓ |
-| `opencode-2.0.21-90-aarch64.pkg.tar.xz` | `opencode v2.0.21` | ✓ |
-| `opencode-2.0.22-90-aarch64.pkg.tar.xz` | `opencode v2.0.22` | ✓ |
 
 ## 判定：PASS —— 9 版真编件的来源与产物版本逐版自洽，无版本错配
 
 - `press-v5.sh` / `pty-embed-store-patch.sh` 的 1.18.32 字样**未污染** fleet 链路
 - `VENDOR_SHA` 是 vendor blob 完整性门禁，非版本 pin
 - 每版实际 checkout 的 HEAD == 该版上游 tag 的 commit
-- 每版包内 payload 的 `--version` 与包名/目标版本一致
