@@ -237,7 +237,60 @@ v2 走 `scripts/build-bionic.sh` + TLSDESC graft + hermetic remap。关键锚点
 
 ---
 
-## 5. Pilot 数字
+## 5. 阶段 B 实际产出（2026-10-05 落地）
 
-见 `docs/fleet-matrix.md` §5（阶段 B 结果，随 pilot 落地补齐）与
-`.omo/evidence/a2-v1-effect-rebuild/task-30-fleet-plan.txt`。
+**结论表在 [fleet-manifest.md](fleet-manifest.md)**（逐包 sha256 由生成器从盘上实物重算）。
+本节只记 §1–§4 的**计划**与**实际**的偏差，供后续复盘。
+
+### 5.1 实际产出
+
+| 线 | 计划 | 实际 | 配方 id | 备注 |
+|---|---:|---:|---|---|
+| v1 | 5 | **5** | R1 真编译 | 1.18.30–1.18.34，TUI 冒烟逐版 GREEN |
+| v2 | 23 | **23** | R2 重打包 19 + R3 真编译 4 | 2.0.0–2.0.18 重打包；2.0.19–2.0.22 真编译 |
+| 合计 | 28 | **28** | — | 跳过 0 |
+
+包体总量 **≈ 2.0 GiB**（v1 5×30.7 MB + v2 23×53–72 MB）。命名一律
+`opencode[1]-<ver>-90-aarch64.pkg.tar.xz`（pkgrel=90 fleet 专用带）。
+
+### 5.2 与 §4 磁盘预算的偏差（实测）
+
+| §4 预测 | 实测 | 原因 |
+|---|---|---|
+| 峰值 ≈ 7 GB/版 | **≈ 8.5 GB/版**（v1 冷装树） | 计划假设源树 2.7 GB 复用；实际 `git clean -xdf` 后每版重装 node_modules 2.4 GB，叠加 v1 的 3 份 135 MB ELF 与 dist |
+| 全量峰值 ≈ 8.7 GB | **avail 17 G → 6.1 G**（最低点，v1 末版编译期） | 未回收 `artifacts/build/1.18.32` 的 1.5 GB 历史中间件（题面禁删「既有 press 资产」） |
+| §4.4 假设「不删源树」与「逐版清中间件」冲突 | **用单份 clone 消解** | 一份 clone 逐 tag checkout + `git clean -xdf`，源树本体保留（不违禁删），每版中间件即弃 |
+
+结论：§4.4 把「禁删源树」与「逐版清理」列成冲突是**误判** —— 单份 clone 逐 tag
+checkout 同时满足两条（源树不是「每版一棵树」，是一棵树反复换 tag）。
+
+### 5.3 §2 判定被实测修正的三处
+
+| §2 判定 | 实测 | 修正 |
+|---|---|---|
+| v1 静态自证「无 PT_INTERP/PT_DYNAMIC」 | **那是 UPX 压制后的形态**。A2 参照件 `1.18.32-beta103-hermetic-grafted`（136 MB 未压缩本体）实测 `INTERP=1 DYNAMIC=1 NEEDED=libc.so/libm.so/libdl.so`；同链 press6（47 MB 已压制）才 `INTERP=0` | 改为**零 glibc 门**（禁带版本号 soname）。本体是 bionic 动态链接才对的 |
+| v1「5/5 零适配，catalog 逐版 beta.83 与 A2 默认一致」 | 判定对，但 A2 的 `effect-beta103-bump.patch` 实测**在 1.18.33/34 不可应用**（`package.json:142` 上下文漂移） | fleet 按 **beta.83**（= 各版上游发布态 = 零适配）走。若要 beta.103，需逐版重推 patch，即 §2 定义的「需适配」档 |
+| v2 hermetic「2.0.19–2.0.22 需逐版跑分类」 | **19 版重打包件全跑，逐版 `46/46/0` CLEAN**；4 版新编同样 CLEAN | 无新未知来源，判定从「需逐版跑」升级为「已逐版跑过，全清」 |
+
+### 5.4 阶段 A pilot 脚本的三处实测错误（已修）
+
+`tools/a2/pilot-fleet-v1.sh` 若直接跑，**到不了冒烟**：
+
+1. **pty patch 早于 install**：它替换 `node_modules/.bun/bun-pty@*/…/librust_pty_arm64.so`，chunk 不存在就报 `no bun-pty store chunk`。install 必须先跑。
+2. **冷装树缺 `@opentui/core` linux-arm64 平台包**：android bun 报 `platform=android`，`bun install` 不拉该平台变体 → `build-v1.sh` 报 `no libopentui.so found in store`。A2 的 1.18.32 树是 warm node_modules，早就带上了，所以只在冷装树暴露。须显式 `--os=linux --cpu=arm64` 补装。
+3. **诱饵 XDG 判据「字节数 = 0」会误杀**：诱饵 cache 里那 15 条是 **bun 自己的转译缓存** `bun/@t@/*.pile`（A+ 只改 `global.ts` 四根派生，管不到 bun 运行时）。对照实测 A2 参照件（**无** A+ bake）诱饵 cfg=3922/data=7/state=2/cache=3 —— opencode 四根被 XDG 全量重定向，那才是真泄漏。改为判「诱饵下出现 `opencode1|opencode` 命名空间路径 = FAIL」，bun 自身缓存记 informational。
+
+### 5.5 其他实测教训
+
+- **zsh 吃 `$t:r`**：`"$t:refs/tags/$t"` 被 zsh 当成 `:r`（root 修饰符）→ `couldn't find remote ref refs/tags/v1.18efs/tags/...`。写 `${t}:refs/...`。
+- **git fetch 单 tag ≈ 15 min**（≈290 KB/s），28 tag 全量 ≈ 7 h；**但后续 tag 走增量共享对象后大幅变快**（5 个 v1 tag 落地后 v2 的 23 个 tag 很快齐）。codeload tarball ≈ 4 min/版，是 git 的 3–4 倍速度。
+- **makepkg 固定临时名互删**：`package_pacman_native.sh` 用 `packing/pacman/.makepkg-opencode-native.conf` / `.PKGBUILD.opencode-native.tmp` / `{pkg,src}`，且开头 `rm -rf` 后两个。v1 与 v2 driver 并发跑会互删对方 conf（实测 v2 报 `conf not found`、v1 报 `User signal 1`）。已加 `flock` 跨 driver 串行。
+- **不要在运行中的 bash 脚本上编辑**：bash 按 fd 读脚本，编辑会导致运行中的实例在后续行语法错乱（实测 v2 driver 跑到末尾 `syntax error near unexpected token fi`）。要么等它跑完，要么 kill 后再改。
+- **包体被 .gitignore 排除**（`*.pkg.tar.*`）：逐版 commit 落的必须是 manifest TSV 行 + evidence，不是包体。
+
+### 5.6 fleet-push.py 改造（阶段 A 判定「只报告未改」→ 本轮已改）
+
+见 `tools/fleet-push.py` 文件头。两条硬阻断都真修（upx 段整段删而非加开关；ELF 定位改
+`find -L` + 已知成员路径 + `\x7fELF` magic 校验），连带 6 处。端到端自测（不连 gh）：
+`opencode-2.0.18-90` → untar 取 ELF 286 MB → pack raw（零 UPX）→ xz9 57 MB，
+**三方 sha256 同一**（源 runtime == packed == `xz -dc out.xz`）。
