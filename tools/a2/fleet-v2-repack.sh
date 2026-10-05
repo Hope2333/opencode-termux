@@ -163,13 +163,26 @@ PYEOF
 		FAILED="$FAILED $VER(no-shim)"
 		continue
 	}
+	# 与 v1 driver 共用同一把打包锁：makepkg 与 package_pacman_native.sh 用
+	# packing/pacman 下的固定临时名，且开头 rm -rf packing/pacman/{pkg,src}。
+	# 两个 driver 并发会互删对方的 .makepkg-*.conf（实测 v2 报 conf not found）。
+	exec 9>"$ROOT_DIR/packing/pacman/.fleet-pkg.lock"
+	if ! flock -w 1800 9; then
+		say "STOP $VER: could not acquire packaging lock within 1800s"
+		FAILED="$FAILED $VER(pkg-lock)"
+		continue
+	fi
 	VERSION="$VER" PKGREL="$PKGREL" \
 		OPENCODE_NATIVE_BIN="$RUNTIME" \
-		bash "$ROOT_DIR/scripts/package/package_pacman_native.sh" >>"$EVID" 2>&1 || {
-		say "STOP $VER: package_pacman_native.sh failed (see $EVID)"
+		bash "$ROOT_DIR/scripts/package/package_pacman_native.sh" >>"$EVID" 2>&1
+	PKG_RC=$?
+	flock -u 9
+	exec 9>&-
+	if [[ "$PKG_RC" -ne 0 ]]; then
+		say "STOP $VER: package_pacman_native.sh failed (rc=$PKG_RC, see $EVID)"
 		FAILED="$FAILED $VER(pkg)"
 		continue
-	}
+	fi
 	[[ -f "$OUT_PKG" ]] || {
 		say "STOP $VER: package not produced: $OUT_PKG"
 		FAILED="$FAILED $VER(nopkg)"
@@ -211,6 +224,11 @@ PYEOF
 	DONE=$((DONE + 1))
 	SUMMARY="$SUMMARY
 $VER	OK	$PKG_SZ	$PKG_SHA	hermetic=$N_T/$N_P/$N_C	$VER"
+	# 机器可读 manifest 行（包体本身被 .gitignore 排除，逐版 commit 落的是
+	# 这行 + evidence，这样断线续接只需重读 manifest 知道做到哪一版）。
+	printf '%s\tv2\tOK\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+		"$VER" "$OUT_PKG" "$PKG_SZ" "$PKG_SHA" "$SHA" "$SZ" "hermetic=$N_T/$N_P/$N_C" \
+		>>"$ROOT_DIR/.omo/evidence/a2-v1-effect-rebuild/task-30-fleet-manifest.tsv"
 	say "    ==> v2 $VER DONE"
 done
 
