@@ -1099,3 +1099,175 @@ Convention guard: OK (absolute data/data/com.termux/files/usr/ members, no relat
     pkg sha256=c097afd84aa460b5202f7ba182d8aa9b7ecf7880c99e0df99fdda8474dde1555
     --version = opencode v2.0.18
     ==> v2 2.0.18 DONE
+
+############### fleet-v2-repack (pkgrel=90, no UPX) 2026-10-05T10:00:12Z ###############
+versions: 2.0.17 
+
+=== v2 2.0.17 ===
+    runtime: artifacts/build/2.0.17/opencode-native-revived  size=286193312
+    sha256=42108b3884eb02bac2a9d77a951de048f01d5d5e319e2ee0f51d85746e769bea
+    UPX! magic=0 (expect 0 — 未压缩)  home-path hits=46 (B线原生形态)
+    hermetic classification: n_target=46 n_opentui=46 n_cargo=0 -> CLEAN
+==> Making package: opencode 2.0.17-90 (Mon Oct  5 18:00:20 2026)
+==> Checking runtime dependencies...
+==> Checking buildtime dependencies...
+==> Retrieving sources...
+==> Extracting sources...
+==> Package creation...
+==> Starting package()...
+==> Installing native runtime from /data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/2.0.17/opencode-native-revived
+==> Packaging seccomp shim: /data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/2.0.17/libopencode-crhandler.so -> usr/lib/opencode/
+==> Tidying install...
+  -> Purging unwanted files...
+  -> Removing empty directories...
+  -> Compressing man and info pages...
+==> Checking for packaging issues...
+==> Creating package "opencode"...
+  -> Generating .PKGINFO file...
+  -> Generating .BUILDINFO file...
+  -> Adding install file...
+  -> Generating .MTREE file...
+  -> Compressing package...
+==> Package creation.
+==> Finished making: opencode 2.0.17-90 (Mon Oct  5 18:01:26 2026)
+Native pacman package created under: /data/data/com.termux/files/home/develop/opencode-termux/packing/pacman
+Convention guard: OK (absolute data/data/com.termux/files/usr/ members, no relative usr/)
+    pkg: opencode-2.0.17-90-aarch64.pkg.tar.xz  size=68351376
+    pkg sha256=5e553f19530a53a143d6c94ed4b92b42899dd37b4265f14d5f976587bc2fe014
+    --version = opencode v2.0.17
+    ==> v2 2.0.17 DONE
+
+=== fleet-v2-repack summary: done=1 skipped=0 failed=none ===
+--- per-version ---
+ver	status	bytes	sha256	hermetic(n_t/n_opentui/n_cargo)	ver
+
+2.0.17	OK	68351376	5e553f19530a53a143d6c94ed4b92b42899dd37b4265f14d5f976587bc2fe014	hermetic=46/46/0	2.0.17
+
+############### fleet-v1-build (pkgrel=90, no UPX) 2026-10-05T10:01:50Z ###############
+versions: 1.18.34   effect=4.0.0-beta.83 (upstream catalog;见文件头说明)
+src=/data/data/com.termux/files/usr/tmp/a2-src/opencode-fleet bun=1.4.2 free=9924MB
+
+############ v1 1.18.34 (v1.18.34) ############
+-- [1'/8] RESUME: reusing verified hermetic artifact (assertions still run) --
+    /data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/1.18.34/opencode-v1-1.18.34-fleet1.18.34-hermetic (135132928 B  sha256=4bc840e1d747f30006eb10abf9cbf7018277a3228b91ee2ace9abe8d95572c64)
+-- [7/8] form self-proof (zero-glibc / bionic-dynamic / uncompressed) --
+    home-path hits=0 (0)
+    PT_INTERP=1 PT_DYNAMIC=1 (1/1 = bionic dynamic本体，参照 A2 hermetic-grafted)
+    embedded pty markers=2 (>=1)  UPX! magic=0 (0 — 未压缩)
+    NEEDED:   0x0000000000000001 (NEEDED)          Shared library: [libc.so]   0x0000000000000001 (NEEDED)          Shared library: [libm.so]   0x0000000000000001 (NEEDED)          Shared library: [libdl.so] 
+    zero-glibc gate: OK (no versioned soname)
+-- [8/8] package (pkgrel=90) + smoke --
+==> Making package: opencode1 1.18.34-90 (Mon Oct  5 18:01:58 2026)
+==> Checking runtime dependencies...
+==> Checking buildtime dependencies...
+==> Retrieving sources...
+==> Extracting sources...
+==> Package creation...
+==> Starting package()...
+==> Installing native runtime from /data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/1.18.34/opencode-v1-1.18.34-fleet1.18.34-hermetic
+==> Packaged migrate-to-opencode1.sh (v1 migration helper)
+==> binary is not seccomp-hardened; shipping without libopencode-crhandler.so
+==> Tidying install...
+  -> Purging unwanted files...
+  -> Removing empty directories...
+  -> Compressing man and info pages...
+==> Checking for packaging issues...
+==> Creating package "opencode1"...
+  -> Generating .PKGINFO file...
+  -> Generating .BUILDINFO file...
+  -> Adding install file...
+  -> Generating .MTREE file...
+  -> Compressing package...
+==> Package creation.
+==> Finished making: opencode1 1.18.34-90 (Mon Oct  5 18:02:30 2026)
+Native pacman package created under: /data/data/com.termux/files/home/develop/opencode-termux/packing/pacman
+Convention guard: OK (absolute data/data/com.termux/files/usr/ members, no relative usr/)
+    pkg: opencode1-1.18.34-90-aarch64.pkg.tar.xz  size=30701584  sha256=f1341a0fec49183bddd96127566a01661f1fa7c46d4f22a43d81398885cb3fc5
+    --version = 1.18.34
+    root OK: $HOME/.local/share/opencode1/opencode
+    root OK: $HOME/.cache/opencode1/opencode
+    root OK: $HOME/.config/opencode1/opencode
+    root OK: $HOME/.local/state/opencode1/opencode
+    decoy decoy-cfg entries = 0
+    decoy decoy-data entries = 0
+    decoy decoy-state entries = 0
+    decoy decoy-cache entries = 15
+      -- leaked paths (first 10) --
+      /data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/.fleet-smoke.14650/decoy-cache/bun
+      /data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/.fleet-smoke.14650/decoy-cache/bun/@t@
+      /data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/.fleet-smoke.14650/decoy-cache/bun/@t@/3e10c298d50faba7.pile
+      /data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/.fleet-smoke.14650/decoy-cache/bun/@t@/56aef6789a2b6631.pile
+      /data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/.fleet-smoke.14650/decoy-cache/bun/@t@/a4ea01606e5a5cd6.pile
+      /data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/.fleet-smoke.14650/decoy-cache/bun/@t@/18bfee437e9094f2.pile
+      /data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/.fleet-smoke.14650/decoy-cache/bun/@t@/a9a130402502bc56.pile
+      /data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/.fleet-smoke.14650/decoy-cache/bun/@t@/231b5a9bf5fcf19f.pile
+      /data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/.fleet-smoke.14650/decoy-cache/bun/@t@/199d767d1b6d39f0.pile
+      /data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/.fleet-smoke.14650/decoy-cache/bun/@t@/8a01e4352599d50d.pile
+    roots landed=4/4  decoy-leak-dirs=1 (expect 0)
+STOP 1.18.34: decoy XDG leak detected
+
+=== fleet-v1-build summary: done=0 failed= 1.18.34(decoy) ===
+
+############### fleet-v1-build (pkgrel=90, no UPX) 2026-10-05T10:05:29Z ###############
+versions: 1.18.34   effect=4.0.0-beta.83 (upstream catalog;见文件头说明)
+src=/data/data/com.termux/files/usr/tmp/a2-src/opencode-fleet bun=1.4.2 free=11398MB
+
+############ v1 1.18.34 (v1.18.34) ############
+-- [1'/8] RESUME: reusing verified hermetic artifact (assertions still run) --
+    /data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/1.18.34/opencode-v1-1.18.34-fleet1.18.34-hermetic (135132928 B  sha256=4bc840e1d747f30006eb10abf9cbf7018277a3228b91ee2ace9abe8d95572c64)
+-- [7/8] form self-proof (zero-glibc / bionic-dynamic / uncompressed) --
+    home-path hits=0 (0)
+    PT_INTERP=1 PT_DYNAMIC=1 (1/1 = bionic dynamic本体，参照 A2 hermetic-grafted)
+    embedded pty markers=2 (>=1)  UPX! magic=0 (0 — 未压缩)
+    NEEDED:   0x0000000000000001 (NEEDED)          Shared library: [libc.so]   0x0000000000000001 (NEEDED)          Shared library: [libm.so]   0x0000000000000001 (NEEDED)          Shared library: [libdl.so] 
+    zero-glibc gate: OK (no versioned soname)
+-- [8/8] package (pkgrel=90) + smoke --
+==> Making package: opencode1 1.18.34-90 (Mon Oct  5 18:05:35 2026)
+==> Checking runtime dependencies...
+==> Checking buildtime dependencies...
+==> Retrieving sources...
+==> Extracting sources...
+==> Package creation...
+==> Starting package()...
+==> Installing native runtime from /data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/1.18.34/opencode-v1-1.18.34-fleet1.18.34-hermetic
+==> Packaged migrate-to-opencode1.sh (v1 migration helper)
+==> binary is not seccomp-hardened; shipping without libopencode-crhandler.so
+==> Tidying install...
+  -> Purging unwanted files...
+  -> Removing empty directories...
+  -> Compressing man and info pages...
+==> Checking for packaging issues...
+==> Creating package "opencode1"...
+  -> Generating .PKGINFO file...
+  -> Generating .BUILDINFO file...
+  -> Adding install file...
+  -> Generating .MTREE file...
+  -> Compressing package...
+==> Package creation.
+==> Finished making: opencode1 1.18.34-90 (Mon Oct  5 18:06:01 2026)
+Native pacman package created under: /data/data/com.termux/files/home/develop/opencode-termux/packing/pacman
+Convention guard: OK (absolute data/data/com.termux/files/usr/ members, no relative usr/)
+    pkg: opencode1-1.18.34-90-aarch64.pkg.tar.xz  size=30701688  sha256=a4396fbb24f7c513a66fab2349644e6203cfbd829c7b71fb8d74c8d554993695
+    --version = 1.18.34
+    root OK: $HOME/.local/share/opencode1/opencode
+    root OK: $HOME/.cache/opencode1/opencode
+    root OK: $HOME/.config/opencode1/opencode
+    root OK: $HOME/.local/state/opencode1/opencode
+    decoy decoy-cfg entries=0  namespace-leak=0  bun-runtime-cache=0
+    decoy decoy-data entries=0  namespace-leak=0  bun-runtime-cache=0
+    decoy decoy-state entries=0  namespace-leak=0  bun-runtime-cache=0
+    decoy decoy-cache entries=15  namespace-leak=0  bun-runtime-cache=14
+    namespace-leak dirs=0 (expect 0)  bun-runtime-cache entries=14 (informational, 非 opencode 数据)
+    roots landed=4/4
+== smoke fleet-1.18.34 2026-10-05T10:08:21Z host=6.6.118-android15-8-ge58033dc8ea6-abogki498046332-4k ==
+bin=/data/data/com.termux/files/home/develop/opencode-termux/artifacts/build/1.18.34/opencode-v1-1.18.34-fleet1.18.34-hermetic port=20506 rc=124
+render_bytes_at_25s=20480 total_bytes=27902 ansi_lines=13 crash_keywords=0
+DELTA_type_z=0 DELTA_arrow=4096 DELTA_keys_window=4096 echo_z_after_keys=3
+verdict=GREEN
+SMOKE_fleet-1.18.34_GREEN
+    ==> v1 1.18.34 DONE
+
+=== fleet-v1-build summary: done=1 failed=none ===
+ver	status	bytes	sha256	elf_bytes	elf_sha256	isolation	tui
+
+1.18.34	OK	30701688	a4396fbb24f7c513a66fab2349644e6203cfbd829c7b71fb8d74c8d554993695	elf=135132928	elfsha=4bc840e1d747f30006eb10abf9cbf7018277a3228b91ee2ace9abe8d95572c64	roots=4/4	tui=GREEN

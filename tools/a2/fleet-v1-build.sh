@@ -393,25 +393,40 @@ PYEOF
 			ROOTS=$((ROOTS + 1))
 		fi
 	done
+	# 判据 = **opencode 命名空间是否外泄**，不是「诱饵目录字节数为 0」。
+	#
+	# 为什么不能一刀切要 0（阶段 A pilot 的写法过严，实测会误杀）：
+	#   bun 自带的转译器缓存 `$XDG_CACHE_HOME/bun/@t@/*.pile` 会被写进诱饵
+	#   cache 目录。那是 **bun 运行时**的缓存，路径由 bun 自己按 XDG_CACHE_HOME
+	#   推导，opencode 的 A+ bake 管不到它（A+ 只改 global.ts 的四根派生）。
+	#   它的内容是转译后的 JS，**不含任何 opencode 用户数据**。
+	#
+	# 反证（实测，参照件对比）：
+	#   A2 参照件 1.18.32-beta103-hermetic-grafted（**无** A+ bake）：诱饵
+	#     cfg=3922 / data=7 / state=2 / cache=3 条 —— opencode 自己的四根
+	#     **全部**被 XDG 诱饵重定向（cache 里就是 opencode/bin、opencode/
+	#     models.json），这才是真正的命名空间泄漏。
+	#   本 fleet 件（A+ bake）：诱饵 cfg/data/state **全 0**，cache 里只有
+	#     bun/@t@/*.pile —— 命名空间四根零外泄。
+	# 所以门禁判「诱饵里出现 opencode1/ 或 opencode/ 命名空间路径 = FAIL」，
+	# 其余（bun 自身缓存）记为 informational。这才与 A+ 的声明范围一致。
 	DECOY_LEAK=0
+	BUN_CACHE_ENTRIES=0
 	for d in decoy-cfg decoy-data decoy-state decoy-cache; do
 		n=$(find "$W/$d" -mindepth 1 2>/dev/null | wc -l)
-		say "    decoy $d entries = $n"
-		if [[ "$n" -ne 0 ]]; then
-			DECOY_LEAK=$((DECOY_LEAK + 1))
-			# 诊断：把漏出来的路径打出来，否则「15 entries」无法归因。
-			# A+ 的断言是 opencode 自身的四根不读 XDG；若漏的是 bun 自己的
-			# 缓存（~/.bun/install/cache 之外的 BUN_INSTALL_*）或 fontconfig，
-			# 那不是命名空间泄漏，需要另行判定，不能混进同一个门。
-			say "      -- leaked paths (first 10) --"
-			find "$W/$d" -mindepth 1 2>/dev/null | head -10 | while read -r l; do
-				say "      $l"
-			done
-		fi
+		# 命名空间泄漏：诱饵下出现 opencode1/ 或 opencode/ 开头的条目
+		ns=$(find "$W/$d" -mindepth 1 2>/dev/null |
+			grep -cE '(^|/)(opencode1|opencode)(/|$)' || true)
+		# bun 自身转译缓存（已知豁免）
+		bn=$(find "$W/$d" -mindepth 1 -path '*/bun/*' 2>/dev/null | wc -l)
+		say "    decoy $d entries=$n  namespace-leak=$ns  bun-runtime-cache=$bn"
+		[[ "$ns" -eq 0 ]] || DECOY_LEAK=$((DECOY_LEAK + 1))
+		BUN_CACHE_ENTRIES=$((BUN_CACHE_ENTRIES + bn))
 	done
-	say "    roots landed=$ROOTS/4  decoy-leak-dirs=$DECOY_LEAK (expect 0)"
+	say "    namespace-leak dirs=$DECOY_LEAK (expect 0)  bun-runtime-cache entries=$BUN_CACHE_ENTRIES (informational, 非 opencode 数据)"
+	say "    roots landed=$ROOTS/4"
 	rm -rf "$W"
-	[[ "$DECOY_LEAK" -eq 0 ]] || { say "STOP $VER: decoy XDG leak detected"; FAILED="$FAILED $VER(decoy)"; continue; }
+	[[ "$DECOY_LEAK" -eq 0 ]] || { say "STOP $VER: opencode namespace leaked into decoy XDG"; FAILED="$FAILED $VER(decoy)"; continue; }
 
 	# 8.3 真 PTY TUI 一帧 + 键入 DELTA>0
 	SMOKE_OUT="$(bash "$EV_DIR/task-3-smoke.sh" "$HERMETIC" "fleet-$VER" 2>&1)"
