@@ -135,6 +135,8 @@ pacman -S opencode1           # v1 主线
 [![Announcements](https://img.shields.io/badge/Announcements-%E5%8F%91%E7%89%88%E5%85%AC%E5%91%8A-db6d28?style=for-the-badge)](https://github.com/Hope2333/opencode-termux/discussions/categories/announcements)
 [![Show and tell](https://img.shields.io/badge/Show_and_tell-%E6%99%92%E6%88%90%E6%9E%9C-8957e5?style=for-the-badge)](https://github.com/Hope2333/opencode-termux/discussions/categories/show-and-tell)
 
+QQ 聊天群：**587494060**（OCT吹水社区）
+
 ## 许可
 
 OpenCode 是开源项目。本打包项目遵循相同许可。
