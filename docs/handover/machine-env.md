@@ -173,6 +173,39 @@
 
 ---
 
+## 7. pacman 沙箱假隔离（DBPath 绝对路径）+ oplusreserve 空间误判（2026-10-08）
+
+> 当日 evidence: `.omo/evidence/push261005-compressed/pacman-sandbox-dbpath-incident.md`
+
+### 7.1 `--root` 不隔离 db 事务（DBPath 绝对路径坑）
+
+- **现象**: runbook §9 沙箱配方 `pacman --root $SB --noscriptlet --noconfirm -U <pkg>` 冒烟后，全新沙箱出现
+  `downgrading`/与真实安装包 `conflict` ——db 事务写进了**真实 db**（本机 `opencode1-compressed`
+  条目被 1.18.30-4 覆盖；磁盘文件零污染，两者错位）。
+- **根因**: `/data/data/com.termux/files/usr/etc/pacman.conf:13` `DBPath = <绝对路径>`。
+  `--root` 只重定向文件解包，libalpm 的 dbpath 取的是绝对配置值，沙箱不生效。
+  与 §6.1 同族：termux pacman 的路径配置必须整体审视，`--root` 不是隔离手段。
+- **正确姿势（实证）**: 沙箱目录预建 `var/lib/pacman` 后双 flag 显式隔离：
+  ```bash
+  SB=$TMPDIR/sb && mkdir -p "$SB/var/lib/pacman"
+  pacman --root "$SB" --dbpath "$SB/var/lib/pacman" --noscriptlet --noconfirm -U <pkg>
+  ```
+  单 `--root` = 假隔离，比不隔离更危险（db 与磁盘内容错位且无告警）。
+- **修复实录**: 污染后用对应版本真件 `pacman -U --dbonly --noscriptlet` 重登记 db 即恢复一致
+  （文件未被沙箱写过的前提下）；修复后 `pacman -Q` + `--version` 双实测 rc=0。
+
+### 7.2 `pacman -U` 误报 not enough free disk space（oplusreserve 挂载点）
+
+- **现象**: 真实 prefix 安装 56MB 包，磁盘 4.0G 可用，仍报
+  `error: not enough free disk space`。
+- **根因**: `--debug` 可见 libalpm `_alpm_check_diskspace` 扫到
+  `/mnt/vendor/oplusreserve`、`/data/persist_log/oplusreserve/*` 等 oplus 保留分区挂载点后
+  `returning error 7`（保留分区剩余空间 < 事务需求，被误计入检查集）。
+- **workaround（实证）**: `--dbonly` 跳过文件解包即不再触发该检查（本例恰好只需修 db）。
+  大包真实安装的规避（cachedir 指定/检查跳过）未测，遇到再补。
+
+---
+
 ## 附：本手册的维护规则
 
 1. 新增条目必须带**当日 evidence 或 commit 引用**（`handover-docs` 计划 D2 验收条款，`.omo/plans/handover-docs.md:35`）。
