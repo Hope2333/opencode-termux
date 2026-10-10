@@ -17,6 +17,9 @@ Android-specific deviations from upstream (both binary-verified, see
      Appending right after file end would turn bss vaddrs into file-backed
      graph bytes and corrupt globals (v1 hang). We therefore place the blob
      past max(file_end, bss_end) and keep the old bss range zero-filled.
+     The base itself may store non-loaded data (.symtab, section headers)
+     inside that range; it is moved behind everything mapped and zeroed in
+     place, with e_shoff/sh_offset adjusted.
   2. PIE relocation (--size-mode reloc): bun <=1.3.x android
      dereferences
      BUN_COMPILED.size as an ABSOLUTE pointer (upstream compiled outputs are
@@ -57,6 +60,8 @@ TRAILER = b"\n---- Bun! ----\n"
 OFFSETS_SIZE = 32            # StandaloneModuleGraph.Offsets extern struct
 PT_LOAD = 1
 PT_DYNAMIC = 2
+SHT_NOBITS = 8
+SHF_ALLOC = 0x2
 PF_W = 0x2                   # program header flag: writable (SHF_WRITE==0x1 is a SECTION flag!)
 R_AARCH64_RELATIVE = 1027    # 0x403
 DT_NULL = 0
@@ -297,6 +302,39 @@ def main() -> None:
               f"{rela_vaddr:#x}(n={len(new_table)//RELAENT}) += RELATIVE off={bun_sec['addr']:#x} addend={new_off:#x}")
         size_note = (f"BUN_COMPILED.size left 0 pre-link, filled by ld.so "
                      f"relocation = load_bias + {new_off:#x}")
+
+    # --- move the base's non-loaded tail out of the old bss extent ---
+    # Extending filesz maps [seg_end, bss_end) from the file, so whatever the
+    # base stores there (.symtab, .strtab, .shstrtab, the section header
+    # table) would become the initial value of zero-initialized globals.
+    # Bun 1.4.3 android keeps ~70 KiB of symbols there and SIGSEGVs at 0x0
+    # before main. Bun's own writer zeroes the range; we also keep the section
+    # headers usable by moving the tail past everything we map.
+    seg_end = load["offset"] + old_filesz
+    for p in phdrs:
+        if p["index"] != load["index"] and p["filesz"] and p["offset"] + p["filesz"] > seg_end:
+            fail(f"program header #{p['index']} has file data past the writable PT_LOAD")
+    tail = bun_bytes[seg_end:]
+    if tail:
+        tail_off = align_up(append_end, 8)
+        delta = tail_off - seg_end
+        out[seg_end:len(bun_bytes)] = bytes(len(tail))
+        out.extend(bytes(tail_off - len(out)))
+        out.extend(tail)
+        e_shoff = struct.unpack_from("<Q", out, 40)[0]
+        hdr_shift = delta if e_shoff >= seg_end else 0
+        struct.pack_into("<Q", out, 40, e_shoff + hdr_shift)
+        moved = 0
+        for s in shdrs:
+            if s["type"] == SHT_NOBITS or s["offset"] < seg_end:
+                continue
+            if s["flags"] & SHF_ALLOC:
+                fail(f"allocated section at file offset {s['offset']:#x} past the writable PT_LOAD")
+            struct.pack_into("<Q", out, s["hdr_off"] + hdr_shift + 24, s["offset"] + delta)
+            moved += 1
+        print(f"      tail: {len(tail):#x} B ({moved} sections"
+              f"{', section headers' if hdr_shift else ''}) {seg_end:#x} -> {tail_off:#x}; "
+              f"old bss extent zeroed")
 
     # --- extend the writable PT_LOAD over everything appended ---
     new_filesz = append_end - load["offset"]
