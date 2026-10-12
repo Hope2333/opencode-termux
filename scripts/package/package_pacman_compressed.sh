@@ -199,6 +199,9 @@ if [[ "$FAMILY" == "opencode" ]]; then
 	sed -i "s|scripts/opencode1-launcher.sh|scripts/opencode-launcher.sh|" "$TMP_PKGBUILD"
 	sed -i "s|usr/lib/opencode1|usr/lib/opencode|g" "$TMP_PKGBUILD"
 	sed -i "s|usr/bin/opencode1|usr/bin/opencode|g" "$TMP_PKGBUILD"
+	# single-elf relative symlink target has no usr/ prefix, so the usr/-anchored
+	# sed above misses it (R1 P1-2): v2+single-elf used to bake a dangling link.
+	sed -i "s|lib/opencode1/runtime|lib/opencode/runtime|g" "$TMP_PKGBUILD"
 	sed -i "s/OpenCode1 compressed/OpenCode compressed/g" "$TMP_PKGBUILD"
 	sed -i "s/opencode1 --version/opencode --version/g" "$TMP_PKGBUILD"
 fi
