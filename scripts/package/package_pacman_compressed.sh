@@ -176,7 +176,7 @@ rm -rf "$ROOT_DIR/packing/pacman/pkg" "$ROOT_DIR/packing/pacman/src"
 
 TMP_MAKEPKG_CONF="$ROOT_DIR/packing/pacman/.makepkg-opencode1-compressed.conf"
 TMP_PKGBUILD="$ROOT_DIR/packing/pacman/.PKGBUILD.opencode1-compressed.tmp"
-TMP_INSTALL="$ROOT_DIR/packing/pacman/.INSTALL.opencode1-compressed.tmp"
+TMP_INSTALL="$ROOT_DIR/packing/pacman/.INSTALL.${FAMILY}-compressed.tmp"
 cleanup() {
 	rm -f "$TMP_MAKEPKG_CONF" "$TMP_PKGBUILD" "$TMP_INSTALL"
 }
@@ -228,9 +228,9 @@ if [[ "$OCOMP_LAYOUT" == "single-elf" ]]; then
 	echo "single-elf layout: install= (.INSTALL) NOT injected"
 else
 	sed -e "s/^MIGRATE_HOOK=.*/MIGRATE_HOOK=${MIGRATE_SHIP:-0}/" \
-		"$ROOT_DIR/packing/pacman/opencode1-compressed.install" >"$TMP_INSTALL"
-	sed -i "s|^pkgdesc=|install=\".INSTALL.opencode1-compressed.tmp\"\npkgdesc=|" "$TMP_PKGBUILD"
-	grep -qF 'install=".INSTALL.opencode1-compressed.tmp"' "$TMP_PKGBUILD" || {
+		"$ROOT_DIR/packing/pacman/${FAMILY}-compressed.install" >"$TMP_INSTALL"
+	sed -i "s|^pkgdesc=|install=\".INSTALL.${FAMILY}-compressed.tmp\"\npkgdesc=|" "$TMP_PKGBUILD"
+	grep -qF "install=\".INSTALL.${FAMILY}-compressed.tmp\"" "$TMP_PKGBUILD" || {
 		echo "Error: install= injection failed" >&2
 		exit 1
 	}
