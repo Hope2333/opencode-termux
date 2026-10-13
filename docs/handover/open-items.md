@@ -58,3 +58,29 @@
 - **现状**: #17（mozzaru 金丝雀 RC5 待回）、#22、#24 挂起
 - **下一步**: RC5 发布后按 D3 模板回帖
 - **阻塞点**: RC5 发布
+
+---
+
+## 20. 评审 P2 挂账清单（compressed-review-fixes 评审团，2026-10-11/13）
+
+> 来源：R1（打包脚本）/R2（Makefile）/R3（稳定性）三路评审的 P2 级发现，push261013 计划 todo 10 落盘。行号为**评审时快照**，执行时以 grep 定位为准。digest 比对与 422 清理**不在**本清单（已入 push261013 todo 3/C1）。
+
+### R1（scripts/package/）
+1. `package_pacman_compressed.sh:276-280` GOT_SHA 死代码：gzip/tar 失败时 sha256sum 仍输出空输入哈希（e3b0c442…），`[[ -z "$GOT_SHA" ]]` 永假 → bsdtar 回退分支不可达；非 .gz 包会误报 mismatch（当前 PKGEXT 恒 .gz，影响低）
+2. `package_pacman_compressed.sh:253-254` BUILT_PKG glob 无匹配时所有守卫静默跳过（:274/:296/:342 同模式）——应断言非空，否则产物命名偏差=假绿；另 glob `*.pkg.*` 可能多匹配（同名 .tar.xz 残留）致变量多行
+3. `package_deb_compressed.sh:127,145` `Version: $VERSION${DEB_REV:-}` 无格式校验，外部漏传负号（`DEB_REV=1`）产出 `2.0.x1`——建议校验 `^-` 前缀
+4. `package_deb_compressed.sh:179` v1 postinst 迁移条件比 native 版（`package_deb_native.sh:189`）少 `|| [ -d "${CFG_DIR}1" ]`，漂移，仅影响提示语分支
+5. `package_deb_compressed.sh:99/:114` deb 无 OCOMP_SHIMS 等价 knob（epoll/pty 仅按文件存在性发货），与 pacman 不对称——符合 deb 头注释契约，可接受（记录备查）
+6. `package_pacman_compressed.sh:185` makepkg.conf 路径硬编码绝对前缀（native 同样写法，一致性 OK；可换 `${PREFIX:-…}`）
+
+### R2（Makefile）
+7. batch-v2 PKG=both 时每版 clean-version 执行 4 次（三个 family 尾+循环尾，冗余但幂等无害）——**push261013 C5 模式目标改造后循环尾冗余已消解，family 尾三次仍在**，待下批评估是否收编进 stamp 目标
+8. `Makefile:136/139/142` batch-v2 三个子 make 缺 `--no-print-directory`（C5 重构后此段已重写，需复核是否仍缺；仅输出噪音）
+
+### R3（ops 脚本，收编后对应 tools/compressed-*.sh）
+9. watchdog 对「僵死」无效（pgrep 只证存在；网络黑洞时 gh api/DoH curl 无超时会挂死而 watchdog 永远显示 RUNNING）——建议 progress.log mtime >60min 标 STALE；按 R4-4 裁决 watchdog 不收编，维持一次性
+10. 失败路径缓存清理：冒烟失败后 RT(200-600MB)+COMP(80-140MB)+SRC+SMOKE 全留（99% 磁盘水位下多版连败加速耗尽）——compressed-one.sh 已有成功路径清理，**失败路径 trap 未加**，建议下批补 `trap 'rm -rf "$SMOKE/$VER" "$RT/$VER"' EXIT`
+11. ~~逐件跳过判断（deb 已传 pacman 未传时误重建好件）~~——**已修复**：push261013 C4 compressed-batch.sh 双命名逐件判 + compressed-one.sh 内部逐件 size 比对
+
+### 处置建议
+- 1/2/3/6 可在下批打包脚本维护波顺手修（各 ≤10 行）；4/5 记录备查不修；7/8 与 C5 落地效果复核后决定；9 维持现状；10 建议下批 compressed-one.sh 补 trap
