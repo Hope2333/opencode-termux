@@ -1,5 +1,6 @@
 #!/data/data/com.termux/files/usr/bin/bash
 set -euo pipefail
+. "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 # Build the opencode-native pacman provider (transplant revival line).
 #
@@ -13,27 +14,10 @@ PACKAGER_NAME="${PACKAGER_NAME:-Hope2333(幽零小喵) <u0catmiao@proton.me>}"
 PKGREL="${PKGREL:-1}"
 TRANSPLANT_ROOT="${TRANSPLANT_ROOT:-$ROOT_DIR/artifacts/transplant}"
 
-command -v makepkg >/dev/null 2>&1 || {
-	echo "Error: makepkg not found" >&2
-	exit 1
-}
+require_cmd makepkg
 
 # Version: explicit VERSION wins, else resolve the single transplant build.
-if [[ -z "${VERSION:-}" ]]; then
-	shopt -s nullglob
-	_builds=("$TRANSPLANT_ROOT"/*)
-	shopt -u nullglob
-	if [[ ${#_builds[@]} -eq 0 ]]; then
-		echo "Error: no transplant builds under $TRANSPLANT_ROOT (run: make transplant VER=<x>)" >&2
-		exit 1
-	fi
-	if [[ ${#_builds[@]} -gt 1 ]]; then
-		echo "Error: multiple transplant builds found; set VERSION=<x> explicitly:" >&2
-		printf '  %s\n' "${_builds[@]}" >&2
-		exit 1
-	fi
-	VERSION="$(basename "${_builds[0]}")"
-fi
+VERSION="$(resolve_version "$TRANSPLANT_ROOT")"
 
 # v1 (1.x) packages are renamed opencode1 (coexist with v2); v2 keeps `opencode`.
 case "$VERSION" in
@@ -44,11 +28,7 @@ esac
 # hook_enabled NAME DEFAULT-GLOB — packaging hook registry resolver (Makefile:
 # HOOKS_ENABLE / HOOKS_DISABLE / HOOK_*_VERSIONS). HOOKS_DISABLE wins over
 # HOOKS_ENABLE; otherwise the hook's default version-glob decides.
-hook_enabled() {
-	case " ${HOOKS_DISABLE:-} " in *" $1 "*) return 1 ;; esac
-	case " ${HOOKS_ENABLE:-} " in *" $1 "*) return 0 ;; esac
-	case "${VERSION:-}" in $2) return 0 ;; *) return 1 ;; esac
-}
+# hook_enabled 见 lib.sh
 # task-tui-common-fix: prefer opencode-native-tui (post-TUI-swap product,
 # seccomp-hardened) with revived as fallback; OPENCODE_NATIVE_BIN still wins.
 NATIVE_BIN="${OPENCODE_NATIVE_BIN:-$TRANSPLANT_ROOT/$VERSION/opencode-native-tui}"

@@ -1,5 +1,6 @@
 #!/data/data/com.termux/files/usr/bin/bash
 set -euo pipefail
+. "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 # Build the opencode1-compressed DEB (UPX-packed variant of the v1 native line).
 #
@@ -34,30 +35,13 @@ PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
 MAINTAINER="${MAINTAINER:-Hope2333(幽零小喵) <u0catmiao@proton.me>}"
 TRANSPLANT_ROOT="${TRANSPLANT_ROOT:-$ROOT_DIR/artifacts/transplant}"
 
-command -v dpkg-deb >/dev/null 2>&1 || {
-	echo "Error: dpkg-deb not found" >&2
-	exit 1
-}
+require_cmd dpkg-deb
 if [[ -z "${ARCH_DEB:-}" ]]; then
 	ARCH_DEB="$(dpkg --print-architecture 2>/dev/null || echo aarch64)"
 fi
 
 # Version: explicit VERSION wins, else resolve the single transplant build.
-if [[ -z "${VERSION:-}" ]]; then
-	shopt -s nullglob
-	_builds=("$TRANSPLANT_ROOT"/*)
-	shopt -u nullglob
-	if [[ ${#_builds[@]} -eq 0 ]]; then
-		echo "Error: no transplant builds under $TRANSPLANT_ROOT (run: make transplant VER=<x>)" >&2
-		exit 1
-	fi
-	if [[ ${#_builds[@]} -gt 1 ]]; then
-		echo "Error: multiple transplant builds found; set VERSION=<x> explicitly:" >&2
-		printf '  %s\n' "${_builds[@]}" >&2
-		exit 1
-	fi
-	VERSION="$(basename "${_builds[0]}")"
-fi
+VERSION="$(resolve_version "$TRANSPLANT_ROOT")"
 COMPRESSED_BIN="${OPENCODE_COMPRESSED_BIN:-$TRANSPLANT_ROOT/$VERSION/opencode-native-revived-upx}"
 [[ -x "$COMPRESSED_BIN" ]] || {
 	echo "Error: missing compressed runtime $COMPRESSED_BIN (waiting on T3 upx output)" >&2
@@ -160,8 +144,7 @@ Description: OpenCode compressed variant (v2 family, UPX-packed bionic runtime)
 EOF
 fi
 
-INSTALLED_SIZE=$(du -sk "$DEB_ROOT" | cut -f1)
-echo "Installed-Size: $INSTALLED_SIZE" >>"$DEB_ROOT/DEBIAN/control"
+append_installed_size "$DEB_ROOT" "$DEB_ROOT/DEBIAN/control"
 
 if [[ "$FAMILY" == "opencode1" ]]; then
 cat >"$DEB_ROOT/DEBIAN/postinst" <<'POSTINST'

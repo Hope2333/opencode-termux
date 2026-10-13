@@ -1,5 +1,6 @@
 #!/data/data/com.termux/files/usr/bin/bash
 set -euo pipefail
+. "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 # Build the opencode1-compressed pacman provider (UPX-packed native variant).
 #
@@ -82,27 +83,10 @@ has_shm pty && SHIP_PTY=1
 has_shm epoll && SHIP_EPOLL=1
 echo "optional shims: OCOMP_SHIMS='$OCOMP_SHIMS' (crhandler=$SHIP_CR_HANDLER pty=$SHIP_PTY epoll=$SHIP_EPOLL)"
 
-command -v makepkg >/dev/null 2>&1 || {
-	echo "Error: makepkg not found" >&2
-	exit 1
-}
+require_cmd makepkg
 
 # Version: explicit VERSION wins, else resolve the single transplant build.
-if [[ -z "${VERSION:-}" ]]; then
-	shopt -s nullglob
-	_builds=("$TRANSPLANT_ROOT"/*)
-	shopt -u nullglob
-	if [[ ${#_builds[@]} -eq 0 ]]; then
-		echo "Error: no transplant builds under $TRANSPLANT_ROOT (run: make transplant VER=<x>)" >&2
-		exit 1
-	fi
-	if [[ ${#_builds[@]} -gt 1 ]]; then
-		echo "Error: multiple transplant builds found; set VERSION=<x> explicitly:" >&2
-		printf '  %s\n' "${_builds[@]}" >&2
-		exit 1
-	fi
-	VERSION="$(basename "${_builds[0]}")"
-fi
+VERSION="$(resolve_version "$TRANSPLANT_ROOT")"
 COMPRESSED_BIN="${OPENCODE_COMPRESSED_BIN:-$TRANSPLANT_ROOT/$VERSION/opencode-native-revived-upx}"
 [[ -x "$COMPRESSED_BIN" ]] || {
 	echo "Error: missing compressed runtime $COMPRESSED_BIN (waiting on T3 upx output)" >&2
