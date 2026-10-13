@@ -239,3 +239,21 @@ if [[ "$FAMILY" == "opencode1" && -f "$EPOLL_SHIM" ]]; then
 	}
 	echo "epoll shim guard: OK (shim shipped)"
 fi
+
+# payload identity guard (ported from the pacman script's payload guard,
+# R1 P1-3 — deb side previously shipped with zero evidence): prove the
+# packaged runtime IS the compressed binary handed in, not a stale artifact
+# picked up by path. The work-tree member is the exact bytes `install -D`
+# copied from COMPRESSED_BIN, so the sha256 comparison is exact. The pacman
+# absolute-convention guard is intentionally NOT ported: deb has no bsdtar
+# member convention (dpkg-deb -c listing is prefix-relative already).
+RUNTIME_MEMBER="$DEB_ROOT$PREFIX/lib/$FAMILY/runtime/opencode"
+GOT_SHA=$(sha256sum "$RUNTIME_MEMBER" 2>/dev/null | cut -d' ' -f1 || true)
+WANT_SHA=$(sha256sum "$COMPRESSED_BIN" | cut -d' ' -f1)
+if [[ "$GOT_SHA" != "$WANT_SHA" ]]; then
+	echo "FATAL: payload identity mismatch" >&2
+	echo "  packaged runtime sha256: ${GOT_SHA:-<unreadable>}" >&2
+	echo "  input binary   sha256: $WANT_SHA ($COMPRESSED_BIN)" >&2
+	exit 1
+fi
+echo "payload guard: OK (runtime sha256 $WANT_SHA matches $COMPRESSED_BIN)"
