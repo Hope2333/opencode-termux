@@ -151,7 +151,7 @@ v2 走 `scripts/build-bionic.sh` + TLSDESC graft + hermetic remap。关键锚点
 | **幂等/续传** | 已存在 `opencode-native-<v>-upx.xz` 的版本标 `DONE` 跳过（:1041-1043） |
 | **wrapper 形态** | **不关心**。它只从 `.pkg.tar.xz` 里挖 ELF，wrapper 包（`opencode-wrapper-*`/`opencode1-wrapper-*`）根本不在版本正则里 → **wrapper 族天然被排除** |
 | **compressed 族** | **不关心**。`opencode1-compressed-*` 是 `.tar.gz` 不是 `.pkg.tar.xz`，也不匹配正则 → **天然排除** |
-| **默认 tag** | `RELEASE_TAG = "Push260903"`（:67，硬编码常量，但 `--tag` 为必填覆盖） |
+| **默认 tag** | `RELEASE_TAG = os.environ.get("FLEET_TAG", "Push261005")`（tools/fleet-push.py:89）；自 crf-A1（a84aada）起接线为 `--tag` 的 argparse default（:1424）——环境变量 `FLEET_TAG` 可覆盖内置默认，命令行 `--tag` 显式传值优先 |
 
 ### 3.2 与新形态（未压缩 + v1 单一 ELF）的差异
 

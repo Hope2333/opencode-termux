@@ -79,7 +79,7 @@ help:
 	@echo "  make steps | make status | make selfcheck | make test"
 	@echo
 	@echo "━━━ [Housekeeping] ━━━"
-	@echo "  make clean-version VER=<v>         # 三清本版中间产物（NOT_CLEAN=1 阻止；--not-clean 等价物）"
+	@echo "  make clean-version VER=<v>         # 三清本版中间产物（NOT_CLEAN=1 阻止）"
 	@echo "    ⚠ release-upload NATIVE=1 须带 NOT_CLEAN=1（自洁会移除 transplant 上传源）"
 	@echo "  make clean-artifacts VER=1.18.21   # remove transplant artifacts"
 	@echo "  make clean                          # remove wrapper staging"
@@ -669,7 +669,8 @@ clean-version:
 	if [ -z "$$ver" ] || [ "$$ver" = "." ] || [ "$$ver" = ".." ] || [ "$${ver%/}" != "$$ver" ]; then \
 		echo "Error: invalid VER: [$$ver]"; \
 		exit 1; \
-	fi
+	fi; \
+	case "$$ver" in *[!A-Za-z0-9._-]*) echo "Error: VER must match [A-Za-z0-9._-]: [$$ver]"; exit 1;; esac
 	@tmpdir="$${TMPDIR:-/data/data/com.termux/files/usr/tmp}"; \
 	ver="$(VER)"; \
 	fail=""; \

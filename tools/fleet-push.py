@@ -1421,8 +1421,8 @@ def main():
                     help="仅打印计划，不执行推送")
     ap.add_argument("--dry-run", type=int, metavar="SEC",
                     help="演练模式: 运行 SEC 秒后停止")
-    ap.add_argument("--tag",
-                    help="release tag (必填)")
+    ap.add_argument("--tag", default=RELEASE_TAG,
+                    help="release tag (默认取 FLEET_TAG 环境变量或内置批次 tag)")
     ap.add_argument("--versions", nargs="*", metavar="VER",
                     help="限定版本列表")
     ap.add_argument("--attempts", type=int,
