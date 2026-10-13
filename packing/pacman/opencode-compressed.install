@@ -1,0 +1,18 @@
+# opencode-compressed .INSTALL template (v2 family) — consumed via install= by
+# package_pacman_compressed.sh (baked: MIGRATE_HOOK literal).
+# v2 zero-hook contract: MIGRATE_HOOK is a BUILD-TIME literal pinned to 0, so
+# post_install is echo-only — the v1 data-isolation migration block never
+# ships in v2 packages (v1 families use their own template file).
+MIGRATE_HOOK=0
+post_install() {
+    echo ""
+    echo "OpenCode compressed variant installed (UPX-packed native bionic runtime)"
+    echo "Usage: opencode --version"
+    echo "Runtime is UPX-packed: invoke via the opencode launcher only (direct runtime exec cannot resolve libs under memfd)."
+    echo "Scope: same runtime as the native mainline, UPX-packed for size."
+    echo "v2 compressed variant (coexists with the v1 compressed family)."
+}
+
+post_upgrade() {
+    post_install
+}
