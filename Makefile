@@ -117,35 +117,23 @@ all: clean runtime stage
 	fi
 
 
+# 区间记法 2.0.[a-b] 与显式列表的解析期展开（sentinel 目标名用）
+STAMP_VERS = $(if $(VERS),$(shell bash -c 'expanded=(); for token in $(VERS); do if [[ "$$token" =~ ^([0-9]+\.[0-9]+)\.\[([0-9]+)-([0-9]+)\]$$ ]]; then base="$${BASH_REMATCH[1]}"; for ((i=$${BASH_REMATCH[2]}; i<=$${BASH_REMATCH[3]}; i++)); do expanded+=("$$base.$$i"); done; else expanded+=("$$token"); fi; done; printf "%s " "$${expanded[@]}"' 2>/dev/null),)
 batch-v2:
 	@if [ -z "$(VERS)" ]; then \
 		echo "Error: VERS is empty. Example: make batch-v2 VERS='2.0.[0-12]' PKG=both"; \
 		exit 1; \
 	fi
-	@expanded=(); \
-	for token in $(VERS); do \
-		if [[ "$$token" =~ ^([0-9]+\.[0-9]+)\.\[([0-9]+)-([0-9]+)\]$$ ]]; then \
-			base="$${BASH_REMATCH[1]}"; start="$${BASH_REMATCH[2]}"; end="$${BASH_REMATCH[3]}"; \
-			for ((i=start; i<=end; i++)); do expanded+=("$$base.$$i"); done; \
-		else \
-			expanded+=("$$token"); \
-		fi; \
-	done; \
-	for v in "$${expanded[@]}"; do \
-		echo "=== Batch v2 build for version $$v ==="; \
-		if [ "$(PKG)" = "both" ] || [ "$(PKG)" = "native" ]; then \
-			$(MAKE) family-v2-native VER=$$v NOT_CLEAN='$(NOT_CLEAN)' || exit 1; \
-		fi; \
-		if [ "$(PKG)" = "both" ] || [ "$(PKG)" = "compressed" ]; then \
-			$(MAKE) family-v2-compressed VER=$$v NOT_CLEAN='$(NOT_CLEAN)' || exit 1; \
-		fi; \
-		if [ "$(PKG)" = "both" ] || [ "$(PKG)" = "wrapper" ]; then \
-			$(MAKE) family-v2-wrapper VER=$$v NOT_CLEAN='$(NOT_CLEAN)' || exit 1; \
-		fi; \
-		if [ "$(NOT_CLEAN)" != "1" ]; then \
-			$(MAKE) --no-print-directory clean-version VER=$$v || exit 1; \
-		fi; \
-	done
+	@echo "batch-v2 expanded: $(STAMP_VERS)"
+batch-v2: $(addprefix stamp-v2-,$(STAMP_VERS))
+# 模式目标：每版构建→touch sentinel→clean 收尾统一在此（消除循环尾 NOT_CLEAN 重复块）
+stamp-v2-%:
+	@echo "=== Batch v2 build for version $* ==="
+	$(if $(filter both native,$(PKG)),$(MAKE) family-v2-native VER=$* NOT_CLEAN='$(NOT_CLEAN)')
+	$(if $(filter both compressed,$(PKG)),$(MAKE) family-v2-compressed VER=$* NOT_CLEAN='$(NOT_CLEAN)')
+	$(if $(filter both wrapper,$(PKG)),$(MAKE) family-v2-wrapper VER=$* NOT_CLEAN='$(NOT_CLEAN)')
+	@mkdir -p .omo/stamp && touch ".omo/stamp/v2-$*"
+	@if [ "$(NOT_CLEAN)" != "1" ]; then $(MAKE) --no-print-directory clean-version VER=$* || exit 1; fi
 # batch: NOT_CLEAN passthrough to sub-make is defensive — 'all' has no autoclean
 # hook today; kept so a future hook inside 'all' honors the opt-out (momus NIT).
 batch:
@@ -153,22 +141,13 @@ batch:
 		echo "Error: VERS is empty. Example: make batch VERS='1.2.10 1.2.11' PKG=both"; \
 		exit 1; \
 	fi
-	@expanded=(); \
-	for token in $(VERS); do \
-		if [[ "$$token" =~ ^([0-9]+\.[0-9]+)\.\[([0-9]+)-([0-9]+)\]$$ ]]; then \
-			base="$${BASH_REMATCH[1]}"; start="$${BASH_REMATCH[2]}"; end="$${BASH_REMATCH[3]}"; \
-			for ((i=start; i<=end; i++)); do expanded+=("$$base.$$i"); done; \
-		else \
-			expanded+=("$$token"); \
-		fi; \
-	done; \
-	for v in "$${expanded[@]}"; do \
-		echo "=== Batch build for version $$v ==="; \
-		$(MAKE) all VER=$$v PKG=$(PKG) MORE="$(MORE)" PACKAGER_NAME='$(PACKAGER_NAME)' ODIR='$(ODIR)' MIX='$(MIX)' NOT_CLEAN='$(NOT_CLEAN)' || exit 1; \
-		if [ "$(NOT_CLEAN)" != "1" ]; then \
-			$(MAKE) --no-print-directory clean-version VER=$$v || exit 1; \
-		fi; \
-	done
+	@echo "batch expanded: $(STAMP_VERS)"
+batch: $(addprefix stamp-,$(STAMP_VERS))
+stamp-%:
+	@echo "=== Batch build for version $* ==="
+	$(MAKE) all VER=$* PKG=$(PKG) MORE="$(MORE)" PACKAGER_NAME='$(PACKAGER_NAME)' ODIR='$(ODIR)' MIX='$(MIX)' NOT_CLEAN='$(NOT_CLEAN)' || exit 1
+	@mkdir -p .omo/stamp && touch ".omo/stamp/$*"
+	@if [ "$(NOT_CLEAN)" != "1" ]; then $(MAKE) --no-print-directory clean-version VER=$* || exit 1; fi
 
 runtime:
 	@if [ "$(VER)" = "latest" ]; then \
