@@ -181,6 +181,12 @@ fi
 } >> "$RES"
 if [[ "$NOUPX" != "1" ]]; then rm -f "$COMP"; fi
 rm -rf "$SMOKE/$VER" "$RT/$VER" "$PKG"/*
-rm -f "$SRC/opencode_${VER}_aarch64.deb" "$DEB_FILE" "$PAC_FILE"
+if [[ "$DO_UPLOAD" == "upload" ]]; then
+  # 已上架：本地包为 disposable 副本，清掉
+  rm -f "$SRC/opencode_${VER}_aarch64.deb" "$DEB_FILE" "$PAC_FILE"
+else
+  # noupload：本地留存（todo15 语义：上传统一在发布波）
+  echo "[keep] local packages retained: $DEB_FILE $PAC_FILE"
+fi
 rm -rf "$REPO_ROOT/packing/dpkg-compressed/work" "$REPO_ROOT/packing/pacman/pkg" "$REPO_ROOT/packing/pacman/src"
 echo "=== [$VER] done $(date +%T) (df: $(df -h "$WORKROOT" | awk 'NR==2{print $4}') free) ==="
