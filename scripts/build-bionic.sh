@@ -41,6 +41,21 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 VER="${VER:-2.0.0}"
 
+# ── 依赖钉版（push261013 todo 12：issue #35「build-bionic 仍钉 0.1.13/0.5.10」）──
+# 归因结论: family-v2-native → build-native → 本脚本是 v2 native 的出厂 B-line 编译链
+# （Makefile:836），钉版直接进出厂包，故必须跟上上游逐版漂移。
+# pty: 上游 v2.0.23–2.0.27 实测均为 0.2.0（packages/cli/package.json，2026-10-13 拉取）。
+# opentui: 上游逐版不同——v2.0.23/24=0.5.14、v2.0.25=0.5.16、v2.0.26/27=0.5.17
+# （根 package.json workspaces.catalog，实测）。一把钉死会让旧版高超数个 minor。
+# 未知/更早版本回落 0.5.14（2.0.22 同级）；OPENTUI_VER/PTY_VER 可外部覆盖（调试用）。
+PTY_VER="${PTY_VER:-0.2.0}"
+case "$VER" in
+  2.0.25) OPENTUI_VER="${OPENTUI_VER:-0.5.16}" ;;
+  2.0.26|2.0.27) OPENTUI_VER="${OPENTUI_VER:-0.5.17}" ;;
+  *) OPENTUI_VER="${OPENTUI_VER:-0.5.14}" ;;
+esac
+echo "==> dep pins for VER=$VER: pty=$PTY_VER opentui=$OPENTUI_VER"
+
 # ── resolve v2 source tree ─────────────────────────────────────────────
 if [[ -n "${V2_SRC:-}" ]]; then
   SRC_DIR="$V2_SRC"
@@ -121,7 +136,7 @@ cd "$ROOT_DIR"
 # mandatory targets hard-fail, optional (musl/solid) warn-and-continue.
 echo "==> installing platform packages one-by-one (pty, watcher, core, fonts)..."
 cd "$SRC_DIR/packages/cli"
-for pkg in "@opencode-ai/pty-linux-arm64-gnu@0.1.13" "@parcel/watcher-linux-arm64-glibc@2.5.1" "@opentui/core-linux-arm64@0.5.10"; do
+for pkg in "@opencode-ai/pty-linux-arm64-gnu@$PTY_VER" "@parcel/watcher-linux-arm64-glibc@2.5.1" "@opentui/core-linux-arm64@$OPENTUI_VER"; do
   pkg_ok=0
   for attempt in 1 2 3 4 5; do
     if LD_PRELOAD="$OPENAT2_SHIM" "$ANDROID_BUN" install --force --ignore-scripts --os=linux --cpu=arm64 "$pkg" 2>&1 | tail -2; then
@@ -134,7 +149,7 @@ for pkg in "@opencode-ai/pty-linux-arm64-gnu@0.1.13" "@parcel/watcher-linux-arm6
   [[ $pkg_ok -eq 1 ]] || { echo "Error: mandatory platform package failed after 5 attempts: $pkg" >&2; exit 1; }
   echo "    ^ $pkg"
 done
-for pkg in "@opentui/core-linux-arm64-musl@0.5.10" "@opentui/solid-linux-arm64@0.5.10"; do
+for pkg in "@opentui/core-linux-arm64-musl@$OPENTUI_VER" "@opentui/solid-linux-arm64@$OPENTUI_VER"; do
   if LD_PRELOAD="$OPENAT2_SHIM" "$ANDROID_BUN" install --force --ignore-scripts --os=linux --cpu=arm64 "$pkg" >/dev/null 2>&1; then
     echo "    OK  $pkg"
   else
@@ -211,7 +226,7 @@ fi
 # ── 1b. install linux platform packages (android bun reports platform=android) ──
 echo "==> installing linux platform packages (pty, watcher)..."
 cd "$SRC_DIR"
-for pkg in "@opencode-ai/pty@0.1.13" "@parcel/watcher-linux-arm64-glibc@2.5.1"; do
+for pkg in "@opencode-ai/pty@$PTY_VER" "@parcel/watcher-linux-arm64-glibc@2.5.1"; do
   pkg_name="${pkg%%@*}"
   pkg_short="${pkg_name##*/}"
   # Check if already installed in store (any platform variant)
@@ -251,7 +266,7 @@ PTY_VARIANT="${PTY_VARIANT:-musl}"
 case "$PTY_VARIANT" in
   musl)
     echo "==> installing musl PTY helper (issue #27: gnu variant cannot run on bionic)..."
-    if LD_PRELOAD="$OPENAT2_SHIM" "$ANDROID_BUN" install --force --ignore-scripts --os=linux --cpu=arm64 "@opencode-ai/pty-linux-arm64-musl@0.1.13" 2>&1 | tail -1; then :; fi
+    if LD_PRELOAD="$OPENAT2_SHIM" "$ANDROID_BUN" install --force --ignore-scripts --os=linux --cpu=arm64 "@opencode-ai/pty-linux-arm64-musl@$PTY_VER" 2>&1 | tail -1; then :; fi
     PTY_MUSL_BIN="$(find "$STORE" "$SRC_DIR/node_modules" -path '*pty-linux-arm64-musl/bin/opencode-pty' -type f 2>/dev/null | head -n1)"
     if [[ -z "$PTY_MUSL_BIN" ]] || ! file "$PTY_MUSL_BIN" | grep -q 'statically linked'; then
       echo "Error: static musl opencode-pty not found/valid — bionic PTY would be broken (issue #27)" >&2
