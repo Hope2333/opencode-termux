@@ -42,7 +42,7 @@ FAMILY_LIST = $(strip $(subst $(comma), ,$(family)))
 
 OUTPUT_ROOT := $(if $(ODIR),$(ODIR),$(CURDIR)/packing)
 
-.PHONY: help all runtime stage deb pacman deb-native pacman-native native-pkg batch clean status steps matrix selfcheck release-upload test transplant transplant-predict transplant-check transplant-upx seccomp-harden family-wrapper family-native family-compressed deb-compressed pacman-compressed range-build fleet-upx fleet-status sha-stage push-stage clean-artifacts clean-version
+.PHONY: help all runtime stage deb pacman deb-native pacman-native native-pkg batch clean status steps matrix selfcheck release-upload test transplant transplant-predict transplant-check transplant-upx seccomp-harden family-wrapper family-native family-compressed deb-compressed pacman-compressed range-build fleet-upx fleet-status sha-stage push-stage clean-artifacts clean-version compressed-one
 
 help:
 	@echo "OpenCode Termux build helper"
@@ -51,6 +51,7 @@ help:
 	@echo "  make family-wrapper VER=1.18.21       # wrapper (deb + pacman)"
 	@echo "  make family-native VER=1.18.21      # transplant + seccomp-harden + native pkgs"
 	@echo "  make family-compressed VER=1.18.21  # UPX-compressed variant (local)"
+	@echo "  make compressed-one VER=2.0.22 [UPLOAD=1] # 单版 compressed 全流程(取源→压制→双包→冒烟→上传)"
 	@echo
 	@echo "━━━ [Range Batch] Multi-version builds ━━━"
 	@echo "  make range-build FROM=1.18.15 TO=1.18.27 LINES=wrapper,native"
@@ -471,6 +472,20 @@ family-compressed:
 	$(MAKE) transplant-upx VER=$(VER)
 	$(MAKE) deb-compressed VER=$(VER) && $(MAKE) pacman-compressed VER=$(VER)
 	@if [ -n "$(VER_IS_SET)" ] && [ "$(NOT_CLEAN)" != "1" ]; then $(MAKE) --no-print-directory clean-version VER=$(VER) || exit 1; fi
+
+# compressed-one: 单版 compressed 全流程（tools/compressed-one.sh 收编版：
+# 取源→压制→双包→冒烟→上传→核验→清理）
+# Usage: make compressed-one VER=2.0.22 [TAG=Push261013] [UPLOAD=1] [NOUPX=1]
+# VER 校验走解析期 $(error)（recipe 守卫在 make -n 下不执行，见 R1/S1 评审）
+# VER 白名单校验（解析期 $(error)）：$(filter-out) 是词级匹配不能做字符集检查，
+# 故用 subst 转义单引号后的 $(shell)+grep -E；实测对引号注入与 $(shell) 注入均安全
+compressed-one:
+	$(if $(VER_IS_SET),,$(error VER is required. Example: make compressed-one VER=2.0.22))
+	$(if $(shell printf '%s' '$(subst ','\'',$(VER))' | grep -qE '^[A-Za-z0-9._-]+$$' || echo BAD),$(error invalid VER: [$(VER)] must match [A-Za-z0-9._-]))
+	@env TAG=$(TAG) WORKROOT="$(WORKROOT)" DEB_REV="$(DEB_REV)" PKGREL="$(PKGREL)" \
+		OCOMP_FAMILY="$(OCOMP_FAMILY)" OCOMP_LAYOUT="$(OCOMP_LAYOUT)" \
+		NOUPX="$(NOUPX)" OPENCODE_COMPRESSED_BIN="$(OPENCODE_COMPRESSED_BIN)" \
+		bash tools/compressed-one.sh $(VER) $(if $(filter 1,$(UPLOAD)),upload,noupload) $(if $(filter 1,$(NOUPX)),--noupx,)
 
 # family: array dispatcher over the three family chains (FEATURE: family as ARRAY)
 # Usage: make family=wrapper,native,compressed VER=1.18.21   (comma or space separated)
