@@ -56,6 +56,24 @@ rsz=$(stat -c%s "$RUNTIME")
 # 窗口 FAMILY 感知: v2 runtime 280MB 级(下限 200M); v1 transplant 产物 ~181MB(下限 150M)
 if [[ "$FAMILY" == "opencode1" ]]; then MIN_RT=150000000; else MIN_RT=200000000; fi
 [[ "$rsz" -gt "$MIN_RT" && "$rsz" -lt 600000000 ]] || { echo "FATAL: runtime size $rsz out of uncompressed range (double-compress hazard?)"; exit 1; }
+
+# ── 2.5 seccomp harden（#36 修复：手术后压制，对齐 family-v2-compressed 顺序）──
+# 无 DT_NEEDED crhandler 的 runtime 在 Android 12 seccomp 下 close_range SIGSYS
+# （issue #36：shim 随包但未 interpose=死文件）。手术在 UPX 前（零位移 DT 编辑）。
+if [[ "$NOUPX" == "1" ]]; then
+  # 外部件：已手术放行，未手术拒绝（不手术已压件=UPX×graft 必崩，v12.4 教训）
+  grep -aqF libopencode-crhandler.so "$COMP" 2>/dev/null || {
+    echo "FATAL: NOUPX=1 external binary not hardened (no crhandler DT_NEEDED) — pass a hardened binary"; exit 1; }
+  echo "[harden] external binary already hardened"
+elif ! grep -aqF libopencode-crhandler.so "$RUNTIME" 2>/dev/null; then
+  [[ -f "$SHIM_SO" ]] || { echo "FATAL: shim missing: $SHIM_SO"; exit 1; }
+  cp "$SHIM_SO" "$RT/$VER/libopencode-crhandler.so"
+  cp -p "$RUNTIME" "$RUNTIME.pre-crhandler"
+  python3 tools/transplant/crhandler_patch.py "$RUNTIME" || { echo "FATAL: crhandler patch failed"; exit 1; }
+  echo "[harden] runtime patched: $(readelf -dW "$RUNTIME" 2>/dev/null | grep -c 'libopencode-crhandler') DT_NEEDED entries"
+else
+  echo "[harden] runtime already hardened, skip"
+fi
 rsha=$(sha256sum "$RUNTIME" | cut -d' ' -f1)
 echo "[input] runtime $rsz B sha=$rsha"
 

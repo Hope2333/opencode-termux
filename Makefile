@@ -437,6 +437,7 @@ family-native:
 		exit 1; \
 	fi
 	$(MAKE) transplant VER=$(VER)
+	TRANSPLANT_ROOT=$(CURDIR)/artifacts/transplant $(MAKE) harden-native VER=$(VER)
 	$(MAKE) deb-native VER=$(VER) && $(MAKE) pacman-native VER=$(VER)
 	@if [ -n "$(VER_IS_SET)" ] && [ "$(NOT_CLEAN)" != "1" ]; then $(MAKE) --no-print-directory clean-version VER=$(VER) || exit 1; fi
 
@@ -894,10 +895,11 @@ harden-native:
 		exit 1; \
 	fi
 	@if ! command -v clang >/dev/null 2>&1; then echo "WARN: clang not found; skipping seccomp hardening"; exit 0; fi
-	src="$(CURDIR)/artifacts/build/$(VER)/opencode-native-revived"; \
+	HRDIR="$(if $(TRANSPLANT_ROOT),$(TRANSPLANT_ROOT),$(CURDIR)/artifacts/build)/$(VER)"; \
+	src="$$HRDIR/opencode-native-revived"; \
 	if [ ! -f "$$src" ]; then echo "Error: $$src missing; run 'make build-native VER=$(VER)' first"; exit 1; fi; \
 	echo "==> harden-native VER=$(VER)"; \
-	clang -shared -fPIC -O2 -o "$(CURDIR)/artifacts/build/$(VER)/libopencode-crhandler.so" tools/shim/sigsys_handler.c || exit 1; \
+	clang -shared -fPIC -O2 -o "$$HRDIR/libopencode-crhandler.so" tools/shim/sigsys_handler.c || exit 1; \
 	if grep -aqF libopencode-crhandler.so "$$src"; then \
 		echo "==> already hardened, skip"; \
 		exit 0; \
