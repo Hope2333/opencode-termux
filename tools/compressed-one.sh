@@ -147,7 +147,7 @@ echo "[smoke] --version rc=$vrc out='$vout' | --dbpath --help rc=$hout"
 export HOME="$SMOKE/$VER/home" XDG_CONFIG_HOME="$SMOKE/$VER/config" \
        XDG_CACHE_HOME="$SMOKE/$VER/cache" XDG_DATA_HOME="$SMOKE/$VER/data" \
        PREFIX="$SMOKE/$VER/root/data/data/com.termux/files/usr"
-tp=$(python3 tools/transplant/transplant.py tui-probe --product "$BIN" --timeout 20 2>&1 | grep -o '"verdict": "[^"]*"' | head -1)
+tp=$(python3 tools/transplant/transplant.py tui-probe --product "$BIN" --timeout 20 2>&1 | grep -o '"verdict": "[^"]*"' | head -1 || true)
 tui_err=$(timeout 25 "$BIN" -tui 2>&1 | grep -c 'Failed to initialize OpenTUI' || true)
 export HOME="$OLD_HOME"; unset OLD_HOME PREFIX XDG_CONFIG_HOME XDG_CACHE_HOME XDG_DATA_HOME
 echo "[smoke] TUI probe=$tp opentui-fail-count=$tui_err"
