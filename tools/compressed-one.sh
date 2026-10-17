@@ -53,8 +53,8 @@ if [[ ! -f "$RUNTIME" ]]; then
 fi
 rsz=$(stat -c%s "$RUNTIME")
 # 未压 runtime 窗口：200–600MB。104MB 量级输入 = 已压件（双重压制必崩，本项目踩过两次）
-# 窗口 FAMILY 感知: v2 runtime 280MB 级(下限 200M); v1 transplant 产物 ~181MB(下限 150M)
-if [[ "$FAMILY" == "opencode1" ]]; then MIN_RT=150000000; else MIN_RT=200000000; fi
+# 窗口 FAMILY 感知: v2 runtime 280MB 级(下限 200M); v1 transplant 产物 135-181MB(下限 120M; 1.18.30-34 实测 135MB 级)
+if [[ "$FAMILY" == "opencode1" ]]; then MIN_RT=120000000; else MIN_RT=200000000; fi
 [[ "$rsz" -gt "$MIN_RT" && "$rsz" -lt 600000000 ]] || { echo "FATAL: runtime size $rsz out of uncompressed range (double-compress hazard?)"; exit 1; }
 
 # ── 2.5 seccomp harden（#36 修复：手术后压制，对齐 family-v2-compressed 顺序）──
@@ -91,7 +91,7 @@ else
 fi
 csz=$(stat -c%s "$COMP")
 # 压制产物窗口：80–140MB（历史 37% 压缩率带容差；区间外停下）
-if [[ "$FAMILY" == "opencode1" ]]; then MIN_CP=55000000; else MIN_CP=80000000; fi
+if [[ "$FAMILY" == "opencode1" ]]; then MIN_CP=40000000; else MIN_CP=80000000; fi
 [[ "$csz" -gt "$MIN_CP" && "$csz" -lt 140000000 ]] || { echo "FATAL: compressed size $csz out of range"; exit 1; }
 csha=$(sha256sum "$COMP" | cut -d' ' -f1)
 ratio=$(awk -v a="$csz" -v b="$rsz" 'BEGIN{printf "%.2f%%", a/b*100}')
