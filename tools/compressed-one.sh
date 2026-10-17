@@ -89,6 +89,21 @@ else
     "$UPX_BIN" -4 --no-color -o "$COMP" "$RUNTIME" >/dev/null
   fi
 fi
+
+# ── 2.6 v1 族 UPX 后重 graft（2026-10-18 实测: UPX 过程使 swap_tui 的 bionic
+# graft 失效——bunfs 提取回退 glibc OpenTUI 件，TUI 崩 "libm.so.6 not found"。
+# 修法: 解压→重 graft（等长替换 bionic libopentui.so）→重压。v2 不受影响
+# （B 线 graft 在 build.ts 期，TUI 实证 pass）。──
+if [[ "$FAMILY" == "opencode1" && "$NOUPX" != "1" ]]; then
+  TUI_LIB="$REPO_ROOT/artifacts/transplant/opentui-bionic/libopentui.so"
+  [[ -f "$TUI_LIB" ]] || { echo "FATAL: bionic libopentui.so missing: $TUI_LIB"; exit 1; }
+  echo "[regraft] decompress -> swap_tui -> repack"
+  "$UPX_BIN" -d --no-color -o "$COMP.dec" "$COMP" >/dev/null 2>&1 || { echo "FATAL: regraft decompress failed"; exit 1; }
+  python3 tools/transplant/swap_tui.py --binary "$COMP.dec" --tui-lib "$TUI_LIB" --out "$COMP.graft" >/dev/null || { echo "FATAL: regraft swap failed"; exit 1; }
+  "$UPX_BIN" -4 --no-color -o "$COMP.new" "$COMP.graft" >/dev/null || { echo "FATAL: regraft repack failed"; exit 1; }
+  mv "$COMP.new" "$COMP"; rm -f "$COMP.dec" "$COMP.graft"
+  echo "[regraft] done: $(stat -c%s "$COMP") B"
+fi
 csz=$(stat -c%s "$COMP")
 # 压制产物窗口：80–140MB（历史 37% 压缩率带容差；区间外停下）
 if [[ "$FAMILY" == "opencode1" ]]; then MIN_CP=40000000; else MIN_CP=80000000; fi
@@ -127,6 +142,16 @@ export HOME="$OLD_HOME"; unset OLD_HOME PREFIX XDG_CONFIG_HOME XDG_CACHE_HOME XD
 echo "[smoke] --version rc=$vrc out='$vout' | --dbpath --help rc=$hout"
 [[ "$vrc" -eq 0 && "$hout" -eq 0 ]] || { echo "FATAL: smoke failed"; exit 1; }
 [[ "$vout" == *"$VER"* ]] || { echo "FATAL: version string mismatch: $vout"; exit 1; }
+# TUI 级冒烟（2026-10-18 #36-后续: v1 compressed 的 UPX 丢 graft 只现形 TUI，
+# --version/--help 全绿灯漏网——本段用 pty 实跑 -tui 探 OpenTUI 初始化失败特征）
+export HOME="$SMOKE/$VER/home" XDG_CONFIG_HOME="$SMOKE/$VER/config" \
+       XDG_CACHE_HOME="$SMOKE/$VER/cache" XDG_DATA_HOME="$SMOKE/$VER/data" \
+       PREFIX="$SMOKE/$VER/root/data/data/com.termux/files/usr"
+tp=$(python3 tools/transplant/transplant.py tui-probe --product "$BIN" --timeout 20 2>&1 | grep -o '"verdict": "[^"]*"' | head -1)
+tui_err=$(timeout 25 "$BIN" -tui 2>&1 | grep -c 'Failed to initialize OpenTUI' || true)
+export HOME="$OLD_HOME"; unset OLD_HOME PREFIX XDG_CONFIG_HOME XDG_CACHE_HOME XDG_DATA_HOME
+echo "[smoke] TUI probe=$tp opentui-fail-count=$tui_err"
+[[ "$tp" == *'"pass"'* && "$tui_err" == "0" ]] || { echo "FATAL: TUI smoke failed (probe=$tp err=$tui_err)"; exit 1; }
 
 # ── 5. 上传（单件 + --clobber 幂等 + state/size/digest 三重核验）──
 if [[ "$DO_UPLOAD" == "upload" ]]; then
