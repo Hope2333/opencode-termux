@@ -50,6 +50,9 @@ packing/Packages.gz
 packing/SHA256SUMS.txt
 packing/deb-compressed/
 tools/__pycache__/
+# oldkernel-compat T6 出货目录（compat-graft-renderer 生成：deb/pacman + MANIFEST +
+# SHA256SUMS；分发属 T7 决策，产物不入库，路径与 sha 记 evidence）
+packing/compat/
 # Node modules (local install only)
 node_modules/
 

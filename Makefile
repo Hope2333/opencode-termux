@@ -51,7 +51,7 @@ OUTPUT_ROOT := $(if $(ODIR),$(ODIR),$(CURDIR)/packing)
 COMPAT_PREDICT = python3 $(CURDIR)/tools/transplant/transplant.py compat-predict --kernel "$(shell uname -r)" --product opencode1-$(1)
 COMPAT_VERDICT = $(shell $(call COMPAT_PREDICT,$(1)) 2>&1)
 
-.PHONY: help all runtime stage deb pacman deb-native pacman-native native-pkg batch clean status steps matrix selfcheck release-upload test transplant transplant-predict transplant-check transplant-upx seccomp-harden family-wrapper family-native family-compressed deb-compressed pacman-compressed range-build fleet-upx fleet-status sha-stage push-stage clean-artifacts clean-version compressed-one
+.PHONY: help all runtime stage deb pacman deb-native pacman-native native-pkg batch clean status steps matrix selfcheck release-upload test transplant transplant-predict transplant-check transplant-upx seccomp-harden family-wrapper family-native family-compressed deb-compressed pacman-compressed compat-graft-renderer range-build fleet-upx fleet-status sha-stage push-stage clean-artifacts clean-version compressed-one
 
 help:
 	@echo "OpenCode Termux build helper"
@@ -61,6 +61,9 @@ help:
 	@echo "  make family-native VER=1.18.21      # transplant + seccomp-harden + native pkgs"
 	@echo "  make family-compressed VER=1.18.21  # UPX-compressed variant (local)"
 	@echo "  make compressed-one VER=2.0.22 [UPLOAD=1] # 单版 compressed 全流程(取源→压制→双包→冒烟→上传)"
+	@echo
+	@echo "━━━ [Old-kernel compat] ━━━"
+	@echo "  make compat-graft-renderer VER=1.19.3  # B 档混合件产品化 (scope locked; 见 plan T6 note)"
 	@echo
 	@echo "━━━ [Range Batch] Multi-version builds ━━━"
 	@echo "  make range-build FROM=1.18.15 TO=1.18.27 LINES=wrapper,native"
@@ -588,6 +591,30 @@ pacman-compressed:
 		[ -f "$$f" ] || continue; \
 		bash tools/pkg-abs-repack.sh "$$f" || exit 1; \
 	done
+
+# ══════════════════════════════════════════════════════════════════════
+# Old-kernel compat B 档产品化 (oldkernel-compat T6)
+# ══════════════════════════════════════════════════════════════════════
+
+# compat-graft-renderer: build→harden→graft-old→upx→regraft-new→打包 for the
+# approved scope (locked to 1.19.3 by the T6 approval gate — widening to other
+# versions is a DEFERRED decision, see plan T6 note; this guard enforces it).
+# Orchestration lives in scripts/compat/compat-graft-build.sh (six stages).
+# The compressed variant is shipped ONLY when the graft+UPX candidate gets an
+# old-kernel go-ahead (UPX×graft is a known crash hazard; a local 6.x "alive"
+# proves nothing). Gate: COMPAT_OSCAR_TARGET=<user@host> makes the script
+# verify it on the old-kernel box itself (kernel identity is checked first);
+# otherwise the run degrades to a native-only delivery with the reason recorded
+# in MANIFEST.txt — never a package that crashes. Products land in
+# packing/compat/<ver>/; same-version shelf packages are backed up and restored
+# untouched.
+# Usage: make compat-graft-renderer VER=1.19.3
+#        [COMPAT_BUILD_SOURCE=1] [COMPAT_OSCAR_TARGET=u0_a115@host COMPAT_OSCAR_PORT=8022]
+compat-graft-renderer:
+	$(if $(VER_IS_SET),,$(error VER is required. Example: make compat-graft-renderer VER=1.19.3))
+	$(if $(filter 1.19.3,$(VER)),,$(error T6 scope locked to 1.19.3 (approval gate); widening other versions is a deferred decision — see plan T6 note))
+	$(info $(call COMPAT_VERDICT,$(VER)))
+	bash scripts/compat/compat-graft-build.sh '$(VER)'
 
 # Range batch build (multi-version, continue-on-fail)
 # ══════════════════════════════════════════════════════════════════════
