@@ -42,6 +42,15 @@ FAMILY_LIST = $(strip $(subst $(comma), ,$(family)))
 
 OUTPUT_ROOT := $(if $(ODIR),$(ODIR),$(CURDIR)/packing)
 
+# ── Old-kernel compat gate (oldkernel-compat T3) ──
+# compat-predict prints a PASS/DEGRADE/BLOCK verdict line before the three
+# build entry targets; delivered via $(info ...) so it stays visible under
+# `make -n` (dry-run expands recipes — incl. $(shell) — but executes nothing).
+# DEGRADE (ledger verdict=graft-ok, e.g. OSC-001: TUI SIGSEGV on kernel<4.x)
+# is informational: the graft/native route remains the mitigation, build runs.
+COMPAT_PREDICT = python3 $(CURDIR)/tools/transplant/transplant.py compat-predict --kernel "$(shell uname -r)" --product opencode1-$(1)
+COMPAT_VERDICT = $(shell $(call COMPAT_PREDICT,$(1)) 2>&1)
+
 .PHONY: help all runtime stage deb pacman deb-native pacman-native native-pkg batch clean status steps matrix selfcheck release-upload test transplant transplant-predict transplant-check transplant-upx seccomp-harden family-wrapper family-native family-compressed deb-compressed pacman-compressed range-build fleet-upx fleet-status sha-stage push-stage clean-artifacts clean-version compressed-one
 
 help:
@@ -462,6 +471,7 @@ family-compressed:
 compressed-one:
 	$(if $(VER_IS_SET),,$(error VER is required. Example: make compressed-one VER=2.0.22))
 	$(if $(shell printf '%s' '$(subst ','\'',$(VER))' | grep -qE '^[A-Za-z0-9._-]+$$' || echo BAD),$(error invalid VER: [$(VER)] must match [A-Za-z0-9._-]))
+	$(info $(call COMPAT_VERDICT,$(VER)))
 	@env TAG=$(TAG) WORKROOT="$(WORKROOT)" DEB_REV="$(DEB_REV)" PKGREL="$(PKGREL)" \
 		OCOMP_FAMILY="$(OCOMP_FAMILY)" OCOMP_LAYOUT="$(OCOMP_LAYOUT)" \
 		NOUPX="$(NOUPX)" OPENCODE_COMPRESSED_BIN="$(OPENCODE_COMPRESSED_BIN)" \
@@ -472,6 +482,7 @@ compressed-one:
 #        Order is preserved as given; canonical order is wrapper -> native -> compressed.
 .PHONY: family
 family:
+	$(if $(VER_IS_SET),$(info $(call COMPAT_VERDICT,$(VER))),$(info compat-predict: SKIPPED (VER not set)))
 	@if [ -z "$(VER_IS_SET)" ]; then \
 		echo "Error: VER is required. Example: make family=wrapper,native VER=1.18.21"; \
 		exit 1; \
@@ -856,6 +867,7 @@ build-native-upx: UPX_OPTS?=-4
 # Usage: make family-v2-native VER=2.0.0
 .PHONY: family-v2-native
 family-v2-native:
+	$(if $(VER_IS_SET),$(info $(call COMPAT_VERDICT,$(VER))),$(info compat-predict: SKIPPED (VER not set)))
 	@if [ -z "$(VER_IS_SET)" ]; then \
 		echo "Error: VER is required. Example: make family-v2-native VER=2.0.0"; \
 		exit 1; \

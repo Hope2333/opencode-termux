@@ -18,6 +18,8 @@ convert_layout.py / probe_assemble.py) into one argparse CLI:
     all       one-shot pipeline: predict (fail-fast) -> extract -> detect ->
               (convert if 36) -> patch -> assemble -> revive (unless
               --no-revive) -> verify
+    compat-predict  old-kernel compat gate: PASS/DEGRADE/BLOCK by matching
+              (kernel, product) against .omo/compat-ledger.jsonl
 
 Output: artifacts/transplant/<ver>/opencode-native + report.json
         {ver, layout, prediction:{verdict, format, base, patch_hit, risks},
@@ -1260,6 +1262,85 @@ def cmd_predict(args) -> int:
     return {"OK": 0, "FAIL": 1, "NEEDS_INFO": 2}[pred["verdict"]]
 
 
+def cmd_compat_predict(args) -> int:
+    """Old-kernel compat gate: match (kernel, product) against the ledger.
+
+    Ledger: .omo/compat-ledger.jsonl (one JSON object per line, 8 fields:
+    id/match{kernel_max,opentui_min,symptom}/first_bad/last_good/verdict/
+    evidence/repro/upstream). Missing ledger file => fail-fast (never a
+    silent PASS). Exit 0 for PASS/DEGRADE, 1 for BLOCK/error.
+    """
+    kernel = str(args.kernel).strip()
+    product = str(args.product).strip()
+    m = VERSION_RE.search(product)
+    if not m:
+        raise TransplantError(
+            f"cannot extract version from product {product!r} "
+            "(expected e.g. opencode1-1.18.35)"
+        )
+    product_ver = m.group(0)
+    kmatch = re.match(r"(\d+)", kernel)
+    if not kmatch:
+        raise TransplantError(
+            f"cannot parse kernel release {kernel!r} (uname -r style expected, "
+            "e.g. 3.18.140-mokee)"
+        )
+    kernel_major = int(kmatch.group(1))
+
+    ledger_path = repo_root() / ".omo" / "compat-ledger.jsonl"
+    if not ledger_path.is_file():
+        raise TransplantError(
+            f"compat ledger not found: {ledger_path} "
+            "(fail-fast: refusing to PASS without a ledger)"
+        )
+    entries = []
+    for lineno, line in enumerate(ledger_path.read_text().splitlines(), 1):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entries.append(json.loads(line))
+        except json.JSONDecodeError as e:
+            raise TransplantError(f"{ledger_path}:{lineno}: invalid JSON: {e}")
+
+    verdict, entry_id, why = "PASS", "-", (
+        f"no ledger entry matches kernel {kernel} (major={kernel_major}) "
+        f"with product {product_ver} >= first_bad"
+    )
+    for e in entries:
+        match = e.get("match", {})
+        kernel_max = str(match.get("kernel_max", ""))
+        if not kernel_max.endswith(".x") or not kernel_max[:-2].isdigit():
+            raise TransplantError(
+                f"{e.get('id', '?')}: unsupported kernel_max form {kernel_max!r} "
+                "(expected 'N.x', e.g. '3.x' = kernel major < 4)"
+            )
+        threshold = int(kernel_max[:-2]) + 1  # "3.x" => major < 4
+        if kernel_major >= threshold:
+            continue  # newer kernel line: not affected
+        first_bad = str(e.get("first_bad", ""))
+        if not VERSION_RE.match(first_bad):
+            raise TransplantError(
+                f"{e.get('id', '?')}: invalid first_bad {first_bad!r}"
+            )
+        if _semver_key(product_ver) < _semver_key(first_bad):
+            continue  # product predates the affected range (incl. last_good)
+        entry_id = str(e.get("id", "?"))
+        verdict = {"graft-ok": "DEGRADE"}.get(str(e.get("verdict", "")), "BLOCK")
+        why = (
+            f"kernel {kernel} (major={kernel_major}) within kernel_max "
+            f"{kernel_max} and product {product_ver} >= first_bad {first_bad} "
+            f"(last_good={e.get('last_good')}, ledger verdict={e.get('verdict')})"
+        )
+        break
+
+    print(
+        f"compat-predict: verdict={verdict} entry={entry_id} "
+        f"kernel={kernel}(major={kernel_major}) product={product}({product_ver}) :: {why}"
+    )
+    return 0 if verdict in ("PASS", "DEGRADE") else 1
+
+
 def cmd_all(args) -> int:
     ver = args.ver
     tgz = Path(args.tgz)
@@ -1553,6 +1634,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--tui-lib", required=True, help="bionic libopentui.so (<= embedded slot size)")
     p.add_argument("--out", default=None, help="output path (default: <binary>-dir/opencode-native-tui)")
     p.set_defaults(func=cmd_swap)
+
+    p = sub.add_parser(
+        "compat-predict",
+        help="old-kernel compat gate: PASS/DEGRADE/BLOCK from .omo/compat-ledger.jsonl",
+    )
+    p.add_argument("--kernel", required=True, help="kernel release (uname -r style, e.g. 3.18.140-mokee)")
+    p.add_argument("--product", required=True, help="product name-version, e.g. opencode1-1.18.35")
+    p.set_defaults(func=cmd_compat_predict)
 
     return ap
 
