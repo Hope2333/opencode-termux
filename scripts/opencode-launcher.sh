@@ -84,4 +84,60 @@ if [ "$_oc_force_tui" -eq 0 ] && [ "$(uname -r | cut -d. -f1)" -lt 4 ] 2>/dev/nu
 		fi
 	fi
 fi
+# ── oldkernel crash trap (T5; OSC-001 动态取证) ───────────────────────────────
+# TUI scenario (the runtime would start its interactive TUI: --force-tui, or
+# no explicit CLI subcommand) no longer bare-execs. The runtime runs as a
+# background job + wait (no job control in scripts -> same process group, tty
+# foreground/interactivity unchanged; $! gives a pid for signal forwarding).
+# stderr is captured to a temp file and replayed after exit — TUI stderr is
+# crash output only, and alt-screen is already torn down by then. On SIGSEGV
+# (rc=139) whose stderr carries a bun.report / OpenTUI signature, a field
+# record (uname/kernel major/runtime version/timestamp/rc/stderr tail 50) is
+# written to ~/.local/share/opencode/compat-crashes/<ts>.log (v2 plain data
+# root) for scripts/compat/compat-collect.sh. Non-139 exits or feature-less
+# crashes produce no record (noise control). TERM/HUP/INT reaching the
+# launcher are forwarded to the runtime pid — exec-era signal semantics kept.
+_oc_has_sub=0
+for _a in "${_oc_args[@]}"; do
+	case "$_a" in -*) ;; *) _oc_has_sub=1; break ;; esac
+done
+_oc_is_tui=0
+if [ "$_oc_force_tui" -eq 1 ] || [ "$_oc_has_sub" -eq 0 ]; then
+	_oc_is_tui=1
+fi
+if [ "$_oc_is_tui" -eq 1 ] && _oc_err="$(mktemp "${TMPDIR:-/tmp}/opencode-crash-stderr.XXXXXX" 2>/dev/null)"; then
+	_oc_rc=0
+	_oc_fwd() { [ -n "${_oc_pid:-}" ] && kill -"$1" "$_oc_pid" 2>/dev/null || true; }
+	trap '_oc_fwd TERM' TERM
+	trap '_oc_fwd HUP' HUP
+	trap '_oc_fwd INT' INT
+	"$OC_RT" ${_oc_args[@]+"${_oc_args[@]}"} 2> "$_oc_err" &
+	_oc_pid=$!
+	wait "$_oc_pid" || _oc_rc=$?
+	trap - TERM HUP INT
+	if [ -s "$_oc_err" ]; then cat "$_oc_err" >&2 || true; fi
+	# crash record: SIGSEGV + bun.report/OpenTUI signature only (else silent)
+	if [ "$_oc_rc" -eq 139 ] && grep -qiE 'bun\.report|opentui' "$_oc_err" 2>/dev/null; then
+		_oc_ver="$("$OC_RT" --version 2>/dev/null | grep -oE '[0-9]+(\.[0-9]+){2}' | head -n1 || true)"
+		_oc_dir="$HOME/.local/share/opencode/compat-crashes"
+		_oc_log="$_oc_dir/$(date +%Y%m%d-%H%M%S)-$$.log"
+		if mkdir -p "$_oc_dir" 2>/dev/null && {
+			printf 'product: opencode\n'
+			printf 'timestamp: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+			printf 'uname_r: %s\n' "$(uname -r)"
+			printf 'kernel_major: %s\n' "$(uname -r | cut -d. -f1)"
+			printf 'runtime_version: %s\n' "${_oc_ver:-unknown}"
+			printf 'crash_rc: %s\n' "$_oc_rc"
+			printf -- '--- stderr tail (last 50 lines) ---\n'
+			tail -n 50 "$_oc_err"
+		} > "$_oc_log" 2>/dev/null; then
+			echo "opencode: SIGSEGV crash record written: $_oc_log" >&2
+		else
+			rm -f "$_oc_log" 2>/dev/null || true
+		fi
+	fi
+	rm -f "$_oc_err" 2>/dev/null || true
+	exit "$_oc_rc"
+fi
+# CLI subcommands / meta flags / trap-infrastructure failure: previous exec path
 exec "$OC_RT" ${_oc_args[@]+"${_oc_args[@]}"}
