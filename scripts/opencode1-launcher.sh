@@ -87,7 +87,10 @@ fi
 # TUI-default scenario (no CLI subcommand) degrades to `serve` (CLI-usable;
 # --print/serve semantics are provided by opencode itself). --force-tui skips
 # the degradation entirely (B 档 graft hybrid users: TUI actually works there)
-# and is stripped from the runtime argv either way.
+# and is stripped from the runtime argv either way. A `.grafted` marker next
+# to the runtime (shipped by the T6 graft build, scripts/compat/
+# compat-graft-build.sh) skips it the same way: B 档 hybrid installs run the
+# TUI bare — no --force-tui needed.
 # Kernel >= 4.x or runtime < 1.18.35: zero behavior change — the version
 # probe below only runs when the kernel is old, so new kernels pay nothing.
 _oc_force_tui=0
@@ -100,7 +103,16 @@ for _a in "$@"; do
 	esac
 	_oc_args+=("$_a")
 done
-if [ "$_oc_force_tui" -eq 0 ] && [ "$(uname -r | cut -d. -f1)" -lt 4 ] 2>/dev/null; then
+# graft probe (follow-up fix): `.grafted` beside the runtime marks a B 档
+# hybrid install (new CLI + donor 1.18.34 OpenTUI, OSC-001 verdict=graft-ok)
+# whose TUI genuinely works on kernel 3.x — skip the degradation entirely so
+# bare `opencode1` starts the TUI. Absent marker = A 档 package: the T4
+# behavior below is unchanged.
+_oc_grafted=0
+if [ -f "$(dirname "$OC_RT")/.grafted" ]; then
+	_oc_grafted=1
+fi
+if [ "$_oc_force_tui" -eq 0 ] && [ "$_oc_grafted" -eq 0 ] && [ "$(uname -r | cut -d. -f1)" -lt 4 ] 2>/dev/null; then
 	_oc_ver="$("$OC_RT" --version 2>/dev/null | grep -oE '[0-9]+(\.[0-9]+){2}' | head -n1 || true)"
 	if [ -n "$_oc_ver" ] && [ "$(printf '%s\n%s\n' "$_oc_ver" 1.18.35 | sort -V | head -n1)" = 1.18.35 ]; then
 		echo "opencode: 老内核 TUI 不兼容, 已降级 CLI 模式（可用 --force-tui 强试）" >&2

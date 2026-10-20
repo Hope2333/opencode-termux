@@ -42,6 +42,20 @@ package() {
         # v12.1 layered: bare runtime + XDG-isolating launcher (v2 stays bin-direct)
         install -D -m755 "$OPENCODE_NATIVE_BIN" "$pkgdir/data/data/com.termux/files/usr/lib/opencode1/runtime/opencode"
         install -D -m755 "${REPO_ROOT:?REPO_ROOT must point at the repo root}/scripts/opencode1-launcher.sh" "$pkgdir/data/data/com.termux/files/usr/bin/opencode1"
+        # oldkernel-compat follow-up: `.grafted` B 档 marker (launcher graft
+        # 探测读它, 老内核机裸跑直起 TUI). sha 必须与打包 runtime 一致 —— 陈旧
+        # 标记配非 graft 件直接拒打, 绝不带错标记出货。
+        if [[ -n "${OPENCODE_GRAFT_MARKER:-}" && -f "$OPENCODE_GRAFT_MARKER" ]]; then
+            local marker_sha bin_sha
+            marker_sha="$(sed -n 's/^runtime_sha=//p' "$OPENCODE_GRAFT_MARKER" | head -n1)"
+            bin_sha="$(sha256sum "$OPENCODE_NATIVE_BIN" | cut -d' ' -f1)"
+            if [[ "$marker_sha" != "$bin_sha" ]]; then
+                error ".grafted runtime_sha=$marker_sha != binary sha=$bin_sha — stale marker, refusing to mislabel"
+                return 1
+            fi
+            install -D -m644 "$OPENCODE_GRAFT_MARKER" "$pkgdir/data/data/com.termux/files/usr/lib/opencode1/runtime/.grafted"
+            msg "Packaged .grafted marker -> usr/lib/opencode1/runtime/"
+        fi
     else
         install -m755 "$OPENCODE_NATIVE_BIN" "$pkgdir/data/data/com.termux/files/usr/bin/$OPENCODE_BIN_NAME"
     fi

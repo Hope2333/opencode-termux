@@ -155,7 +155,15 @@ sed -i 's/^post_install() {/post_install() {\n    quarantine_stale_runtime/' "$R
 grep -q 'quarantine_stale_runtime' "$ROOT_DIR/packing/pacman/opencode.install" || {
     echo "Error: .INSTALL stale-runtime-quarantine bake failed" >&2; exit 1; }
 
-PKG_NAME="$PKG_NAME" OPENCODE_NATIVE_BIN="$NATIVE_BIN" OPENCODE_BIN_NAME="$OPENCODE_BIN_NAME" REPO_ROOT="$ROOT_DIR" makepkg --config "$TMP_MAKEPKG_CONF" -f --noconfirm -p "$TMP_PKGBUILD"
+# oldkernel-compat follow-up: `.grafted` B 档 marker ships with v1 graft
+# packages (PKGBUILD.native installs it into the runtime dir and verifies its
+# sha against the packaged binary); empty for non-graft builds.
+OPENCODE_GRAFT_MARKER=""
+if [[ -f "$(dirname "$NATIVE_BIN")/.grafted" ]]; then
+	OPENCODE_GRAFT_MARKER="$(dirname "$NATIVE_BIN")/.grafted"
+fi
+
+PKG_NAME="$PKG_NAME" OPENCODE_NATIVE_BIN="$NATIVE_BIN" OPENCODE_BIN_NAME="$OPENCODE_BIN_NAME" REPO_ROOT="$ROOT_DIR" OPENCODE_GRAFT_MARKER="$OPENCODE_GRAFT_MARKER" makepkg --config "$TMP_MAKEPKG_CONF" -f --noconfirm -p "$TMP_PKGBUILD"
 
 echo "Native pacman package created under: $ROOT_DIR/packing/pacman"
 rm -f "$ROOT_DIR/packing/pacman/opencode.install"

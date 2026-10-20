@@ -326,6 +326,21 @@ case "$HYB_SHA" in
 	;;
 esac
 
+# ── B 档装机标记（follow-up: launcher graft 探测的识别依据）──────────────────
+# 老内核机（如 oscar）裸跑 opencode1 时, launcher 靠 runtime 同目录的 .grafted
+# 标记跳过 T4 无脑降级、直起 TUI。标记随 native deb/pacman 出货到
+# <prefix>/lib/opencode1/runtime/.grafted; runtime_sha 用刚算出的 hybrid 件
+# （stage 6 对 deb/pacman 包内标记逐包校验; 打包脚本另有 sha 一致性护栏）。
+{
+	printf 'grafted=1\n'
+	printf 'donor=%s\n' "$DONOR_VER"
+	printf 'target=%s\n' "$VER"
+	printf 'runtime_sha=%s\n' "$HYB_SHA"
+	printf 'runtime_size=%s\n' "$HYB_SIZE"
+	printf 'built_at=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+} >"$NDIR/.grafted"
+echo "graft-marker: wrote $NDIR/.grafted (donor=$DONOR_VER target=$VER sha256=$HYB_SHA size=${HYB_SIZE}B)"
+
 # ══════════════════════════════════════════════════════════════════════
 echo "==> [stage 4/6 upx] graft 件压制（默认跳过: UPX×graft 既往实证必崩）"
 UPX_OK=0
@@ -438,6 +453,10 @@ mkdir -p "$SNAP/$VER"
 # 上全部 1.18.x/2.0.x 包的 755 约定不符）。所以快照阶段就钉死 755/644。
 install -m755 "$HYB" "$SNAP/$VER/opencode-native-tui"
 install -m644 "$CRH" "$SNAP/$VER/libopencode-crhandler.so"
+# .grafted 标记随快照进包（deb/pacman 打包脚本只取 $TRANSPLANT_ROOT/$VER/ 下的件;
+# 装机后 launcher 的 graft 探测读它, 老内核机裸跑直起 TUI 不再无脑降级）
+[[ -f "$NDIR/.grafted" ]] || fail "graft marker missing at $NDIR/.grafted（stage 3 应已写出）"
+install -m644 "$NDIR/.grafted" "$SNAP/$VER/.grafted"
 
 TRANSPLANT_ROOT="$SNAP" make --no-print-directory deb-native VER="$VER"
 TRANSPLANT_ROOT="$SNAP" make --no-print-directory pacman-native VER="$VER"
@@ -485,13 +504,20 @@ grep -aqF libopencode-crhandler.so "$NAT_RT" || fail "native deb 的 runtime 丢
 grep -q -- '--force-tui' "$CHK/native/data/data/com.termux/files/usr/bin/${PKGNAME}" ||
 	fail "native deb 带的是 T4 之前的 launcher（无 --force-tui 兜底开关）"
 [[ "$(stat -c%a "$NAT_RT")" == "755" ]] || fail "native deb 的 runtime 模式 $(stat -c%a "$NAT_RT") != 755"
-echo "native-pkg-verdict: ok — runtime==hybrid (755), embedded TUI==donor $DONOR_VER, launcher 含 T4 --force-tui"
+# follow-up: .grafted 标记必须在包内 runtime 同目录（老内核机裸跑直起 TUI 的识别依据）
+NAT_MARKER="$CHK/native/data/data/com.termux/files/usr/lib/$PKGNAME/runtime/.grafted"
+[[ -f "$NAT_MARKER" ]] || fail "native deb 缺 .grafted 标记（装机后裸跑将退化成无脑降级 CLI）"
+grep -qF "target=$VER" "$NAT_MARKER" || fail "native deb 的 .grafted 标记 target 不是 $VER"
+grep -qF "runtime_sha=$HYB_SHA" "$NAT_MARKER" || fail "native deb 的 .grafted 标记 runtime_sha != hybrid $HYB_SHA"
+echo "native-pkg-verdict: ok — runtime==hybrid (755), embedded TUI==donor $DONOR_VER, launcher 含 T4 --force-tui, .grafted 标记在包"
 
 # pacman 侧模式同样校验（pacman 打包会继承源文件模式，历史上因此出过 700 包）
 PAC_MODE="$(tar -tvf "$OUT/$PAC_NAT_NAME" | awk '$0 ~ /lib\/'"$PKGNAME"'\/runtime\/opencode$/ {print $1; exit}')"
 [[ -n "$PAC_MODE" ]] || fail "pacman native 包里找不到 runtime 件（$PAC_NAT_NAME）"
 [[ "$PAC_MODE" == "-rwxr-xr-x" ]] || fail "pacman native 的 runtime 模式 $PAC_MODE != -rwxr-xr-x"
-echo "pacman-native-verdict: ok — runtime 模式 $PAC_MODE"
+tar -tf "$OUT/$PAC_NAT_NAME" | grep -q "lib/$PKGNAME/runtime/\.grafted$" ||
+	fail "pacman native 包缺 .grafted 标记（装机后裸跑将退化成无脑降级 CLI）"
+echo "pacman-native-verdict: ok — runtime 模式 $PAC_MODE, .grafted 标记在包"
 
 COMP_SHA="n/a"
 if [[ -n "$COMPRESSED_SRC" ]]; then
@@ -517,6 +543,7 @@ fi
 	echo "  runtime sha256 : $HYB_SHA ($HYB_SIZE B)"
 	echo "  embedded tui   : ${HYB_TUI%% *} (${HYB_TUI##* } B) == donor asset"
 	echo "  reproducible   : T1 参考 sha256 04dfae41a770eb73… (同源则一致)"
+	echo "  graft marker   : .grafted (donor=$DONOR_VER, target=$VER) 随 deb/pacman 出货 — launcher graft 探测据此让老内核机裸跑直起 TUI"
 	if [[ -n "$COMPRESSED_SRC" ]]; then
 		echo "variant compressed: $COMPRESSED_MODE"
 		echo "  runtime sha256 : $COMP_SHA"
@@ -549,6 +576,7 @@ echo "════ compat-graft-renderer verdict (VER=$VER) ════"
 echo "build:      $BUILD_SOURCE (product sha256=$NATIVE_SHA)"
 echo "harden:     ok (DT_NEEDED libopencode-crhandler.so)"
 echo "graft:      ok — T1 工具等长换位, hybrid sha256=$HYB_SHA (T1 参考 04dfae41…)"
+echo "marker:     .grafted (donor=$DONOR_VER target=$VER) 随 native deb/pacman 出货 — 老内核机裸跑直起 TUI"
 echo "upx:        $( [[ $UPX_OK == 1 ]] && echo "ok — hybrid ${HYB_SIZE}B -> ${HYB_UPX_SIZE}B (${UPX_RATIO}%)" || echo "FAILED/SKIP — compressed 禁用" )"
 echo "compressed: $( [[ -n $COMPRESSED_SRC ]] && echo "出货 — $COMPRESSED_MODE" || echo "不出货（native-only）— $COMPRESSED_WHY" )"
 echo "probes:     local[$RC_HYB] local-upx[$RC_UPX] oldkernel[${OSCAR_RCS}] kernel $(uname -r) / ${OSCAR_KERNEL_SEEN:-no-oldkernel-host}"

@@ -64,6 +64,24 @@ if [[ "$VERSION" == 1.* ]]; then
 	# the XDG-isolating launcher at bin/opencode1. v2 stays bin-direct.
 	install -D -m755 "$NATIVE_BIN" "$DEB_ROOT$PREFIX/lib/opencode1/runtime/opencode"
 	install -D -m755 "$ROOT_DIR/scripts/opencode1-launcher.sh" "$DEB_ROOT$PREFIX/bin/opencode1"
+	# oldkernel-compat follow-up: ship the `.grafted` B 档 marker next to the
+	# runtime when the T6 graft build produced one beside the native binary.
+	# The launcher's graft probe reads it to skip the A 档 downgrade on old
+	# kernels (bare `opencode1` starts the TUI). The marker's runtime_sha MUST
+	# match the packaged runtime — a stale marker beside a non-graft binary is
+	# refused, never shipped mislabeled.
+	if [[ -f "$(dirname "$NATIVE_BIN")/.grafted" ]]; then
+		_graft_marker="$(dirname "$NATIVE_BIN")/.grafted"
+		_marker_sha="$(sed -n 's/^runtime_sha=//p' "$_graft_marker" | head -n1)"
+		_bin_sha="$(sha256sum "$NATIVE_BIN" | cut -d' ' -f1)"
+		[[ -n "$_marker_sha" && "$_marker_sha" == "$_bin_sha" ]] || {
+			echo "Error: .grafted runtime_sha=$_marker_sha != $NATIVE_BIN sha=$_bin_sha" >&2
+			echo "       stale marker beside a non-graft binary — refusing to mislabel" >&2
+			exit 1
+		}
+		install -D -m644 "$_graft_marker" "$DEB_ROOT$PREFIX/lib/opencode1/runtime/.grafted"
+		echo "Packaged .grafted marker: $_graft_marker -> $PREFIX/lib/opencode1/runtime/"
+	fi
 else
 	install -m755 "$NATIVE_BIN" "$DEB_ROOT$PREFIX/bin/$BIN_NAME"
 fi
