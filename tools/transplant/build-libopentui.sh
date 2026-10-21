@@ -46,11 +46,20 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # --- configurable locations (override via env) ---------------------------------
 OPENTUI_ZIG_DIR="${OPENTUI_ZIG_DIR:-$HOME/develop/OpenTUI-w7b-native/packages/native}"
 PATCH_DIR="${PATCH_DIR:-$REPO_ROOT/patches/opentui}"
-INSTALL_PATH="${INSTALL_PATH:-$REPO_ROOT/artifacts/transplant/opentui-bionic/libopentui.so}"
+# Canonical install = the TLSDESC-shim build (rc6-b2-upx-tui todo2): every
+# graft consumer (transplant.py / fleet-v1|v2-build / press-* / pilot-fleet-v1)
+# anchors on opentui-bionic-tlsdesc/. The old opentui-bionic/ path keeps the
+# frozen shim-less base (028eaf46) as the compressed track's EXPLICIT no-shim
+# base (UPXx-graft structurally crashes — docs/tui-reachability.md 判据 5).
+INSTALL_PATH="${INSTALL_PATH:-$REPO_ROOT/artifacts/transplant/opentui-bionic-tlsdesc/libopentui.so}"
 GLIBC_LD="${GLIBC_LD:-/data/data/com.termux/files/usr/glibc/lib/ld-linux-aarch64.so.1}"
 GLIBC_LIB="${GLIBC_LIB:-/data/data/com.termux/files/usr/glibc/lib}"
 # Native profile toolchain (w7b recipe). ZIG 0.16.0 native aarch64 build.
+# The $TMPDIR toolchain copies are volatile (lost once with TMPDIR cleanup) —
+# fall back to the Termux installation (zig 0.16.0) so the build stays
+# reproducible here; the crt glue dir is regenerated below when absent.
 ZIG_BIN="${ZIG_BIN:-${TMPDIR:-/tmp}/zig-0.16.0/zig}"
+[ -x "$ZIG_BIN" ] || ZIG_BIN="$(command -v zig || true)"
 BIONIC_SYSROOT="${BIONIC_SYSROOT:-/data/data/com.termux/files/usr}"
 BIONIC_HDRFIX="${BIONIC_HDRFIX:-${TMPDIR:-/tmp}/w7b-hdrfix}"
 BIONIC_LIBM="${BIONIC_LIBM:-/system/lib64/libm.so}"
@@ -107,8 +116,21 @@ harness_check() {
 if [ "${1:-}" = "--check" ]; then
   [ -n "${2:-}" ] || { echo "usage: $0 --check <libopentui.so>" >&2; exit 1; }
   [ -f "$2" ] || { echo "GUARD-CHECK FAILED: $2 not found" >&2; exit 1; }
-  guard_check "$2"
-  exit $?
+  guard_check "$2" || exit 1
+  # TLSDESC shim presence is part of the contract since rc6-b2-upx-tui todo2:
+  # the FFI guard alone does NOT discriminate a bionic<11-crashing build — the
+  # stale shim-less 028eaf46 passes guard_check while every bionic 9 host
+  # SIGSEGVs at TUI init (resolver slot NULL -> blr 0). Fast paths (make
+  # libopentui) must not wave a shim-less .so through.
+  # NOTE: grep WITHOUT -q — under `set -o pipefail` a -q grep exits on first
+  # match, llvm-nm then dies of SIGPIPE (rc 141) and the pipeline reports
+  # failure even though the symbol is present. Draining the stream keeps the
+  # producer's exit status meaningful.
+  if ! llvm-nm "$2" 2>/dev/null | grep 'tlsdesc_shim_init' >/dev/null; then
+    echo "SHIM-CHECK FAILED: tlsdesc_shim_init missing in $2 — bionic<11 hosts would SIGSEGV at TUI init" >&2
+    exit 1
+  fi
+  exit 0
 fi
 
 command -v llvm-strip >/dev/null 2>&1 || { echo "llvm-strip not found" >&2; exit 1; }
@@ -141,9 +163,32 @@ else
   echo ">> hdrfix          : $BIONIC_HDRFIX"
   echo ">> shim            : $SHIM_SO"
   [ -x "$ZIG" ] || { echo "zig 0.16 binary missing: $ZIG" >&2; exit 1; }
-  [ -d "$BIONIC_HDRFIX" ] || { echo "hdrfix dir missing: $BIONIC_HDRFIX" >&2; exit 1; }
-  [ -d "$HDRFIX_MERGE_DIR" ] || { echo "hdrfix-merge dir missing: $HDRFIX_MERGE_DIR" >&2; exit 1; }
-  [ -d "$BIONIC_CRT_DIR" ] || { echo "bionic crt dir missing: $BIONIC_CRT_DIR" >&2; exit 1; }
+  # hdrfix shadows are regenerable (they were lost with $TMPDIR once already,
+  # press-v2.sh carried a "待 hdrfix 目录可复现" note). Auto-rebuild when absent.
+  if [ ! -d "$BIONIC_HDRFIX" ]; then
+    echo ">> hdrfix dir missing — regenerating via prepare-bionic-hdrfix.sh"
+    bash "$REPO_ROOT/tools/transplant/prepare-bionic-hdrfix.sh" "$BIONIC_HDRFIX" "$SYS_INCLUDE_DIR" || {
+      echo "hdrfix regeneration failed" >&2; exit 1; }
+  fi
+  # The merge dir must carry the full bionic header set PLUS the per-arch
+  # kernel UAPI headers (asm/asm-generic) that bionic's <errno.h> &co
+  # include_next into — the plain sysroot include dir alone cannot serve as
+  # include_dir (libc++'s own build then dies on <asm/errno.h>, and the C
+  # compiles lose bionic's <math.h> through the libcxx wrapper guard dance).
+  # It lived in $TMPDIR and was lost once; regenerate when absent.
+  if [ ! -d "$HDRFIX_MERGE_DIR" ]; then
+    echo ">> hdrfix-merge dir missing — regenerating via prepare-bionic-merge.sh"
+    bash "$REPO_ROOT/tools/transplant/prepare-bionic-merge.sh" "$HDRFIX_MERGE_DIR" "$SYS_INCLUDE_DIR" || {
+      echo "hdrfix-merge regeneration failed" >&2; exit 1; }
+  fi
+  # The crt dir doubles as the linker's -L path (zig 0.16 ignores the libc.txt
+  # lib_dir field), so it must carry crt objects AND libc/libdl/libm; regenerate
+  # when absent (it lived in $TMPDIR and was lost once).
+  if [ ! -d "$BIONIC_CRT_DIR" ]; then
+    echo ">> bionic crt dir missing — regenerating via prepare-bionic-crt.sh"
+    bash "$REPO_ROOT/tools/transplant/prepare-bionic-crt.sh" "$BIONIC_CRT_DIR" || {
+      echo "bionic crt dir regeneration failed" >&2; exit 1; }
+  fi
   [ -f "$SHIM_SO" ] || { echo "LD_PRELOAD shim missing: $SHIM_SO" >&2; exit 1; }
 fi
 [ -x "$ZIG" ] || { echo "zig binary missing: $ZIG" >&2; exit 1; }
@@ -214,6 +259,8 @@ else
   {
     echo "include_dir=$HDRFIX_MERGE_DIR"
     echo "sys_include_dir=$SYS_INCLUDE_DIR"
+    # crt_dir doubles as ld.lld's -L path (zig 0.16 ignores lib_dir), so it
+    # carries libc/libdl/libm symlinks too — see prepare-bionic-crt.sh.
     echo "crt_dir=$BIONIC_CRT_DIR"
     echo "msvc_lib_dir="
     echo "kernel32_lib_dir="

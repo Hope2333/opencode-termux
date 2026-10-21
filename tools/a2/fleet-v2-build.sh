@@ -53,7 +53,7 @@ say "versions: $(echo "$VERS" | tr '\n' ' ')  free=$(df_free_mb)MB (min ${MIN_FR
 
 for f in "$BUN" "$GRAFT_LIB" "$ROOT_DIR/tools/a2/hermetic-home-patch.py" \
 	"$ROOT_DIR/tools/transplant/swap_tui.py" "$EV_DIR/task-3-smoke.sh" \
-	"$ROOT_DIR/artifacts/transplant/opentui-bionic/libopentui.so"; do
+	"$ROOT_DIR/artifacts/transplant/opentui-bionic-tlsdesc/libopentui.so"; do
 	[[ -e "$f" ]] || { say "FATAL missing $f" >&2; exit 1; }
 done
 command -v python3 >/dev/null || { say "FATAL python3 missing" >&2; exit 1; }

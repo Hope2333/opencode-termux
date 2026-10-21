@@ -165,7 +165,9 @@ NEEDED_SYMS=(cancelKittyImageTransport editBufferSetTabWidth getBufferWidthMetho
 # bun may keep the store under SRC_DIR/node_modules/.bun OR
 # SRC_DIR/packages/cli/node_modules/.bun; deploy to every @opentui+core-linux-arm64@ /
 # @opentui+core@ key found so a later build.ts resolution can never pick up a glibc lib.
-BUILTIN="$ROOT_DIR/artifacts/transplant/opentui-bionic/libopentui.so"
+# TLSDESC-shim build (fix-tlsdesc-pipeline): the old opentui-bionic/ base is
+# shim-less (028eaf46) and crashes TUI init on bionic 9 hosts.
+BUILTIN="$ROOT_DIR/artifacts/transplant/opentui-bionic-tlsdesc/libopentui.so"
 if [[ ! -f "$BUILTIN" ]]; then
   echo "Error: bionic libopentui.so not found at $BUILTIN — refusing to bundle glibc store lib (issue #20)" >&2
   echo "       build it first: bash tools/transplant/build-libopentui.sh" >&2
@@ -215,7 +217,7 @@ elif [[ "${OPENTUI_REBUILD:-0}" == "1" ]]; then
   bash "$ROOT_DIR/tools/transplant/build-libopentui.sh"
   TUI_DIR="$(dirname "$TUI_SO")"
   mkdir -p "$TUI_DIR"
-  cp -f "$ROOT_DIR/artifacts/transplant/opentui-bionic/libopentui.so" "$TUI_DIR/libopentui.so"
+  cp -f "$ROOT_DIR/artifacts/transplant/opentui-bionic-tlsdesc/libopentui.so" "$TUI_DIR/libopentui.so"
 else
   echo "==> opentui bionic runtime stale/broken; refusing auto-rebuild (patch drift risk)"
   echo "    TUI_SO=$TUI_SO missing FFI symbols — graft a verified .so then re-run"

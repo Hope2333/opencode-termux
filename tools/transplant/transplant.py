@@ -1493,8 +1493,11 @@ def cmd_all(args) -> int:
 
     # 8. swap bionic libopentui + post-swap TUI pty gate (W7c2)
     print("== swap + tui_probe ==")
+    # Canonical swap source = the TLSDESC-shim build (fix-tlsdesc-pipeline):
+    # the old opentui-bionic/ base is shim-less (028eaf46) and SIGSEGVs TUI
+    # init on bionic 9 hosts.
     bionic_lib = (
-        repo_root() / "artifacts" / "transplant" / "opentui-bionic" / "libopentui.so"
+        repo_root() / "artifacts" / "transplant" / "opentui-bionic-tlsdesc" / "libopentui.so"
     )
     # Prefer the embed variant (rc6-b2-upx-tui todo2): same sections/vaddrs as
     # the full build but symtab locals dropped so it fits the exact-length
@@ -1522,7 +1525,7 @@ def cmd_all(args) -> int:
         report["tui_probe"] = "skipped(no-bionic-lib)"
         report["steps"]["tui_probe"] = {
             "verdict": "skipped(no-bionic-lib)",
-            "reason": "artifacts/transplant/opentui-bionic/libopentui.so absent",
+            "reason": "artifacts/transplant/opentui-bionic-tlsdesc/libopentui.so absent",
         }
 
     save_report(out_dir, report)

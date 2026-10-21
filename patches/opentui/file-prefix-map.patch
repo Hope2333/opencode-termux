@@ -1,3 +1,11 @@
+# NOTE (2026-10-2x, fix-tlsdesc-pipeline): the two original translate-c hunks
+# (miniaudio_translate / yoga_translate `.flags = remapFlags(...)`) were dropped:
+# zig 0.16.0's Build.Step.TranslateC.Options has NO flags field (only
+# root_source_file/target/optimize/link_libc; the step exposes include paths,
+# config headers and frameworks, never arbitrary C flags). They made the whole
+# build.zig fail to compile ("no field named 'flags'"), so the C/CXX SOURCE
+# hunks below are the expressible subset. OPENTUI_C_REMAP stays a no-op when
+# unset; translate-c __FILE__ remap is simply not expressible on zig 0.16.
 --- a/packages/native/build.zig
 +++ b/packages/native/build.zig
 @@ -183,7 +183,7 @@
@@ -65,20 +73,3 @@
 +        .flags = remapFlags(b, &YOGA_CXX_FLAGS),
      });
  }
- 
-@@ -431,6 +449,7 @@
-         .root_source_file = b.path("src/vendor/miniaudio/miniaudio.h"),
-         .target = target,
-         .optimize = optimize,
-+        .flags = remapFlags(b, &.{}),
-     });
-     miniaudio_translate.addIncludePath(b.path("src"));
-     module.addImport("miniaudio", miniaudio_translate.createModule());
-@@ -440,6 +459,7 @@
-         .root_source_file = yoga_dep.path("yoga/Yoga.h"),
-         .target = target,
-         .optimize = optimize,
-+        .flags = remapFlags(b, &.{}),
-     });
-     yoga_translate.addIncludePath(yoga_dep.path(""));
-     if (target.result.abi.isAndroid()) { // zig bundles no bionic headers

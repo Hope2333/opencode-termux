@@ -95,9 +95,23 @@ fi
 # 修法: 解压→重 graft（等长替换 bionic libopentui.so）→重压。v2 不受影响
 # （B 线 graft 在 build.ts 期，TUI 实证 pass）。──
 if [[ "$FAMILY" == "opencode1" && "$NOUPX" != "1" ]]; then
-  TUI_LIB="$REPO_ROOT/artifacts/transplant/opentui-bionic/libopentui.so"
+  # UPX×graft 结构性必崩（docs/tui-reachability.md 判据5 二分矩阵；v2 线同结论）
+  # —— compressed 轨因此**不出 TUI graft 件**：老内核 TUI 只由 native 未压 graft
+  # （artifacts/transplant/opentui-bionic-tlsdesc/，plain 轨消费）或 A 档交付。
+  # 本基座是**显式的无 shim 件**（028eaf46，fix-tlsdesc-pipeline 起旧路径专作
+  # 此用）：regraft 只修 bunfs 提取回退 glibc 件一类失败（"libm.so.6 not
+  # found"），不承诺老内核 TUI。硬门拒绝带 shim 的 TUI_LIB——防止把不可验证的
+  # graft 静默接进压制轨。
+  TUI_LIB="${TUI_LIB:-$REPO_ROOT/artifacts/transplant/opentui-bionic/libopentui.so}"
   [[ -f "$TUI_LIB" ]] || { echo "FATAL: bionic libopentui.so missing: $TUI_LIB"; exit 1; }
-  echo "[regraft] decompress -> swap_tui -> repack"
+  SHIM_HITS="$(nm "$TUI_LIB" 2>/dev/null | grep -c 'tlsdesc_shim_init' || true)"
+  UND_HITS="$(readelf --dyn-syms -W "$TUI_LIB" 2>/dev/null | grep -c 'UND.*pthread_key_create' || true)"
+  if [[ "${SHIM_HITS:-0}" != "0" || "${UND_HITS:-0}" != "0" ]]; then
+    echo "FATAL: TUI_LIB carries the TLSDESC shim ($TUI_LIB) — UPX×shim-graft 必崩；" \
+         "compressed 轨仅接受显式无 shim 基座 artifacts/transplant/opentui-bionic/" >&2
+    exit 1
+  fi
+  echo "[regraft] decompress -> swap_tui -> repack (explicit no-shim base)"
   "$UPX_BIN" -d --no-color -o "$COMP.dec" "$COMP" >/dev/null 2>&1 || { echo "FATAL: regraft decompress failed"; exit 1; }
   python3 tools/transplant/swap_tui.py --binary "$COMP.dec" --tui-lib "$TUI_LIB" --out "$COMP.graft" >/dev/null || { echo "FATAL: regraft swap failed"; exit 1; }
   "$UPX_BIN" -4 --no-color -o "$COMP.new" "$COMP.graft" >/dev/null || { echo "FATAL: regraft repack failed"; exit 1; }

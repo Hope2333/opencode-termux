@@ -277,10 +277,10 @@ transplant:
 	@# QUARANTINE signal when the bionic libopentui.so build is absent: upgrade
 	@# the old silent WARN into an explicit `tui:"absent"` in the report so the
 	@# gap is impossible to miss (no silent skip).
-	@if [ -f artifacts/transplant/opentui-bionic/libopentui.so ]; then \
-		echo "==> bionic libopentui present; swap + tui_probe handled by transplant.py all"; \
+	@if [ -f artifacts/transplant/opentui-bionic-tlsdesc/libopentui.so ]; then \
+		echo "==> bionic libopentui (tlsdesc shim) present; swap + tui_probe handled by transplant.py all"; \
 	else \
-		echo "WARN: artifacts/transplant/opentui-bionic/libopentui.so not found -> quarantine (tui:absent)"; \
+		echo "WARN: artifacts/transplant/opentui-bionic-tlsdesc/libopentui.so not found -> quarantine (tui:absent)"; \
 		python3 -c "import json; p='artifacts/transplant/$(VER)/report.json'; \
 		  r=json.load(open(p)); r['tui']='absent'; json.dump(r, open(p,'w'), indent=2); \
 		  print('  report.tui=absent (bionic libopentui.so absent)')"; \
@@ -293,14 +293,18 @@ transplant:
 # exists AND carries the FFI negative-coordinate guard. Every transplant-built
 # version equal-length-swaps THIS file, so a stale/unguarded slot lib poisons
 # the whole version family (the 1.18.15-27 batch shipped pre-342d68d guards).
+# fix-tlsdesc-pipeline: canonical path is the TLSDESC-shim build
+# (opentui-bionic-tlsdesc/) — --check now also requires tlsdesc_shim_init, so a
+# shim-less .so can never pass the fast path again (028eaf46 poisoned plain/
+# fleet/press tracks by silently satisfying guard-only checks).
 # Common layer: apply ALL patches/opentui/*.patch -> zig bionic build ->
 # symbol-range guard scan + dlopen hostile-FFI harness -> install to slot.
 # LIBOPENTUI_OPTIONAL=1 downgrades a build failure to a WARN (quarantine path
 # for toolchain-less environments); default is loud.
 libopentui:
-	@if [ -f artifacts/transplant/opentui-bionic/libopentui.so ] && \
-	    bash tools/transplant/build-libopentui.sh --check artifacts/transplant/opentui-bionic/libopentui.so; then \
-		echo "==> libopentui: guard-verified .so present"; \
+	@if [ -f artifacts/transplant/opentui-bionic-tlsdesc/libopentui.so ] && \
+	    bash tools/transplant/build-libopentui.sh --check artifacts/transplant/opentui-bionic-tlsdesc/libopentui.so; then \
+		echo "==> libopentui: guard+shim-verified .so present"; \
 	elif bash tools/transplant/build-libopentui.sh; then \
 		echo "==> libopentui: built + guard-verified via common layer"; \
 	elif [ "$(LIBOPENTUI_OPTIONAL)" = "1" ]; then \

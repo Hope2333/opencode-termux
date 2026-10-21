@@ -47,7 +47,9 @@ VER="${VER:-1.18.32}"
 V1_SRC="${V1_SRC:-${TMPDIR:-/data/data/com.termux/files/usr/tmp}/a2-src/opencode-$VER}"
 ANDROID_BUN="${ANDROID_BUN:-$ROOT_DIR/artifacts/transplant/android-bun/bun-1.4.0/bun}"
 OPENAT2_SHIM="${OPENAT2_SHIM:-$ROOT_DIR/tools/transplant/toolchain/openat2_shim.so}"
-BUILTIN_SO="${BUILTIN_SO:-$ROOT_DIR/artifacts/transplant/opentui-bionic/libopentui.so}"
+# Store graft source = the TLSDESC-shim build (fix-tlsdesc-pipeline): the old
+# opentui-bionic/ base is shim-less (028eaf46) and SIGSEGVs TUI init on bionic 9.
+BUILTIN_SO="${BUILTIN_SO:-$ROOT_DIR/artifacts/transplant/opentui-bionic-tlsdesc/libopentui.so}"
 BUILD_ROOT="${BUILD_ROOT:-$ROOT_DIR/artifacts/build}"
 MODELS_JSON="${MODELS_JSON:-${TMPDIR:-/data/data/com.termux/files/usr/tmp}/a2-src/models.dev-api.json}"
 OUT_DIR="$BUILD_ROOT/$VER"
