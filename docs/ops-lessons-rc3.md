@@ -109,6 +109,6 @@
 
 - **全案反转**：SIGSEGV@0x0 真凶=TLSDESC（Android ≤10 bionic 无处理，zig 件 libopentui 的 maybeAttachSignalStack slot resolver=NULL→blr 0）；此前 H-glibc/H-epoll/H-memfd/JIT 四假设全部证伪或降级；bun.report JSC 帧=ucontext 布局错位垃圾归因。
 - **修法**：TLSDESC 保留 + .init_array ctor 自解析 shim（dl_iterate_phdr 扫 11 条、resolver==NULL 才回填、每线程 calloc(PT_TLS) 复刻语义、bionic≥10 no-op）；ABI 硬约束=TLSDESC resolver 除 x0 外全寄存器保活（naked asm + 毒化测试）。
-- **F1 终验 PASS**：oscar 真 PTY 110KB 渲染帧 154s 零崩 + LLM 会话往返 3.5s + 干净退出；反例 2（去端口沙盒）复现证明判据有牙；反例 1（去 BUN_PTY_LIB）未复现——pty 能力已内置此件，拼接件降级为可选覆盖（会话期覆盖为间接证据，保留项）。
+- **F1 终验 PASS**：oscar 真 PTY 110KB 渲染帧 154s 零崩 + LLM 会话往返 3.5s + 干净退出；反例 2（去端口沙盒）复现证明判据有牙；反例 1（去 BUN_PTY_LIB）未复现——该件 pty 能力确已内置（v1 走 A2 T16 store patch 后内嵌件本就是 bionic），拼接件降级为可选覆盖（会话期覆盖为间接证据，保留项）。**2026-10-21 更正**：`make transplant` 产的 v2 native 主线**没有** store patch 这一步，内嵌 `librust_pty` 仍是上游 glibc 件；「内嵌即健康」不能推广，判据见 `docs/transplant.md` §0.5（`swap_pty.py` / `pty-swap --check`）。
 - **判定表**：docs/tui-reachability.md——bionic≥10 / 端口分代 / pty splice / 雷区备忘，任意 Android 组合查表即得可达性与对位修补。
 - **教训**：①多假设竞争必须绑裁决实验，垃圾归因（崩溃报告自动符号化）要主动反卷积验证；②「反例通过」也可能是能力内置——maps 取证定加载真相；③port 49374=0xc0de 编译期常量是多代共存的隐形地雷。

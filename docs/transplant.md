@@ -108,6 +108,35 @@ opencode 1.18 起二进制布局变化：文件尾不再有 standalone trailer
 产物 `--version`=1.18.21（reloc_count=50）。旧版（≤1.3.x）trailer 路径
 不受影响，golden 回归 4/4 PASS。证据：`.omo/evidence/task-28-section-format.log`。
 
+## 0.5 内嵌 pty 资产（bun-pty FFI）
+
+`Pty` 服务（`POST /api/pty` → `server.pty`）懒加载 bun-pty 的 FFI chunk；
+bun-pty 的解析顺序是 `$BUN_PTY_LIB` → **内嵌 `/$bunfs/root/librust_pty_arm64-<hash>.so`**
+→ 磁盘候选路径。上游内嵌件是 glibc 版本（NEEDED `libpthread.so.0` /
+`libc.so.6` / `libdl.so.2` / `libutil.so.1`），bun 提取到
+`$TMPDIR/.bun-<euid>-<hash>.so` 后 dlopen 在 bionic 必败：
+
+```
+ERR_DLOPEN_FAILED: library "libpthread.so.0" not found
+```
+
+症状：TUI 面板或 `opencode serve` 下远程客户端的 `POST /api/pty` 创终端失败
+（服务端日志 `Failed to load lib ... at /$bunfs/root/chunk-*.js`）。native 主线
+直装 `$PREFIX/bin/opencode`、没有 launcher，压缩线那套 `BUN_PTY_LIB`
+（`scripts/opencode-launcher.sh` + `tools/bun-pty-splice/`）在 native 上无处注入，
+只能改资产本身。
+
+管线第 8b 步自动处理：`tools/transplant/swap_pty.py` 把
+`tools/bun-pty-embed/vendor/librust_pty_arm64_bionic.so`（同一 8 符号 ABI、
+零未定义符号）替换进 bunfs 槽（不超槽长、尾部 NUL 补齐，与 `swap_tui.py` 同法），
+并跑 `ctypes.CDLL` 真 dlopen 门。手动用法：
+
+```bash
+python3 tools/transplant/transplant.py pty-swap --binary <product> --check
+python3 tools/transplant/transplant.py pty-swap --binary <product>   # 原地替换 + dlopen 门
+python3 tests/transplant/test_swap_pty.py                            # 合成夹具自检
+```
+
 ## 1. 前置条件
 
 | 依赖 | 用途 | 检查 |

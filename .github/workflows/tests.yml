@@ -26,3 +26,6 @@ jobs:
 
       - name: Run shell unit tests
         run: ./tests/run.sh
+
+      - name: Python tool self-check (pty asset swap)
+        run: python3 tests/transplant/test_swap_pty.py

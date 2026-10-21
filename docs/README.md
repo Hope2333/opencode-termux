@@ -11,8 +11,9 @@ This directory is the single source of truth for the current Termux packing/runt
 - `22-termux-services-opencode-web.md` — service behavior and web mode notes
 - `30-ci-local-build-matrix.md` — local/CI validation matrix
 - `incidents/2026-02-23-opencode-web-termux-so-avalanche.md` — `.so` snowball restart-storm RCA note
+- `incidents/2026-10-21-v2-native-pty-dlopen.md` — v2 native PTY/terminal dlopen RCA (`libpthread.so.0`), fix + gate (`make pty-check`)
 - `local-production.md` — local final packaging policy and boundaries
-- `transplant.md` — native-android transplant pipeline (revived: dual-format revive + TUI + alpha channel)
+- `transplant.md` — native-android transplant pipeline (revived: dual-format revive + TUI + alpha channel; §0.5 embedded bun-pty asset)
 - `migration-v1-to-v2.md` — v1 → v2 升级/回退/包名/构建线迁移指南
 - `dual-track-install.md` — opencode provider selection (native mainline `opencode` vs appendix `opencode-wrapper`, full TUI)；包名时代分界（哪个 Push tag 的 `opencode` 资产属于哪个家族）→ [`dual-track-install.md#push-tag--包名家族分界`](./dual-track-install.md#push-tag--包名家族分界)
 - `plugin-management.md` — plugin install/update/rollback commands
@@ -65,6 +66,7 @@ This directory is the single source of truth for the current Termux packing/runt
 - `sv status opencode-web` in Termux should use full service path (`$PREFIX/var/service/opencode-web`)
 - `opencode web` under runit may restart-loop and accumulate `.*-0000*.so` files if startup crashes
 - **statx seccomp crash**: Android's seccomp filter blocks `statx()` syscall → SIGSYS → SIGSEGV. The statx shim (`libstatx-shim.so`) is automatically compiled during staging and preloaded via launcher. Disable with `OPENCODE_DISABLE_STATX_SHIM=1`.
+- **PTY/terminal dlopen**: the embedded bun-pty `librust_pty` must be bionic-linked. If it is glibc, `POST /api/pty` (remote terminal, TUI panes) fails with `library "libpthread.so.0" not found`. Gate: `make pty-check BIN=<product>`; fix: `python3 tools/transplant/transplant.py pty-swap --binary <product>` (see `transplant.md` §0.5).
 
 ## Install policy summary
 
