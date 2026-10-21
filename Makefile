@@ -261,6 +261,23 @@ selfcheck:
 test:
 	./tests/run.sh
 
+# Verify the embedded bun-pty FFI asset is bionic-linked (terminal/PTY fix).
+# A glibc asset makes POST /api/pty fail on bionic with
+# "library libpthread.so.0 not found" — see docs/transplant.md §0.5.
+pty-check:
+	@if [ -z "$(BIN)" ]; then \
+		echo "Error: BIN is empty. Example: make pty-check BIN=artifacts/transplant/2.0.22/opencode-native-tui"; \
+		exit 1; \
+	fi
+	@out=$$(python3 tools/transplant/transplant.py pty-swap --binary $(BIN) --check); \
+	  echo "$$out"; \
+	  if echo "$$out" | grep -q '"status": "glibc"'; then \
+	    echo "FAIL: embedded bun-pty asset is glibc-linked -> POST /api/pty fails on bionic"; \
+	    echo "      fix: python3 tools/transplant/transplant.py pty-swap --binary $(BIN)"; \
+	    exit 1; \
+	  fi
+	python3 tests/transplant/test_swap_pty.py
+
 matrix:
 	@VERS='$(VERS)' ODIR='$(ODIR)' TARGET_HOST='$(TARGET_HOST)' TARGET_PORT='$(TARGET_PORT)' TARGET_USER='$(TARGET_USER)' ./tools/upgrade-matrix.sh
 

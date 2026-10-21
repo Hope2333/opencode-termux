@@ -22,6 +22,9 @@ set -euo pipefail
 #      needed at runtime).
 #   4. normalize               — copy dist output to contract names + write
 #      build.json (sha256 + provenance).
+#   4a. bun-pty asset          — graft the bionic librust_pty into the embedded
+#      bunfs slot so PTY/terminal works (docs/transplant.md §0.5; PTY_ASSET_FIX=0
+#      to skip).
 #
 # Environment:
 #   VER                version tag for the build (default: 2.0.0)
@@ -385,6 +388,28 @@ DIST_BIN="$SRC_DIR/packages/cli/dist/cli-linux-arm64/bin/opencode"
 # ── 4. normalize to packaging contract names ───────────────────────────
 mkdir -p "$OUT_DIR"
 mv -f "$DIST_BIN" "$OUT_DIR/opencode-native-revived"
+
+# ── 4a. embedded bun-pty FFI asset (PTY / terminal on bionic) ──────────
+# 1c replaces the @opencode-ai/pty *helper*; it does NOT touch the bun-pty
+# `librust_pty` that the `Pty` service lazily imports for `POST /api/pty`.
+# That asset is the upstream glibc build and bun-pty prefers it over any
+# on-disk path unless $BUN_PTY_LIB is exported — the native mainline installs
+# this binary directly at $PREFIX/bin/opencode (no launcher), so terminals die
+# with `dlopen failed: library "libpthread.so.0" not found`. Graft the bionic
+# build (same 8-symbol ABI, tools/bun-pty-embed) before packaging.
+# Skip knob: PTY_ASSET_FIX=0. See docs/transplant.md §0.5.
+if [[ "${PTY_ASSET_FIX:-1}" == "1" ]]; then
+  echo "==> bun-pty asset: grafting bionic librust_pty (PTY/terminal)"
+  python3 "$ROOT_DIR/tools/transplant/transplant.py" pty-swap \
+    --binary "$OUT_DIR/opencode-native-revived" || {
+      echo "Error: bun-pty asset is not bionic-loadable (issue: POST /api/pty fails)" >&2
+      echo "       rebuild the vendor lib: tools/bun-pty-embed/build-embed.sh" >&2
+      exit 1
+    }
+else
+  echo "==> bun-pty asset: PTY_ASSET_FIX=0, keeping embedded asset as-is"
+fi
+
 sha256sum "$OUT_DIR/opencode-native-revived" | awk '{print $1}' > "$OUT_DIR/build.sha256"
 echo "==> normalized: $OUT_DIR/opencode-native-revived ($(stat -c%s "$OUT_DIR/opencode-native-revived") B)"
 echo "    sha256: $(cat "$OUT_DIR/build.sha256")"

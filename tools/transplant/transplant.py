@@ -739,6 +739,86 @@ def cmd_tui_probe(args) -> int:
     return 0 if info["verdict"] in ("pass", "skipped(no-aarch64)") else 1
 
 
+# ---------------------------------------------------------------- pty asset
+# bun-pty (the FFI module the server's `POST /api/pty` route lazily imports)
+# embeds its native lib as /$bunfs/root/librust_pty_arm64-<hash>.so. Upstream
+# ships the glibc build, and bun-pty's resolver prefers that embedded asset over
+# every on-disk path unless $BUN_PTY_LIB is exported. The native mainline
+# installs the runtime straight at $PREFIX/bin/opencode (no launcher), so the
+# glibc asset is what runs -> dlopen fails on bionic with
+# "library libpthread.so.0 not found" the first time a terminal is created
+# (TUI pane or a remote client's `pty.create` against a headless server).
+# swap_pty.py grafts the bionic build (tools/bun-pty-embed/vendor/) in place.
+PTY_VENDOR_REL = Path("tools") / "bun-pty-embed" / "vendor" / "librust_pty_arm64_bionic.so"
+
+
+def pty_check(binary: Path) -> dict:
+    """Report the linkage of the embedded bun-pty asset (glibc/bionic/absent)."""
+    script = Path(__file__).resolve().parent / "swap_pty.py"
+    proc = subprocess.run(
+        [sys.executable, str(script), "--binary", str(binary), "--check"],
+        capture_output=True, text=True, timeout=300,
+    )
+    out = (proc.stdout or "").strip()
+    info = {"status": "unknown", "raw": out}
+    for token in out.split():
+        if token.startswith("STATUS="):
+            info["status"] = token.split("=", 1)[1]
+        elif token.startswith("ASSET="):
+            info["asset"] = token.split("=", 1)[1]
+        elif token.startswith("SIZE="):
+            info["size"] = int(token.split("=", 1)[1])
+    if proc.returncode != 0:
+        info["status"] = "error"
+        info["reason"] = (proc.stderr or out).strip()
+    return info
+
+
+def pty_step(binary: Path, pty_lib: Path, verify_dlopen: bool = True) -> dict:
+    """Graft the bionic librust_pty into `binary`'s embedded bunfs slot."""
+    check = pty_check(binary)
+    status = check["status"]
+    if status == "absent":
+        return {"status": "skipped(no-embedded-pty)", "asset": None,
+                "reason": "product has no embedded bun-pty FFI asset"}
+    if status == "bionic":
+        return {"status": "skipped(already-bionic)",
+                "asset": check.get("asset"), "size": check.get("size")}
+    if status != "glibc":
+        return {"status": "failed(check)", "reason": check.get("reason", status)}
+    if not pty_lib.is_file():
+        return {"status": "failed(no-bionic-pty-asset)",
+                "asset": check.get("asset"),
+                "reason": f"vendor bionic librust_pty missing: {pty_lib} "
+                          f"(run tools/bun-pty-embed/build-embed.sh)"}
+    script = Path(__file__).resolve().parent / "swap_pty.py"
+    cmd = [sys.executable, str(script),
+           "--binary", str(binary), "--pty-lib", str(pty_lib),
+           "--out", str(binary)]
+    if verify_dlopen:
+        cmd.append("--verify-dlopen")
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+    if proc.returncode != 0:
+        return {"status": "failed(swap)",
+                "asset": check.get("asset"),
+                "reason": (proc.stderr or proc.stdout).strip()}
+    return {"status": "ok", "asset": check.get("asset"),
+            "size": check.get("size"),
+            "stdout": proc.stdout.strip()}
+
+
+def cmd_pty_swap(args) -> int:
+    """Manual pty asset swap/check: graft the bionic librust_pty in place."""
+    product = Path(args.binary)
+    if args.check:
+        info = pty_check(product)
+        print(json.dumps(info, indent=2))
+        return 0 if info["status"] in ("glibc", "bionic", "absent") else 1
+    info = pty_step(product, Path(args.pty_lib), verify_dlopen=args.verify_dlopen)
+    print(json.dumps(info, indent=2))
+    return 0 if not info["status"].startswith("failed") else 1
+
+
 def cmd_swap(args) -> int:
     """Manual TUI swap: graft a bionic libopentui.so into a native product."""
     out = Path(args.out) if args.out else Path(args.binary).with_name(
@@ -1444,6 +1524,28 @@ def cmd_all(args) -> int:
             "reason": "artifacts/transplant/opentui-bionic/libopentui.so absent",
         }
 
+    # 8b. embedded bun-pty FFI asset (bun-pty -> POST /api/pty, TUI panes).
+    # Upstream embeds the glibc librust_pty; bun-pty prefers that asset over any
+    # on-disk path unless $BUN_PTY_LIB is exported, and the native mainline has
+    # no launcher. Swap in the bionic build so terminals work (serve + TUI).
+    print("== pty asset (bun-pty FFI) ==")
+    pty_lib = repo_root() / PTY_VENDOR_REL
+    pty_reports = {}
+    # Only the packaging winners: -tui (preferred) and -revived (fallback).
+    for cand in (tui_bin, revived_path):
+        if not cand.is_file():
+            continue
+        info = pty_step(cand, pty_lib, verify_dlopen=(cand == tui_bin))
+        pty_reports[cand.name] = info
+        print(f"  {cand.name}: {info['status']}"
+              + (f" ({info['reason']})" if info.get("reason") else ""))
+    report["steps"]["pty"] = pty_reports
+    report["pty"] = (
+        "fail"
+        if any(v["status"].startswith("failed") for v in pty_reports.values())
+        else "ok"
+    )
+
     save_report(out_dir, report)
     print(f"\nreport: {report_path(out_dir)}")
     print(json.dumps(report, indent=2))
@@ -1554,7 +1656,22 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--out", default=None, help="output path (default: <binary>-dir/opencode-native-tui)")
     p.set_defaults(func=cmd_swap)
 
+    p = sub.add_parser(
+        "pty-swap",
+        help="graft the bionic librust_pty into the embedded bun-pty slot (bionic dlopen fix)",
+    )
+    p.add_argument("--binary", required=True, help="native product (patched in place)")
+    p.add_argument("--pty-lib",
+                   default=str(repo_root() / PTY_VENDOR_REL),
+                   help="bionic librust_pty (default: tools/bun-pty-embed/vendor/)")
+    p.add_argument("--check", action="store_true",
+                   help="only report the embedded pty asset status (glibc/bionic/absent)")
+    p.add_argument("--no-verify-dlopen", dest="verify_dlopen", action="store_false",
+                   help="skip the ctypes.CDLL gate (non-aarch64 hosts)")
+    p.set_defaults(func=cmd_pty_swap, verify_dlopen=True)
+
     return ap
+
 
 
 def cmd_resolve_base(args) -> int:

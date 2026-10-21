@@ -32,6 +32,7 @@ opencode-termux/
 | Plugin lifecycle | `tools/plugin-manager.sh`, `tools/plugin-selfcheck.sh`, `docs/plugin-management.md` | local file plugin path + snapshot rollback model |
 | Upgrade/downgrade simulation | `tools/upgrade-matrix.sh`, `docs/execution-checklist.md` | machine2 lifecycle validation with cached deb artifacts |
 | Transplant 管线 | `tools/transplant/transplant.py` | 原生 android Bun 拼接 + ELF 复活手术（C1 已复活，见 `docs/transplant.md`） |
+| PTY/终端（bun-pty FFI 资产） | `tools/transplant/swap_pty.py`、`make pty-check` | 内嵌 `librust_pty` 必须是 bionic 版，否则 `POST /api/pty` 在 bionic dlopen 失败；见 `docs/transplant.md` §0.5 |
 | CI armv7 handoff | `.github/workflows/prebuild-armv7.yml`, `scripts/ci/*` | attempt-based build evidence, not final Termux release path |
 
 ## CODE MAP
