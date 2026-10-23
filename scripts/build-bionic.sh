@@ -304,6 +304,7 @@ case "$PTY_VARIANT" in
       echo "Error: no -gnu pty copy found to replace (issue #27)" >&2
       exit 1
     fi
+    PTY_ASSET="$PTY_MUSL_BIN"
     ;;
   gnu)
     echo "==> PTY_VARIANT=gnu: keeping upstream gnu pty asset as-is (B1 continuation, RFC discussions/29)"
@@ -312,12 +313,21 @@ case "$PTY_VARIANT" in
       echo "Error: no -gnu pty asset found (PTY_VARIANT=gnu)" >&2
       exit 1
     fi
+    PTY_ASSET="$(find "$STORE" "$SRC_DIR/node_modules" -path '*pty-linux-arm64-gnu/bin/opencode-pty' -type f 2>/dev/null | head -n1)"
     ;;
   *)
     echo "Error: PTY_VARIANT must be musl|gnu (got: $PTY_VARIANT)" >&2
     exit 1
     ;;
 esac
+# E5: record the exact pty asset we installed. The compiler embeds the asset's
+# sha256; the post-compile assertion below fails the build when the binary
+# carries any other pty variant (RC4's stale-asset class).
+[[ -n "${PTY_ASSET:-}" && -f "$PTY_ASSET" ]] || { echo "Error: pty asset unresolved (variant=$PTY_VARIANT)" >&2; exit 1; }
+PTY_SHA="$(sha256sum "$PTY_ASSET" | cut -d' ' -f1)"
+mkdir -p "$BUILD_ROOT/$VER"
+printf 'variant=%s\nversion=%s\nsha256=%s\n' "$PTY_VARIANT" "$PTY_VER" "$PTY_SHA" >"$BUILD_ROOT/$VER/pty-sha256.txt"
+echo "    pty asset: $PTY_VARIANT $PTY_VER sha256=${PTY_SHA:0:12}… ($(basename "$PTY_ASSET"))"
 cd "$SRC_DIR/packages/cli"
 
 # ── 2. platform patch (idempotent) ─────────────────────────────────────
@@ -434,6 +444,19 @@ if ! strings -a "$DIST_BIN" | grep -q '/_assets/'; then
   exit 1
 fi
 echo "    web-ui assets present in artifact"
+
+# Hard assertion: the artifact must embed the pty asset we installed (E5).
+# Prevents the RC4 class where a build picked up a stale pty variant.
+PTY_META="$BUILD_ROOT/$VER/pty-sha256.txt"
+[[ -f "$PTY_META" ]] || { echo "Error: pty metadata missing: $PTY_META (cannot verify pty variant)" >&2; exit 1; }
+PTY_EXPECT="$(sed -n 's/^sha256=//p' "$PTY_META" | head -n1)"
+[[ -n "$PTY_EXPECT" ]] || { echo "Error: sha256 missing in $PTY_META" >&2; exit 1; }
+if ! strings -a "$DIST_BIN" | grep -q "$PTY_EXPECT"; then
+  echo "Error: embedded pty asset mismatch — expected sha256 $PTY_EXPECT (from $PTY_META), binary carries another variant" >&2
+  echo "       rebuild with a clean tree (stale pty asset class, docs/runbooks/release-runbook.md §2)" >&2
+  exit 1
+fi
+echo "    pty embed OK (${PTY_EXPECT:0:12}…)"
 
 # ── 4. normalize to packaging contract names ───────────────────────────
 mkdir -p "$OUT_DIR"

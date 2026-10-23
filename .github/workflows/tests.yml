@@ -26,3 +26,11 @@ jobs:
 
       - name: Run shell unit tests
         run: ./tests/run.sh
+
+      # Golden fixtures are 201MB and not committed; with ALLOW_SKIP=1 the test
+      # prints SKIP when fixtures are absent AND artifacts are missing, but still
+      # fails on any real hash mismatch.
+      - name: Transplant golden (SKIPs without local fixtures)
+        env:
+          ALLOW_SKIP: "1"
+        run: make transplant-check

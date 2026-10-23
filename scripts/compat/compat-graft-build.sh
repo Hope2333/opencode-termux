@@ -58,6 +58,8 @@
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
+# shellcheck source=../package/lib.sh
+. "$ROOT/scripts/package/lib.sh"
 set -e
 
 VER="${1:-}"
@@ -251,7 +253,7 @@ if [[ "${COMPAT_BUILD_SOURCE:-0}" == "1" ]]; then
 	echo "==> COMPAT_BUILD_SOURCE=1: 全量重推（make transplant，含 npm 取源 + TUI swap + harden）"
 	make --no-print-directory transplant VER="$VER"
 	BUILD_SOURCE="transplant-rebuild"
-elif [[ -f "$NATIVE" ]] && grep -aqF libopencode-crhandler.so "$NATIVE" &&
+elif [[ -f "$NATIVE" ]] && is_hardened "$NATIVE" &&
 	[[ "$(ver_of "$PWD/$NATIVE")" == "$VER" ]]; then
 	BUILD_SOURCE="existing-transplant-product"
 	echo "==> 复用既有 hardened 产品（无需重推）"
@@ -273,7 +275,7 @@ fi
 [[ -f "$NATIVE" ]] || fail "no native product at $NATIVE after stage 1"
 NATIVE_VER=$(ver_of "$PWD/$NATIVE")
 [[ "$NATIVE_VER" == "$VER" ]] || fail "product --version='$NATIVE_VER', expected $VER"
-grep -aqF libopencode-crhandler.so "$NATIVE" || fail "product at $NATIVE is not seccomp-hardened"
+is_hardened "$NATIVE" || fail "product at $NATIVE is not seccomp-hardened"
 NATIVE_SHA=$(sha256sum "$NATIVE" | cut -d' ' -f1)
 echo "build-verdict: source=$BUILD_SOURCE sha256=$NATIVE_SHA size=$(stat -c%s "$NATIVE")B version=$NATIVE_VER"
 
@@ -281,7 +283,7 @@ echo "build-verdict: source=$BUILD_SOURCE sha256=$NATIVE_SHA size=$(stat -c%s "$
 echo "==> [stage 2/6 harden] seccomp-harden（幂等，已 harden 则只重建 shim）"
 make --no-print-directory seccomp-harden VER="$VER"
 [[ -f "$CRH" ]] || fail "crhandler shim missing at $CRH after stage 2"
-grep -aqF libopencode-crhandler.so "$NATIVE" || fail "product lost hardening at stage 2"
+is_hardened "$NATIVE" || fail "product lost hardening at stage 2"
 echo "harden-verdict: ok — DT_NEEDED libopencode-crhandler.so present (shim $(stat -c%s "$CRH")B)"
 NATIVE_SHA=$(sha256sum "$NATIVE" | cut -d' ' -f1)
 
@@ -303,7 +305,7 @@ bash scripts/compat/hybrid-renderer.sh "$VER" "$DONOR_VER" "$HYB" || fail "hybri
 
 HYB_VER=$(ver_of "$PWD/$HYB")
 [[ "$HYB_VER" == "$VER" ]] || fail "hybrid --version='$HYB_VER', expected $VER（CLI 身份必须不变）"
-grep -aqF libopencode-crhandler.so "$HYB" || fail "graft dropped the hardening (unexpected: 等长换位不动 dynamic section)"
+is_hardened "$HYB" || fail "graft dropped the hardening (unexpected: 等长换位不动 dynamic section)"
 
 # donor 资源指纹（作为 graft 真伪的唯一判据）
 dpkg-deb -x "$DONOR_DEB" "$WORK/donor"
@@ -498,7 +500,7 @@ mkdir -p "$CHK" # dpkg-deb -x 不会创建多级父目录，缺了会 "failed to
 dpkg-deb -x "$OUT/${PKGNAME}_${VER}_aarch64.deb" "$CHK/native"
 NAT_RT="$CHK/native/data/data/com.termux/files/usr/lib/$PKGNAME/runtime/opencode"
 [[ -f "$NAT_RT" ]] || fail "native deb 里没有 runtime/$PKGNAME 件"
-grep -aqF libopencode-crhandler.so "$NAT_RT" || fail "native deb 的 runtime 丢了 hardening"
+is_hardened "$NAT_RT" || fail "native deb 的 runtime 丢了 hardening"
 [[ "$(sha256sum "$NAT_RT" | cut -d' ' -f1)" == "$HYB_SHA" ]] || fail "native deb 的 runtime != hybrid 件（打包串味）"
 [[ "$(embedded_tui_sha "$NAT_RT")" == "$HYB_TUI" ]] || fail "native deb 的 runtime 内嵌渲染库 != donor（graft 没进包）"
 grep -q -- '--force-tui' "$CHK/native/data/data/com.termux/files/usr/bin/${PKGNAME}" ||

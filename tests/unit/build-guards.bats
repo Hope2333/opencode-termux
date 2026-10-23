@@ -97,3 +97,13 @@ setup() {
   [ "$status" -eq 1 ]
   [[ "$output" == *"unknown VER=9.9.9"* ]]
 }
+
+@test "assert-pty: embedded sha256 detection" {
+  printf 'prefix 389a6e86417176c15d0d18f0486e9f0d669ed8c08f8e9c7fbfb727b41f55f8b4 suffix\n' >"$WORK/bin"
+  run make -C "$REPO_ROOT" assert-pty BIN="$WORK/bin" SHA=389a6e86417176c15d0d18f0486e9f0d669ed8c08f8e9c7fbfb727b41f55f8b4
+  [ "$status" -eq 0 ]
+
+  run make -C "$REPO_ROOT" assert-pty BIN="$WORK/bin" SHA=deadbeefdeadbeef
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"not embedded"* ]]
+}

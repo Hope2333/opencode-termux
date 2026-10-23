@@ -814,6 +814,18 @@ verify-artifact:
 	n=0; for f in $$files; do bash scripts/verify-artifact.sh "$$f" $$web || exit 1; n=$$((n+1)); done; \
 	echo "verify-artifact: $$n artifact(s) OK for VER=$(VER)"
 
+# assert-pty: verify a built binary embeds the pty asset recorded at build time
+# (build-bionic writes artifacts/build/<ver>/pty-sha256.txt). Prevents the RC4
+# stale-asset class. Usage: make assert-pty BIN=<bin> [META=... | SHA=<sha256>]
+.PHONY: assert-pty
+assert-pty:
+	@[ -n "$(BIN)" ] || { echo "Error: BIN is required. Example: make assert-pty BIN=artifacts/build/2.0.31/opencode-native-revived"; exit 1; }
+	@sha="$(SHA)"; meta="$(if $(META),$(META),$(if $(VER_IS_SET),artifacts/build/$(VER)/pty-sha256.txt,))"; \
+	if [ -z "$$sha" ] && [ -n "$$meta" ] && [ -f "$$meta" ]; then sha=$$(sed -n 's/^sha256=//p' "$$meta" | head -n1); fi; \
+	[ -n "$$sha" ] || { echo "Error: provide SHA=<sha256> or META=<pty-sha256.txt>" >&2; exit 1; }; \
+	strings -a "$(BIN)" | grep -q "$$sha" || { echo "Error: pty sha256 $$sha not embedded in $(BIN)" >&2; exit 1; }; \
+	echo "assert-pty: OK ($${sha:0:12}…)"
+
 # docs-check: docs index freshness + dead links + tool syntax (docs-reorg-maint D4)
 .PHONY: docs-check
 docs-check:
@@ -839,6 +851,17 @@ release-upload:
 	@echo "=== Release upload: TAG=$(TAG) VERS=$(VERS) VER=$(VER) PKG=$(PKG) REPO=$(REPO) NATIVE=$(NATIVE) ==="
 	@if [ -n "$(VERS)" ]; then \
 		$(MAKE) batch VERS='$(VERS)' PKG='$(PKG)' ODIR='$(RELEASE_DIR)' MIX=1; \
+	fi
+	@if [ "$(SKIP_VERIFY)" = "1" ]; then \
+		echo "verify-release-dir: SKIPPED (SKIP_VERIFY=1)"; \
+	elif [ -d "$(RELEASE_DIR)" ] && [ -n "$$(ls -A "$(RELEASE_DIR)" 2>/dev/null)" ]; then \
+		pty_sha=""; \
+		if [ -n "$(VER)" ] && [ -f "artifacts/build/$(VER)/pty-sha256.txt" ]; then \
+			pty_sha=$$(sed -n 's/^sha256=//p' "artifacts/build/$(VER)/pty-sha256.txt" | head -n1); \
+		fi; \
+		bash scripts/verify-release-dir.sh "$(RELEASE_DIR)" "$(VER)" "$(PTY_VARIANT)" "$$pty_sha" || exit 1; \
+	else \
+		echo "verify-release-dir: SKIP (no staged files in $(RELEASE_DIR))"; \
 	fi
 	@echo "=== Uploading to release $(TAG) ==="; \
 	upload_failed=0; \

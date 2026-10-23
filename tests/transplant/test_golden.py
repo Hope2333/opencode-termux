@@ -22,6 +22,7 @@ import argparse
 import hashlib
 import io
 import json
+import os
 import struct
 import subprocess
 import sys
@@ -204,6 +205,18 @@ def main(argv=None) -> int:
     if not versions:
         print(f"FAIL: no golden versions under {golden_dir}", file=sys.stderr)
         return 1
+
+    # CI has no fixtures (201MB, not committed). ALLOW_SKIP=1 turns "fixtures
+    # unavailable AND artifact absent" into an explicit SKIP instead of a red
+    # build; locally the same condition still fails loudly.
+    if os.environ.get("ALLOW_SKIP") == "1" and not any(fixtures_dir.glob("*.tgz")):
+        missing = [v for v in versions if not (ARTIFACT_ROOT / v / "opencode-native").is_file()]
+        if missing:
+            print(
+                f"SKIP: {len(missing)} golden artifact(s) absent and no fixtures under "
+                f"{fixtures_dir} (run scripts/fetch-fixtures.sh); ALLOW_SKIP=1"
+            )
+            return 0
 
     ensure_pinned_bun_cache()
     failures = []

@@ -19,11 +19,18 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../scripts/package/lib.sh
 source "$SCRIPT_DIR/package/lib.sh"
 
-FILE="${1:-}"
+FILE=""
 WANT_WEB=0
-[[ "${2:-}" == "--web" ]] && WANT_WEB=1
+PTY_SHA=""
+for a in "$@"; do
+  case "$a" in
+    --web) WANT_WEB=1 ;;
+    --pty-sha=*) PTY_SHA="${a#*=}" ;;
+    *) [[ -z "$FILE" ]] && FILE="$a" ;;
+  esac
+done
 
-[[ -n "$FILE" ]] || { echo "usage: verify-artifact.sh <file> [--web]" >&2; exit 2; }
+[[ -n "$FILE" ]] || { echo "usage: verify-artifact.sh <file> [--web] [--pty-sha=<sha256>]" >&2; exit 2; }
 [[ -s "$FILE" ]] || { echo "Error: artifact missing or empty: $FILE" >&2; exit 1; }
 
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
@@ -45,6 +52,9 @@ esac
 
 [[ -n "$BIN" && -s "$BIN" ]] || { echo "Error: no runtime binary found inside $FILE" >&2; exit 1; }
 
+IS_UPX=0
+head -c 4 "$BIN" 2>/dev/null | grep -q 'UPX!' && IS_UPX=1
+
 if ! is_hardened "$BIN"; then
   echo "Error: artifact is not seccomp-hardened (no libopencode-crhandler.so reference): $FILE" >&2
   exit 1
@@ -52,14 +62,28 @@ fi
 echo "  harden: OK ($FILE)"
 
 if [[ "$WANT_WEB" -eq 1 ]]; then
-  if ! strings -a "$BIN" | grep -q '/_assets/'; then
+  if [[ "$IS_UPX" -eq 1 ]]; then
+    echo "  web-ui: SKIP (UPX-packed; verify the uncompressed native artifact)"
+  elif ! strings -a "$BIN" | grep -q '/_assets/'; then
     echo "Error: web UI assets missing from artifact (empty app archive, issue #42): $FILE" >&2
     exit 1
+  else
+    echo "  web-ui: OK ($FILE)"
   fi
-  echo "  web-ui: OK ($FILE)"
 fi
 
-if head -c 4 "$BIN" 2>/dev/null | grep -q 'UPX!'; then
+if [[ -n "$PTY_SHA" ]]; then
+  if [[ "$IS_UPX" -eq 1 ]]; then
+    echo "  pty: SKIP (UPX-packed; verify the uncompressed native artifact)"
+  elif ! strings -a "$BIN" | grep -q "$PTY_SHA"; then
+    echo "Error: pty asset sha256 $PTY_SHA not embedded (stale/mixed pty variant): $FILE" >&2
+    exit 1
+  else
+    echo "  pty: OK ($FILE)"
+  fi
+fi
+
+if [[ "$IS_UPX" -eq 1 ]]; then
   if command -v upx >/dev/null 2>&1; then
     upx -t "$BIN" >/dev/null 2>&1 || { echo "Error: UPX integrity test failed: $FILE" >&2; exit 1; }
     echo "  upx: OK ($FILE)"
