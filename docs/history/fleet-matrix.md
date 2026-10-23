@@ -1,5 +1,8 @@
 # fleet-matrix — RC4→最新版本资产矩阵（未压缩 / 无 UPX）
 
+
+> **历史快照，勿按此操作。** 现行文档见 [docs/README.md](../README.md)。
+
 > 生成：2026-10-05，分支 `rc6-a2/fleet`（自 rc6-a2/single-elf）。
 > 任务：RC4 沿途 → 各自最新的**版本资产 fleet 规划 + pilot 构建**。
 > 硬约束：**跳过 UPX 压制与 `*-compressed` 族**（只出未压缩本体包）；**本任务不 push、不发布、不装机**。

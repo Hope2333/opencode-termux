@@ -1,5 +1,8 @@
 # 01 - Environment Baseline (Termux)
 
+
+> **历史快照，勿按此操作。** 现行文档见 [docs/README.md](../README.md)。
+
 ## 系统与目录
 - OS: Android
 - Shell: Termux

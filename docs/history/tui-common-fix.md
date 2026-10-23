@@ -1,5 +1,8 @@
 # TUI 崩溃修复过程与技术总览
 
+
+> **历史快照，勿按此操作。** 现行文档见 [docs/README.md](../README.md)。
+
 > 本文记录 OpenCode-on-Termux native 线 TUI 渲染层 (`libopentui.so`) 从首次崩溃到公共层根治的完整技术历程。涉及 commit `342d68d` (crashfix v2)、`17b51a4` / `10afa28` / `faf1334` (公共层根治三部曲)、补丁 `patches/opentui/fix-drawchar-negative-coords.patch` 和 `ffi-int-truncation-guards.patch`。
 
 ---

@@ -1,5 +1,8 @@
 # v2 UPX 压制修复方案 — 四假说与检验序列
 
+
+> **历史快照，勿按此操作。** 现行文档见 [docs/README.md](../README.md)。
+
 > **状态**: 2026-09-30 提出，待实验裁决  
 > **背景**: v2 (2.0.x) B 线产物 stock UPX 压制双 SIGSEGV（gnu/musl 均崩），v1 (1.18.x) 时代 stock UPX 与外包两条线均成功  
 > **关联**: `docs/handover/recall-pack.md`（老代理回忆包）· `.omo/plans/v2-upx-revival.md`（三路线计划）· `.omo/evidence/opencode-compressed-upx-report.txt`（v1 成功实证）

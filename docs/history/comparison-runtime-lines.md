@@ -1,5 +1,8 @@
 # OpenCode on Termux 三线运行时对比报告
 
+
+> **历史快照，勿按此操作。** 现行文档见 [docs/README.md](../README.md)。
+
 **日期：** 2026-08-22
 **分支：** `native-android`
 **范围：** 对比三条 OpenCode-on-Termux 运行时路线，为包别名与默认选型提供依据。

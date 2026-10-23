@@ -1,5 +1,8 @@
 # v1(opencode1) 单一 ELF 化 —— 设计与可行性
 
+
+> **历史快照，勿按此操作。** 现行文档见 [docs/README.md](../README.md)。
+
 > 状态：调研 + 原型（**未出包、未装机、未发布**）
 > 分支：`rc6-a2/single-elf`
 > 目标：把 `opencode1-compressed` 包从「bash wrapper + payload」压成包内单一可执行，去掉 bash 依赖，同时**不丢失** wrapper 承担的 v1/v2 双代隔离。

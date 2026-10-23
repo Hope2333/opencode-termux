@@ -1,5 +1,8 @@
 # fleet-manifest — task-30 未压缩本体包 fleet（**不 UPX**）
 
+
+> **历史快照，勿按此操作。** 现行文档见 [docs/README.md](../README.md)。
+
 > 生成：2026-10-05，
 > 分支 `rc6-a2/fleet`，生成器 `tools/a2/fleet-manifest.py`。
 > 规划见 [fleet-matrix.md](fleet-matrix.md)。

@@ -1,5 +1,8 @@
 # 13 - OpenCode Runtime 构建流程
 
+
+> **历史快照，勿按此操作。** 现行文档见 [docs/README.md](../README.md)。
+
 ## 问题背景
 
 ### 初始问题

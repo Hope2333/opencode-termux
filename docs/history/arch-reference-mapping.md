@@ -1,5 +1,8 @@
 # Arch Reference Mapping
 
+
+> **历史快照，勿按此操作。** 现行文档见 [docs/README.md](../README.md)。
+
 This project can borrow structure from Arch plugin packaging patterns without copying all complexity.
 
 ## Reusable patterns

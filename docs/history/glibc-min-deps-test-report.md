@@ -1,5 +1,8 @@
 # Glibc Dependency Reduction Test Report (Termux / OpenCode)
 
+
+> **历史快照，勿按此操作。** 现行文档见 [docs/README.md](../README.md)。
+
 ## Background
 
 OpenCode currently runs on Termux through a glibc-based runtime path. Historically, installing `opencode` through local DEB packaging pulled in `glibc-runner`, which cascaded into many glibc-related packages.

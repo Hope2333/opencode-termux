@@ -1,5 +1,8 @@
 # OCTPlugin Pre-Branch Research README
 
+
+> **历史快照，勿按此操作。** 现行文档见 [docs/README.md](../README.md)。
+
 > Session purpose: consolidate all findings before splitting `OCTPlugin` into an independent development line.
 
 ## 0) Important clarification

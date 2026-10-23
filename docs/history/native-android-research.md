@@ -1,5 +1,8 @@
 # Native Android Bun Research
 
+
+> **历史快照，勿按此操作。** 现行文档见 [docs/README.md](../README.md)。
+
 **Date:** 2026-05-15  
 **Branch:** `native-android`  
 **Status:** Research complete, feasibility confirmed with caveats

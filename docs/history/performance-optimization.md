@@ -1,5 +1,8 @@
 # OpenCode Termux 性能优化路线图
 
+
+> **历史快照，勿按此操作。** 现行文档见 [docs/README.md](../README.md)。
+
 **生成:** 2026-08-20  
 **基准设备:** 联想拯救者 PLC110 (aarch64 / Android 16 / API 36 / UFS, 15.7GB RAM)  
 **基线数据:** `$TMPDIR/opencode-bench-baseline-aug20.json`  

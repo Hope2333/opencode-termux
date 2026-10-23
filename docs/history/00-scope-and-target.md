@@ -1,5 +1,8 @@
 # 00 - Scope and Target
 
+
+> **历史快照，勿按此操作。** 现行文档见 [docs/README.md](../README.md)。
+
 ## 目标
 在 Android/Termux 环境下，构建并产出 **bun** 与 **opencode** 两套可复用构建流程，最终得到：
 

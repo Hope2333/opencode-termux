@@ -1,5 +1,8 @@
 # D3 社区与 issue 状态（community-state）
 
+
+> **历史快照，勿按此操作。** 现行文档见 [docs/README.md](../README.md)。
+
 > **快照日期**: 2026-09-30（交接基线，与 `docs/handover/open-items.md` 同日）
 > **证据来源**: `git log --grep='issue #'` + `docs/99-open-issues-and-upstream-sync.md` + `docs/ops-lessons-rc3.md` + `.omo/notepads/termux-asset-update/learnings.md`
 > **⚠️ gh 认证状态**: `gh auth status`（2026-09-30）报未登录 → **本文件全部结论来自 git log 与仓内文档，未取 gh API**。接手者回帖前须先 `gh auth login`（需补 workflow scope，见 `open-items.md` 第 8 项）。

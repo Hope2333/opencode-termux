@@ -1,5 +1,8 @@
 # 11 - OpenCode Build Plan
 
+
+> **历史快照，勿按此操作。** 现行文档见 [docs/README.md](../README.md)。
+
 ## 目标
 在 Termux/Android arm64 上可安装并运行 `opencode`，并产出：
 - `deb`

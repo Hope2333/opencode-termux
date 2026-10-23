@@ -1,5 +1,8 @@
 # 30 - Local Build Matrix & Verification
 
+
+> **历史快照，勿按此操作。** 现行文档见 [docs/README.md](../README.md)。
+
 ## 构建矩阵
 | 组件 | 构建策略 | 产物 |
 |---|---|---|

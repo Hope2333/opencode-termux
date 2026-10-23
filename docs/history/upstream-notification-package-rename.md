@@ -1,5 +1,8 @@
 # Upstream Notification: Package Rename Transition
 
+
+> **历史快照，勿按此操作。** 现行文档见 [docs/README.md](../README.md)。
+
 **Target:** XiaomiMiMo/MiMoCode (sister port) and any other downstream forks  
 **Date:** 2026-09-03  
 **Status:** Ready for distribution after Push 27/28 tag

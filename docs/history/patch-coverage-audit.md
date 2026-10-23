@@ -1,5 +1,8 @@
 # 补丁覆盖审计（八层 × 13 版）
 
+
+> **历史快照，勿按此操作。** 现行文档见 [docs/README.md](../README.md)。
+
 > 日期：2026-09-04 ｜ HEAD：`4aa32af`（branch `native-android`）
 > 范围：Push260903 本地重铸批 = native 1.18.15–1.18.27 全 13 版（deb + pacman 双渠道 26 包），
 > 外加 wrapper / standalone / compressed 三个家族的互斥矩阵核对。
