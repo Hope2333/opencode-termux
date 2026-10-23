@@ -1,35 +1,41 @@
-# DOCS KNOWLEDGE BASE
+# docs/ — 文档地图与维护规则
 
-## OVERVIEW
-`docs/` is the operational runbook corpus: build path, packaging policy, CI handoff, plugin/system-skill architecture, and incidents.
+> 状态：active ｜ 适用版本：全代
 
-## NAVIGATION ANCHORS
-- Start at `README.md` (canonical "Start here" + classification map).
-- Use numbered flow for lifecycle context: `00`/`01` (scope+env) → `11`/`12`/`13` (build internals) → `20`/`21`/`22` (packing/service) → `30` (verification matrix) → `99`/`incidents` (failures).
+## 分区
 
-## WHERE TO LOOK
-| Question | Document | Notes |
+| 分区 | 职责 | 代表文件 |
 |---|---|---|
-| Mainline release path? | `execution-checklist.md`, `local-production.md` | confirms local Termux path is authoritative |
-| Runtime build details? | `11-opencode-build-plan.md`, `13-opencode-runtime-build.md` | source/wrapper/staging flow |
-| DEB vs pacman packaging? | `20-packaging-deb.md`, `21-packaging-pkg-tar-xz.md` | package layout and verification |
-| Hook/system-skill model? | `system-skills-hook-architecture.md` | policy defaults, lifecycle, registry/blocklist |
-| Plugin operations? | `plugin-management.md`, `plugin-packaging-design.md` | file-plugin mode + rollback model |
-| CI armv7 handoff intent? | `ci-prebuild-armv7.md` | attempt-based diagnostic workflow |
-| Incident context? | `incidents/*` | RCA + follow-up actions |
+| `install/` | 用户安装/迁移/切换 | `dual-track-install.md`、`migration-v1-to-v2.md` |
+| `build/` | 构建链与工具链 | `transplant.md`（A 线）、`make-maintainer.md`、`native-line-evolution.md` |
+| `packaging/` | 包族与布局契约 | `package-families.md`（**单一事实源**）、`compressed-line.md`、`upx-notes.md` |
+| `runbooks/` | 可照着跑的流程 | `release-runbook.md`、`install-and-verify.md`、`machine-env.md` |
+| `reference/` | 查阅型资料 | `tui-reachability.md`、`upstream-issues.md`、`plugin-management.md` |
+| `history/` | 历史快照（带横幅） | `push-tag-archaeology.md`、`ops-lessons-rc3.md` |
+| `incidents/` | 事故 RCA | `2026-02-23-…` |
+| `measurements/` | 测量数据 | `native-baseline-1.3.13.json` |
 
-## CONVENTIONS
-- Keep docs aligned with current command surfaces (`Makefile`, `scripts/*`, `tools/*`).
-- If adding a workflow-critical document, update `docs/README.md` classification pointers.
-- Keep "mainline vs deferred" status explicit (especially armv7 CI/handoff topics).
+## 单一事实源（冲突时以此为准）
 
-## ANTI-PATTERNS (DOCS)
-- Do not describe CI armv7 handoff as final release path.
-- Do not duplicate long command sequences across many files; link to canonical runbook sections.
-- Do not leave numbering/index references stale after moving or adding docs.
+| 事实 | 真源 |
+|---|---|
+| 有哪些包族、能否共存、包体多大 | `packaging/package-families.md` |
+| v2 构建怎么做 | `../scripts/build-bionic.sh` + `../scripts/lib/build-pins.sh` |
+| v1 构建怎么做 | `build/transplant.md` + `../tools/transplant/transplant.py` |
+| 怎么发一批 | `runbooks/release-runbook.md` |
+| TUI 能否用 | `reference/tui-reachability.md` |
 
-## QUICK CHECK
+## 写作约定
+
+- 文首 12 行内写元信息：`> 状态：active|snapshot|historical`、`> 适用版本：<范围>`。
+- 相对链接（`../` 跨区），不写 `docs/` 前缀；死链由 `tools/check-doc-links.py` 拦截。
+- 历史快照：进 `history/`，文首加「**历史快照，勿按此操作**（当前见 X）」。
+- 一份文档只讲一个生命周期：安装指引不夹 tag 考古，发布手册不夹历史决议。
+
+## 工具
+
 ```bash
-# verify docs entrypoints still resolve
-ls docs/README.md docs/execution-checklist.md docs/local-production.md
+tools/gen-docs-index.sh          # 重新生成 README 索引块
+tools/gen-docs-index.sh --check  # 只校验（CI 用）
+tools/check-doc-links.py         # 死链检查，0 dead link 才通过
 ```

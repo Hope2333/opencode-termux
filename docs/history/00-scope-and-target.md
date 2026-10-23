@@ -16,15 +16,15 @@
 |------|------|------|
 | 00 | [Scope and Target](./00-scope-and-target.md) | 项目范围与目标（本文档） |
 | 01 | [Environment Baseline](./01-env-baseline-termux.md) | Termux 环境基线 |
-| 10 | [Bun Build Plan](./10-bun-build-plan.md) | Bun 构建计划与 loader 集成 |
+| 10 | Bun Build Plan（未留档） | Bun 构建计划与 loader 集成 |
 | 11 | [OpenCode Build Plan](./11-opencode-build-plan.md) | OpenCode 构建计划与运行时模式 |
-| 12 | [Bun Executable Structure](./12-bun-executable-structure.md) | Bun 可执行文件结构与兼容性 |
-| 20 | [Packaging deb](./20-packaging-deb.md) | Debian 打包流程 |
-| 21 | [Packaging pkg.tar.xz](./21-packaging-pkg-tar-xz.md) | Pacman 打包流程 |
-| 22 | [Termux Services](./22-termux-services-opencode-web.md) | opencode-web sv 服务配置 |
+| 12 | [Bun Executable Structure](../build/bun-executable-structure.md) | Bun 可执行文件结构与兼容性 |
+| 20 | [Packaging deb](../packaging/packaging-deb.md) | Debian 打包流程 |
+| 21 | [Packaging pkg.tar.xz](../packaging/packaging-pacman.md) | Pacman 打包流程 |
+| 22 | [Termux Services](../reference/termux-services.md) | opencode-web sv 服务配置 |
 | 30 | [CI Local Build Matrix](./30-ci-local-build-matrix.md) | 本地构建矩阵与验证 |
-| 99 | [Open Issues](./99-open-issues-and-upstream-sync.md) | 开放问题与上游同步 |
-| - | [howfixandroid.md](./howfixandroid.md) | 原始问题记录与上游 issue 摘要 |
+| 99 | [Open Issues](../reference/upstream-issues.md) | 开放问题与上游同步 |
+| - | howfixandroid.md（未留档） | 原始问题记录与上游 issue 摘要 |
 
 ---
 
@@ -99,7 +99,7 @@ bun build --compile 产物
 | opencode 无内置 HTTPS | Bun.serve 未暴露 TLS 选项 | 反向代理 / Tunnel |
 | `/proc/self/exe` 语义 | Bionic vs glibc 差异 | userspace exec (loader) |
 
-详见：[99-open-issues-and-upstream-sync.md](./99-open-issues-and-upstream-sync.md)
+详见：[99-open-issues-and-upstream-sync.md](../reference/upstream-issues.md)
 
 ---
 

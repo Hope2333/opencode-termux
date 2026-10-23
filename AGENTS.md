@@ -25,14 +25,14 @@ opencode-termux/
 |---|---|---|
 | Build orchestration | `Makefile`, `tools/make-opencode` | `make` is source of truth; entry points: `family-v2-native`, `family-v2-compressed`, `family-native`, `family-compressed`, `family=...` dispatcher |
 | v2 native build (B line) | `scripts/build-bionic.sh` | android-bun source compile; pins in `scripts/lib/build-pins.sh`; guards in `scripts/lib/build-guards.sh` |
-| v1 native build (A line) | `tools/transplant/transplant.py`, `docs/transplant.md` | ELF revival + TUI swap + seccomp harden |
+| v1 native build (A line) | `tools/transplant/transplant.py`, `docs/build/transplant.md` | ELF revival + TUI swap + seccomp harden |
 | Native packaging | `scripts/package/package_deb_native.sh`, `package_pacman_native.sh`, `packing/pacman/PKGBUILD.native` | package names are `opencode` (v2) / `opencode1` (v1) — never `opencode-native`; un-hardened artifacts are refused |
-| Compressed packaging | `tools/compressed-one.sh`, `scripts/package/package_deb_compressed.sh`, `package_pacman_compressed.sh` | UPX variants; contract in `docs/compressed-line.md` |
+| Compressed packaging | `tools/compressed-one.sh`, `scripts/package/package_deb_compressed.sh`, `package_pacman_compressed.sh` | UPX variants; contract in `docs/packaging/compressed-line.md` |
 | Wrapper appendix | `tools/produce-local.sh`, `scripts/package/package_deb.sh`, `package_pacman.sh` | glibc loader line — not the mainline |
 | Upstream drift probe | `scripts/ci/probe-latest-opencode.sh`, `.github/workflows/probe-upstream.yml` | must query `/tags` — upstream v2 has no GitHub Releases |
-| Release ops | `tools/fleet-push.py`, `scripts/push-stage.sh`, `docs/handover/release-runbook.md` | batch tags `PushYYMMDD`; never rebind or reuse an existing tag |
+| Release ops | `tools/fleet-push.py`, `scripts/push-stage.sh`, `docs/runbooks/release-runbook.md` | batch tags `PushYYMMDD`; never rebind or reuse an existing tag |
 | System-skill hooks | `scripts/hooks/run-system-skills.sh`, `packing/manifests/system-skills/*.json` | strict/network default to safe mode |
-| Plugin lifecycle | `tools/plugin-manager.sh`, `docs/plugin-management.md` | `file://` plugin paths on Termux |
+| Plugin lifecycle | `tools/plugin-manager.sh`, `docs/reference/plugin-management.md` | `file://` plugin paths on Termux |
 
 ## CODE MAP
 | Symbol | Type | Location | Refs | Role |
@@ -81,4 +81,4 @@ bash scripts/ci/probe-latest-opencode.sh --check
 ## NOTES
 - `packing/` holds both templates/manifests and generated outputs — keep them conceptually separate.
 - When adding workflow-critical scripts, update both `docs/README.md` (index) and this root map.
-- Release discipline and current-batch discovery: `docs/handover/release-runbook.md` + `gh release list`.
+- Release discipline and current-batch discovery: `docs/runbooks/release-runbook.md` + `gh release list`.

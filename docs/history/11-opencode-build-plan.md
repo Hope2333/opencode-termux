@@ -88,7 +88,7 @@ error: no embedded Bun runtime (missing BUNWRAP1)
 
 **原因**：Bun 可执行文件依赖嵌入标记 (`BUNWRAP1`, `---- Bun! ----`)，UPX 压缩会破坏结构。
 
-详见：[12-bun-executable-structure.md](./12-bun-executable-structure.md)
+详见：[12-bun-executable-structure.md](../build/bun-executable-structure.md)
 
 ---
 
