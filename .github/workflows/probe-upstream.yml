@@ -1,0 +1,38 @@
+name: Upstream probe
+
+# Daily drift probe against upstream opencode. The v2 line publishes tags only
+# (no GitHub Releases), so the probe queries /tags — see
+# scripts/ci/probe-latest-opencode.sh for the full rationale.
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Probe upstream pins (tags, not releases)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set +e
+          bash scripts/ci/probe-latest-opencode.sh --dry-run
+          rc=$?
+          set -e
+          if [ "$rc" -eq 1 ]; then
+            echo "::warning::upstream drift detected — opening/refreshing tracking issue"
+            bash scripts/ci/probe-latest-opencode.sh --create-issue
+          elif [ "$rc" -eq 2 ]; then
+            echo "::error::probe failed (network or parse) — check the log above"
+            exit 2
+          else
+            echo "upstream pins in sync"
+          fi
