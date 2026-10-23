@@ -350,25 +350,34 @@ cd "$SRC_DIR/packages/cli"
 #  buildAppArchive(skipBuild=true) returned "{}" => binary shipped WITHOUT web
 #  assets => serve 404 after login. Fix: (a) patch app-assets.ts so skipBuild
 #  skips the vite RUN but still collects prebuilt dist; (b) pre-build app dist.
+#  #42: upstream changed the guard's return value (v2.0.27+: `return
+#  AppArchive.encode([])`), so the old exact-string anchor silently mismatched
+#  and the whole patch block was skipped => empty-archive binaries again. New
+#  anchor matches the guard STATEMENT (not its return literal) and a missing
+#  anchor is a hard error, never a silent skip. Post-compile we also assert
+#  the artifact actually contains web assets.
 APP_TS="$SRC_DIR/packages/cli/script/app-assets.ts"
 APP_DIR="$SRC_DIR/packages/app"
-if [[ -f "$APP_TS" ]] && grep -qF 'if (options?.skipBuild) return "{}"' "$APP_TS"; then
+if [[ -f "$APP_TS" ]] && grep -qE 'if \(options\?\.skipBuild\) return' "$APP_TS"; then
   echo "==> web-ui: patching app-assets.ts (#22 skipBuild collects prebuilt dist)"
   python3 - "$APP_TS" <<'PY_PATCH'
-import sys
+import re, sys
 f = sys.argv[1]
 src = open(f).read()
-old_ret = 'if (options?.skipBuild) return "{}"'
-if old_ret not in src:
-    sys.exit(0)
-src = src.replace(old_ret + '\n', '', 1)
+# delete the skipBuild guard line regardless of its return literal (#42)
+src, n_guard = re.subn(r'[ \t]*if \(options\?\.skipBuild\) return[^\n]*\n', '', src, count=1)
+if n_guard != 1:
+    sys.exit(f"app-assets anchor drift: skipBuild guard hits = {n_guard}, expected 1")
 old_run = 'await $`bun run build`'
 if src.count(old_run) != 1:
-    sys.exit(f"app-assets anchor drift: {src.count(old_run)} hits")
+    sys.exit(f"app-assets anchor drift: build call hits = {src.count(old_run)}, expected 1")
 src = src.replace(old_run, 'if (!options?.skipBuild) await $`bun run build`', 1)
 open(f, 'w').write(src)
 print("    app-assets.ts patched (skipBuild -> collect-only)")
 PY_PATCH
+else
+  echo "Error: app-assets.ts skipBuild guard not found — anchor drifted upstream; refusing to build an empty-archive binary (#22 regression, issue #42)" >&2
+  exit 1
 fi
 DIST_CACHE="${TMPDIR:-/data/data/com.termux/files/usr/tmp}/v2src/.app-dist-cache/$VER"
 # Three-state dist resolution (per-version cache survives clean-version, which
@@ -398,6 +407,12 @@ LD_PRELOAD="$OPENAT2_SHIM" OPENCODE_VERSION="$OPENCODE_VERSION" \
   "$ANDROID_BUN" script/build.ts --target=opencode-linux-arm64 --skip-install --skip-web-ui
 DIST_BIN="$SRC_DIR/packages/cli/dist/cli-linux-arm64/bin/opencode"
 [[ -x "$DIST_BIN" ]] || { echo "Error: build output missing: $DIST_BIN" >&2; exit 1; }
+# Hard assertion: the artifact must actually carry web UI assets (#22/#42).
+if ! strings -a "$DIST_BIN" | grep -q '/_assets/'; then
+  echo "Error: web UI assets missing from artifact (#22 regression, issue #42)" >&2
+  exit 1
+fi
+echo "    web-ui assets present in artifact"
 
 # ── 4. normalize to packaging contract names ───────────────────────────
 mkdir -p "$OUT_DIR"
