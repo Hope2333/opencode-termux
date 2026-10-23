@@ -41,6 +41,11 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 VER="${VER:-2.0.0}"
 
+# Unit-testable guards (docs-reorg-maint E1a): store/pkgs/file assertions live in
+# a sourced library so they can be tested without a full compilation.
+# shellcheck source=scripts/lib/build-guards.sh
+source "$ROOT_DIR/scripts/lib/build-guards.sh"
+
 # ── 依赖钉版（push261013 todo 12：issue #35「build-bionic 仍钉 0.1.13/0.5.10」）──
 # 归因结论: family-v2-native → build-native → 本脚本是 v2 native 的出厂 B-line 编译链
 # （Makefile:836），钉版直接进出厂包，故必须跟上上游逐版漂移。
@@ -124,7 +129,14 @@ for attempt in 1 2 3 4 5; do
   sleep $((attempt * 5))
 done
 if [[ $install_ok -ne 1 ]]; then
-  echo "WARN: bun install failed after 5 attempts; continuing without store" >&2
+  # E1a: continuing with an empty store only produced an unusable binary later.
+  # Offline builds stay supported when the store is already populated.
+  if is_store_populated "$STORE"; then
+    echo "WARN: bun install failed after 5 attempts; store already populated (offline mode)" >&2
+  else
+    echo "Error: bun install failed after 5 attempts and store is empty — cannot build" >&2
+    exit 1
+  fi
 fi
 cd "$ROOT_DIR"
 cd "$ROOT_DIR"
@@ -202,7 +214,7 @@ fi
 # ── Verify FFI symbols ──
 TUI_OK=0
 if [[ -n "$TUI_SO" && -f "$TUI_SO" ]]; then
-  TUI_SYMS="$(nm -D "$TUI_SO" 2>/dev/null || true)"
+  TUI_SYMS="$(nm -D "$TUI_SO" 2>/dev/null)" || TUI_SYMS=""
   missing=0
   for s in "${NEEDED_SYMS[@]}"; do
     grep -qw "$s" <<< "$TUI_SYMS" || { echo "    missing symbol: $s"; missing=1; }
@@ -236,20 +248,31 @@ for pkg in "@opencode-ai/pty@$PTY_VER" "@parcel/watcher-linux-arm64-glibc@2.5.1"
     echo "    $pkg_short already in store"
   else
     echo "    installing $pkg..."
-    LD_PRELOAD="$OPENAT2_SHIM" "$ANDROID_BUN" install --force --ignore-scripts --os=linux --cpu=arm64 "$pkg" 2>&1 | tail -1 || true
+    if ! LD_PRELOAD="$OPENAT2_SHIM" "$ANDROID_BUN" install --force --ignore-scripts --os=linux --cpu=arm64 "$pkg" 2>&1 | tail -1; then
+      echo "Error: platform package install failed: $pkg" >&2
+      exit 1
+    fi
   fi
+  # E1a: the install above used to be best-effort. Assert the package actually
+  # landed — a missing pty/watcher silently broke the bundle.
+  require_pkg_installed "$STORE" "$SRC_DIR" "$pkg_name" || exit 1
   # Ensure platform-specific binary is in node_modules (store may use platform-agnostic key)
-  PTY_BIN="$(find "$STORE" -path "*/$pkg_name/bin/opencode-pty" -type f 2>/dev/null | head -n1 || true)"
+  PTY_BIN="$(find "$STORE" -path "*/$pkg_name/bin/opencode-pty" -type f 2>/dev/null | head -n1)"
   if [[ -z "$PTY_BIN" ]]; then
     # Fallback: try platform-specific store key
-    PTY_BIN="$(find "$STORE" -path "*/${pkg_name}-linux-arm64-gnu/bin/opencode-pty" -type f 2>/dev/null | head -n1 || true)"
+    PTY_BIN="$(find "$STORE" -path "*/${pkg_name}-linux-arm64-gnu/bin/opencode-pty" -type f 2>/dev/null | head -n1)"
   fi
   if [[ -n "$PTY_BIN" ]]; then
     # Create symlink in node_modules/@opencode-ai/pty-linux-arm64-gnu/bin/ if missing
     DEST_DIR="$SRC_DIR/node_modules/${pkg_name}-linux-arm64-gnu/bin"
     if [[ ! -f "$DEST_DIR/opencode-pty" && -n "$PTY_BIN" ]]; then
       mkdir -p "$DEST_DIR"
-      cp -p "$PTY_BIN" "$DEST_DIR/opencode-pty" 2>/dev/null || true
+      # E1a: a failed copy used to be swallowed; assert the helper really landed.
+      if ! cp -p "$PTY_BIN" "$DEST_DIR/opencode-pty" 2>/dev/null; then
+        echo "Error: pty helper copy failed: $PTY_BIN -> $DEST_DIR/opencode-pty" >&2
+        exit 1
+      fi
+      require_file "$DEST_DIR/opencode-pty" "pty helper" || exit 1
     fi
   fi
 done
@@ -301,7 +324,8 @@ esac
 cd "$SRC_DIR/packages/cli"
 
 # ── 2. platform patch (idempotent) ─────────────────────────────────────
-CHUNK="$(ls -d "$STORE"/@opentui+core@*/ 2>/dev/null | head -n1 || true)"
+CHUNK="$(ls -d "$STORE"/@opentui+core@*/ 2>/dev/null | head -n1)" \
+  || { echo "Error: @opentui core store key not found under $STORE" >&2; exit 1; }
 : "${CHUNK:?Error: @opentui+core store chunk not found — run 'bun install --force --ignore-scripts' in $SRC_DIR}"
 "$ULW_PATCH" "${CHUNK%/}"
 
@@ -423,8 +447,8 @@ echo "    sha256: $(cat "$OUT_DIR/build.sha256")"
 
 # ── 4b. cleanup node_modules (save disk for batch builds) ──
 echo "==> cleaning source tree node_modules to save disk..."
-rm -rf "$SRC_DIR/node_modules" 2>/dev/null || true
-rm -rf "$SRC_DIR/packages/cli/node_modules" 2>/dev/null || true
+rm -rf "$SRC_DIR/node_modules" 2>/dev/null || echo "WARN: could not clean $SRC_DIR/node_modules" >&2
+rm -rf "$SRC_DIR/packages/cli/node_modules" 2>/dev/null || echo "WARN: could not clean $SRC_DIR/packages/cli/node_modules" >&2
 
 # ── 5. optional UPX variant ────────────────────────────────────────────
 if [[ "${UPX:-0}" == "1" ]]; then

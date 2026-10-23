@@ -16,9 +16,15 @@ CHUNK_JS="$(grep -RIl --include='chunk-bun-*.js' 'platform: process.platform' "$
 echo "platform chunk: $(basename "$CHUNK_JS")"
 # 1) platform literal present?
 if grep -q 'platform: "linux",' "$CHUNK_JS"; then
-  echo "platform patch already applied (platform literal)"; 
+  echo "platform patch already applied (platform literal)"
 else
   sed -i 's/platform: process\.platform,/platform: "linux",/' "$CHUNK_JS"
+  # Post-assert (docs-reorg-maint E1a): a sed that matches nothing still exits 0.
+  # Without this check the script printed "patched" and shipped a glibc libopentui.
+  if ! grep -q 'platform: "linux",' "$CHUNK_JS"; then
+    echo "Error: platform literal patch did not apply — sed anchor drifted upstream" >&2
+    exit 1
+  fi
   echo "platform literal patched"
 fi
 # 2) linux branch force
@@ -26,5 +32,9 @@ if grep -q 'if (true) {' "$CHUNK_JS"; then
   echo "platform patch already applied (branch force)"
 else
   sed -i 's/if (process\.platform === "linux") {/if (true) {/' "$CHUNK_JS"
+  if ! grep -q 'if (true) {' "$CHUNK_JS"; then
+    echo "Error: linux branch patch did not apply — sed anchor drifted upstream" >&2
+    exit 1
+  fi
   echo "branch force patched"
 fi
