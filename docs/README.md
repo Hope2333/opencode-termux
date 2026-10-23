@@ -37,80 +37,80 @@
 
 | 文档 | 状态 | 适用版本 | 最后核实 |
 |---|---|---|---|
-| [Dual-track install: `opencode` providers](install/dual-track-install.md) | active | — | — |
-| [v1 → v2 Migration Guide](install/migration-v1-to-v2.md) | active | — | — |
+| [Dual-track install: `opencode` providers](install/dual-track-install.md) | active | — | 2026-10-24 |
+| [v1 → v2 Migration Guide](install/migration-v1-to-v2.md) | active | — | 2026-10-24 |
 
 ### `build`
 
 | 文档 | 状态 | 适用版本 | 最后核实 |
 |---|---|---|---|
-| [Native armv7 Runner Setup (self-hosted)](build/armv7-native-runner-setup.md) | active | — | — |
-| [12 - Bun Executable Structure & Compatibility](build/bun-executable-structure.md) | active | — | — |
-| [Make Maintainer Surface](build/make-maintainer.md) | active | — | — |
-| [native 线演进史 — 从 ELF 拼接手术到 bionic 真编译](build/native-line-evolution.md) | active | — | — |
-| [transplant — native-android 移植操作手册](build/transplant.md) | active | — | — |
+| [Native armv7 Runner Setup (self-hosted)](build/armv7-native-runner-setup.md) | active | — | 2026-10-24 |
+| [12 - Bun Executable Structure & Compatibility](build/bun-executable-structure.md) | active | — | 2026-10-24 |
+| [Make Maintainer Surface](build/make-maintainer.md) | active | — | 2026-10-24 |
+| [native 线演进史 — 从 ELF 拼接手术到 bionic 真编译](build/native-line-evolution.md) | active | — | 2026-10-24 |
+| [transplant — native-android 移植操作手册](build/transplant.md) | active | — | 2026-10-24 |
 
 ### `packaging`
 
 | 文档 | 状态 | 适用版本 | 最后核实 |
 |---|---|---|---|
-| [Compressed 线契约（opencode1-compressed / UPX-packed）](packaging/compressed-line.md) | active | — | — |
-| [包族单一事实源（package families）](packaging/package-families.md) | active ｜ 适用版本：v1 1.18.x–1.19.x / v2 2.0.x–2.1.x | v1 1.18.x–1.19.x / v2 2.0.x–2.1.x | — |
-| [20 - Packaging as .deb](packaging/packaging-deb.md) | active | — | — |
-| [21 - Packaging as pkg.tar.xz (Pacman)](packaging/packaging-pacman.md) | active | — | — |
-| [UPX 与 Bun 可执行文件（compressed 族说明）](packaging/upx-notes.md) | active ｜ 适用版本：v1 1.18.x / v2 2.0.x–2.1.x | v1 1.18.x / v2 2.0.x–2.1.x | — |
+| [Compressed 线契约（opencode1-compressed / UPX-packed）](packaging/compressed-line.md) | active | — | 2026-10-24 |
+| [包族单一事实源（package families）](packaging/package-families.md) | active ｜ 适用版本：v1 1.18.x–1.19.x / v2 2.0.x–2.1.x | v1 1.18.x–1.19.x / v2 2.0.x–2.1.x | 2026-10-24 |
+| [20 - Packaging as .deb](packaging/packaging-deb.md) | active | — | 2026-10-24 |
+| [21 - Packaging as pkg.tar.xz (Pacman)](packaging/packaging-pacman.md) | active | — | 2026-10-24 |
+| [UPX 与 Bun 可执行文件（compressed 族说明）](packaging/upx-notes.md) | active ｜ 适用版本：v1 1.18.x / v2 2.0.x–2.1.x | v1 1.18.x / v2 2.0.x–2.1.x | 2026-10-24 |
 
 ### `runbooks`
 
 | 文档 | 状态 | 适用版本 | 最后核实 |
 |---|---|---|---|
-| [Execution Checklist](runbooks/install-and-verify.md) | active | — | — |
-| [Local Production Blueprint (No GitHub Actions)](runbooks/local-production.md) | active | — | — |
-| [D2 — 机器与环境手册](runbooks/machine-env.md) | active | — | — |
-| [发布运行手册（Release Runbook）](runbooks/release-runbook.md) | active | — | — |
+| [Execution Checklist](runbooks/install-and-verify.md) | active | — | 2026-10-24 |
+| [Local Production Blueprint (No GitHub Actions)](runbooks/local-production.md) | active | — | 2026-10-24 |
+| [D2 — 机器与环境手册](runbooks/machine-env.md) | active | — | 2026-10-24 |
+| [发布运行手册（Release Runbook）](runbooks/release-runbook.md) | active | — | 2026-10-24 |
 
 ### `reference`
 
 | 文档 | 状态 | 适用版本 | 最后核实 |
 |---|---|---|---|
-| [CI Prebuild (armv7, cross-toolchain + binary attempts)](reference/ci-prebuild-armv7.md) | active | — | — |
-| [System Skills + Hook Architecture (Phase C extension)](reference/hook-architecture.md) | active | — | — |
-| [Hook 设计提案（一页纸）— 安装期 hook 的族归属与特征化](reference/hook-design-proposal.md) | **提案**，供「后面看看」裁决；未实现任何 v2 族 hook 变更。 | — | — |
-| [Plugin Management (Online install + self-update + rollback)](reference/plugin-management.md) | active | — | — |
-| [Plugin Packaging Design (Phase C)](reference/plugin-packaging-design.md) | active | — | — |
-| [Termux skills index (concise)](reference/skills-index.md) | active | — | — |
-| [Termux 仓库资产更新流程](reference/termux-asset-release-flow.md) | active | — | — |
-| [22 - opencode web 的 Termux sv 服务](reference/termux-services.md) | active | — | — |
-| [TUI 可达性判定表（rc6-b2-upx-tui 终版）](reference/tui-reachability.md) | active | — | — |
-| [上游 issue 与同步台账](reference/upstream-issues.md) | active ｜ 适用版本：全代（v1/v2） | 全代（v1/v2） | — |
+| [CI Prebuild (armv7, cross-toolchain + binary attempts)](reference/ci-prebuild-armv7.md) | active | — | 2026-10-24 |
+| [System Skills + Hook Architecture (Phase C extension)](reference/hook-architecture.md) | active | — | 2026-10-24 |
+| [Hook 设计提案（一页纸）— 安装期 hook 的族归属与特征化](reference/hook-design-proposal.md) | **提案**，供「后面看看」裁决；未实现任何 v2 族 hook 变更。 | — | 2026-10-24 |
+| [Plugin Management (Online install + self-update + rollback)](reference/plugin-management.md) | active | — | 2026-10-24 |
+| [Plugin Packaging Design (Phase C)](reference/plugin-packaging-design.md) | active | — | 2026-10-24 |
+| [Termux skills index (concise)](reference/skills-index.md) | active | — | 2026-10-24 |
+| [Termux 仓库资产更新流程](reference/termux-asset-release-flow.md) | active | — | 2026-10-24 |
+| [22 - opencode web 的 Termux sv 服务](reference/termux-services.md) | active | — | 2026-10-24 |
+| [TUI 可达性判定表（rc6-b2-upx-tui 终版）](reference/tui-reachability.md) | active | — | 2026-10-24 |
+| [上游 issue 与同步台账](reference/upstream-issues.md) | active ｜ 适用版本：全代（v1/v2） | 全代（v1/v2） | 2026-10-24 |
 
 ### `history`
 
 | 文档 | 状态 | 适用版本 | 最后核实 |
 |---|---|---|---|
-| [00 - Scope and Target](history/00-scope-and-target.md) | historical | — | — |
-| [01 - Environment Baseline (Termux)](history/01-env-baseline-termux.md) | historical | — | — |
-| [11 - OpenCode Build Plan](history/11-opencode-build-plan.md) | historical | — | — |
-| [13 - OpenCode Runtime 构建流程](history/13-opencode-runtime-build.md) | historical | — | — |
-| [30 - Local Build Matrix & Verification](history/30-ci-local-build-matrix.md) | historical | — | — |
-| [OCTPlugin Pre-Branch Research README](history/OCTPLUGIN-PREBRANCH-RESEARCH.md) | historical | — | — |
-| [Arch Reference Mapping](history/arch-reference-mapping.md) | historical | — | — |
-| [D3 社区与 issue 状态（community-state）](history/community-state.md) | historical | — | — |
-| [OpenCode on Termux 三线运行时对比报告](history/comparison-runtime-lines.md) | historical | — | — |
-| [fleet-manifest — task-30 未压缩本体包 fleet（**不 UPX**）](history/fleet-manifest.md) | historical | — | — |
-| [fleet-matrix — RC4→最新版本资产矩阵（未压缩 / 无 UPX）](history/fleet-matrix.md) | historical | — | — |
-| [Glibc Dependency Reduction Test Report (Termux / OpenCode)](history/glibc-min-deps-test-report.md) | historical | — | — |
-| [Native Android Bun Research](history/native-android-research.md) | historical | — | — |
-| [D4 进行中与待决清单](history/open-items.md) | historical | — | — |
-| [RC3 发布实战经验（2026-09-28）](history/ops-lessons-rc3.md) | historical | — | — |
-| [补丁覆盖审计（八层 × 13 版）](history/patch-coverage-audit.md) | historical | — | — |
-| [OpenCode Termux 性能优化路线图](history/performance-optimization.md) | historical | — | — |
-| [Push tag × 包名家族：考古表（历史快照）](history/push-tag-archaeology.md) | historical ｜ 适用版本：≤ Push260906 | ≤ Push260906 | — |
-| [回忆拼图包 — 交接给 v1 压制亲历会话](history/recall-pack.md) | historical | — | — |
-| [v1(opencode1) 单一 ELF 化 —— 设计与可行性](history/single-elf-v1.md) | 调研 + 原型（**未出包、未装机、未发布**） | — | — |
-| [TUI 崩溃修复过程与技术总览](history/tui-common-fix.md) | historical | — | — |
-| [Upstream Notification: Package Rename Transition](history/upstream-notification-package-rename.md) | historical | — | — |
-| [v2 UPX 压制修复方案 — 四假说与检验序列](history/upx-v2-fix.md) | historical | — | — |
+| [00 - Scope and Target](history/00-scope-and-target.md) | historical | — | 2026-10-24 |
+| [01 - Environment Baseline (Termux)](history/01-env-baseline-termux.md) | historical | — | 2026-10-24 |
+| [11 - OpenCode Build Plan](history/11-opencode-build-plan.md) | historical | — | 2026-10-24 |
+| [13 - OpenCode Runtime 构建流程](history/13-opencode-runtime-build.md) | historical | — | 2026-10-24 |
+| [30 - Local Build Matrix & Verification](history/30-ci-local-build-matrix.md) | historical | — | 2026-10-24 |
+| [OCTPlugin Pre-Branch Research README](history/OCTPLUGIN-PREBRANCH-RESEARCH.md) | historical | — | 2026-10-24 |
+| [Arch Reference Mapping](history/arch-reference-mapping.md) | historical | — | 2026-10-24 |
+| [D3 社区与 issue 状态（community-state）](history/community-state.md) | historical | — | 2026-10-24 |
+| [OpenCode on Termux 三线运行时对比报告](history/comparison-runtime-lines.md) | historical | — | 2026-10-24 |
+| [fleet-manifest — task-30 未压缩本体包 fleet（**不 UPX**）](history/fleet-manifest.md) | historical | — | 2026-10-24 |
+| [fleet-matrix — RC4→最新版本资产矩阵（未压缩 / 无 UPX）](history/fleet-matrix.md) | historical | — | 2026-10-24 |
+| [Glibc Dependency Reduction Test Report (Termux / OpenCode)](history/glibc-min-deps-test-report.md) | historical | — | 2026-10-24 |
+| [Native Android Bun Research](history/native-android-research.md) | historical | — | 2026-10-24 |
+| [D4 进行中与待决清单](history/open-items.md) | historical | — | 2026-10-24 |
+| [RC3 发布实战经验（2026-09-28）](history/ops-lessons-rc3.md) | historical | — | 2026-10-24 |
+| [补丁覆盖审计（八层 × 13 版）](history/patch-coverage-audit.md) | historical | — | 2026-10-24 |
+| [OpenCode Termux 性能优化路线图](history/performance-optimization.md) | historical | — | 2026-10-24 |
+| [Push tag × 包名家族：考古表（历史快照）](history/push-tag-archaeology.md) | historical ｜ 适用版本：≤ Push260906 | ≤ Push260906 | 2026-10-24 |
+| [回忆拼图包 — 交接给 v1 压制亲历会话](history/recall-pack.md) | historical | — | 2026-10-24 |
+| [v1(opencode1) 单一 ELF 化 —— 设计与可行性](history/single-elf-v1.md) | 调研 + 原型（**未出包、未装机、未发布**） | — | 2026-10-24 |
+| [TUI 崩溃修复过程与技术总览](history/tui-common-fix.md) | historical | — | 2026-10-24 |
+| [Upstream Notification: Package Rename Transition](history/upstream-notification-package-rename.md) | historical | — | 2026-10-24 |
+| [v2 UPX 压制修复方案 — 四假说与检验序列](history/upx-v2-fix.md) | historical | — | 2026-10-24 |
 
 ### `incidents`
 
