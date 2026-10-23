@@ -102,7 +102,7 @@ UP_OPENTUI="$(fetch_pkg package.json "$UP_V2" | python3 -c 'import json,sys; pri
 [[ -n "$UP_PTY" && -n "$UP_OPENTUI" ]] || die "cannot read upstream pins at $UP_V2"
 
 UP_VER="${UP_V2#v}"
-LOCAL_PINS="$(local_pins "$UP_VER")" || true
+LOCAL_PINS="$(local_pins "$UP_VER")"
 if [[ -z "$LOCAL_PINS" ]]; then
   LOCAL_PTY="NONE"; LOCAL_ENTRY="NONE"; LOCAL_FALLBACK="n/a"
 else

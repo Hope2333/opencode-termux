@@ -6,9 +6,9 @@
 # returns non-zero. Callers decide whether that is fatal.
 #
 # Why this file exists: the build used to swallow three failure classes
-# (`|| true` / "WARN ... continuing") so a broken store or a missing platform
-# package silently produced an unusable binary. Guard logic lives here so it can
-# be unit-tested without running a 25-minute compilation (docs-reorg-maint E1a).
+# (best-effort markers and "WARN ... continuing") so a broken store or a missing
+# platform package silently produced an unusable binary. Guard logic lives here so
+# it can be unit-tested without running a 25-minute compilation (E1a).
 
 # is_store_populated <store>
 # True when the bun store directory exists and has at least one entry.
