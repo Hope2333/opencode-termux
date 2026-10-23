@@ -238,7 +238,9 @@ fi
 echo "==> installing linux platform packages (pty, watcher)..."
 cd "$SRC_DIR"
 for pkg in "@opencode-ai/pty@$PTY_VER" "@parcel/watcher-linux-arm64-glibc@2.5.1"; do
-  pkg_name="${pkg%%@*}"
+  # Strip only the version suffix: scoped names start with '@', so the greedy
+  # `${pkg%%@*}` yields an empty name (caught by require_pkg_installed, 2026-10-24).
+  pkg_name="${pkg%@*}"
   pkg_short="${pkg_name##*/}"
   # Check if already installed in store (any platform variant)
   if ls "$STORE"/${pkg_name//\//+}@*/node_modules/$pkg_name/package.json &>/dev/null; then
