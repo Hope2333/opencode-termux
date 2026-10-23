@@ -785,6 +785,22 @@ clean:
 #             NATIVE=STABLE uploads the same asset set as a FORMAL release
 #             (gh release create without --prerelease, stable-mainline notes)
 #             per the 27/28 mainline switch; NATIVE=1 keeps the legacy path.
+# verify-artifact: artifact-level gates (harden / web UI / UPX) for a version's
+# packaged outputs. Pre-upload gate (docs-reorg-maint E3).
+# Usage: make verify-artifact VER=2.0.31
+.PHONY: verify-artifact
+verify-artifact:
+	@[ -n "$(VER_IS_SET)" ] || { echo "Error: VER is required. Example: make verify-artifact VER=2.0.31"; exit 1; }
+	@files=""; \
+	for d in packing/dpkg-native/*.deb packing/dpkg/*.deb packing/pacman/*.pkg.tar.*; do \
+		[ -f "$$d" ] || continue; \
+		case "$$d" in *$(VER)*) files="$$files $$d" ;; esac; \
+	done; \
+	[ -n "$$files" ] || { echo "Error: no packaged artifacts for VER=$(VER) under packing/"; exit 1; }; \
+	web=""; case "$(VER)" in 2.*) web="--web" ;; esac; \
+	n=0; for f in $$files; do bash scripts/verify-artifact.sh "$$f" $$web || exit 1; n=$$((n+1)); done; \
+	echo "verify-artifact: $$n artifact(s) OK for VER=$(VER)"
+
 release-upload:
 	@if [ -z "$(VERS)" ] && [ -z "$(VER_IS_SET)" ]; then \
 		echo "Error: VERS is required. Example: make release-upload VERS='1.15.[1-7]' TAG=Push260522"; \
