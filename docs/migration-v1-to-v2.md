@@ -4,7 +4,7 @@
 
 ## 版本对比
 
-| | v1（1.18.31 封版） | v2（2.0.0 GA） |
+| | v1（1.18.x，现 1.19.x） | v2（2.0.x，现 2.1.x） |
 |---|---|---|
 | 上游 | opencode 1.18.x | opencode 2.0.x（Effect HttpApi 后端重写） |
 | 构建线 | A 线（transplant 复活 glibc→bionic） | B 线（android bun 源码编译，零 glibc） |
@@ -68,7 +68,7 @@ V1 的 `opencode.json` 配置在 V2 中仍可读取，但会被内存翻译为 V
 
 ### 包名不变
 
-v2 继承 v1 的包名 `opencode`，无需改名。v1.18.31 是 v1 最终版（封版）。
+v2 继承 v1 的包名 `opencode`，无需改名。v1 自 1.18.32 起改按 `opencode1*` 发布（现到 1.19.x），与 v2 并存。
 
 ## 构建线说明
 

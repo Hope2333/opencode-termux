@@ -1,84 +1,84 @@
 # PROJECT KNOWLEDGE BASE
 
-**Generated:** 2026-06-12  
-**Branch:** pure-android
+**Generated:** 2026-06-12
+**Refreshed:** 2026-10-24 (docs-reorg-maint D1)
+**Branch:** working branch varies (`fix-tlsdesc-pipeline` at refresh time)
 
 ## OVERVIEW
-Termux-first OpenCode build/packaging workspace. Stable mainline since 27/28 is the native bionic line: a single zero-glibc Android ELF produced by the transplant revive pipeline (`tools/transplant/`, `make transplant`; see `docs/transplant.md`). The wrapper line is renamed `opencode-wrapper` and demoted to appendix maintenance (local build path `tools/produce-local.sh` + `scripts/*`); `opencode-wrapper-standalone` is the frozen single-version rollback package that can coexist with `opencode`. `opencode` and `opencode-wrapper` remain mutually exclusive. GitHub Actions workflows are diagnostic/handoff, not final runtime release.
+Termux-first OpenCode build/packaging workspace. Two generations coexist: v2 (`opencode*`, 2.0.x → 2.1.x) is the mainline, v1 (`opencode1*`, 1.18.x → 1.19.x) stays maintained. The v2 mainline is the **native bionic line**: B line compiles upstream source with android-bun (`scripts/build-bionic.sh`), A line revives the official ELF (`tools/transplant/`); both produce a zero-glibc Android binary. `opencode-wrapper` / `opencode1-wrapper` are glibc-loader appendix families, `*-compressed` are UPX variants, and `opencode-wrapper-standalone` is deprecated. Within one generation native / wrapper / compressed are mutually exclusive; v1 and v2 coexist. GitHub Actions workflows are diagnostic/handoff, not the final runtime release path.
 
 ## STRUCTURE
 ```text
 opencode-termux/
-├── Makefile                    # top-level orchestration (all/batch/selfcheck/matrix)
-├── scripts/                    # staging, packaging, hook runners, CI helper scripts
-├── tools/                      # operator-facing CLIs (make wrapper, plugin lifecycle, matrix)
-├── packing/                  # package templates + manifests (mixed with generated outputs)
-├── docs/                       # canonical runbooks, architecture notes, incident records (e.g. docs/transplant.md)
+├── Makefile                    # top-level orchestration (family/batch/selfcheck/matrix; SHELL=bash)
+├── scripts/                    # build, packaging, hooks, CI helpers (+ lib/ for testable guards/pins)
+├── tools/                      # operator CLIs (transplant, fleet push, compressed-one, plugin manager)
+├── packing/                    # package templates + manifests (mixed with generated outputs)
+├── docs/                       # runbooks, architecture notes, history (docs/README.md is the index)
+├── tests/                      # bats unit tests + transplant golden
 ├── artifacts/                  # generated runtime/staging outputs (disposable)
-└── .github/workflows/          # CI handoff workflows
+└── .github/workflows/          # unit tests, upstream probe, CI handoff workflows
 ```
 
 ## WHERE TO LOOK
 | Task | Location | Notes |
 |---|---|---|
-| Build orchestration | `Makefile`, `tools/make-opencode` | `make` is source of truth; wrapper maps CLI flags to make vars |
-| Prepare runtime artifact | `tools/produce-local.sh` | resolves version, wraps runtime, cleans stale generated dirs |
-| Stage install tree | `scripts/build.sh`, `scripts/common.sh` | writes staged prefix + build metadata |
-| Build DEB package (wrapper appendix) | `scripts/package/package_deb.sh`, `packing/deb/DEBIAN/control` | builds the `opencode-wrapper` deb; postinst hook calls system-skill runner |
-| Build pacman package (wrapper appendix) | `scripts/package/package_pacman.sh`, `packing/pacman/PKGBUILD*` | builds the `opencode-wrapper` pacman package; dynamic pkgver/pkgrel rewrite + makepkg flow |
-| Native provider packaging | `scripts/package/package_deb_native.sh`, `scripts/package/package_pacman_native.sh`, `packing/pacman/PKGBUILD.native` | `opencode-native` deb/pacman providers for the native bionic mainline (stable since 27/28; see docs/dual-track-install.md) |
-| Standalone rollback packaging | `scripts/package/package_deb_standalone.sh`, `scripts/package/package_pacman_standalone.sh`, `packing/pacman/PKGBUILD.standalone` | `opencode-wrapper-standalone` frozen rollback package (coexists with `opencode`); stage via `STANDALONE=1 ./scripts/build.sh` |
-| System-skill hook behavior | `scripts/hooks/run-system-skills.sh`, `packing/manifests/system-skills/*.json` | strict/network flags default to safe mode |
-| Plugin lifecycle | `tools/plugin-manager.sh`, `tools/plugin-selfcheck.sh`, `docs/plugin-management.md` | local file plugin path + snapshot rollback model |
-| Upgrade/downgrade simulation | `tools/upgrade-matrix.sh`, `docs/execution-checklist.md` | machine2 lifecycle validation with cached deb artifacts |
-| Transplant 管线 | `tools/transplant/transplant.py` | 原生 android Bun 拼接 + ELF 复活手术（C1 已复活，见 `docs/transplant.md`） |
-| CI armv7 handoff | `.github/workflows/prebuild-armv7.yml`, `scripts/ci/*` | attempt-based build evidence, not final Termux release path |
+| Build orchestration | `Makefile`, `tools/make-opencode` | `make` is source of truth; entry points: `family-v2-native`, `family-v2-compressed`, `family-native`, `family-compressed`, `family=...` dispatcher |
+| v2 native build (B line) | `scripts/build-bionic.sh` | android-bun source compile; pins in `scripts/lib/build-pins.sh`; guards in `scripts/lib/build-guards.sh` |
+| v1 native build (A line) | `tools/transplant/transplant.py`, `docs/transplant.md` | ELF revival + TUI swap + seccomp harden |
+| Native packaging | `scripts/package/package_deb_native.sh`, `package_pacman_native.sh`, `packing/pacman/PKGBUILD.native` | package names are `opencode` (v2) / `opencode1` (v1) — never `opencode-native`; un-hardened artifacts are refused |
+| Compressed packaging | `tools/compressed-one.sh`, `scripts/package/package_deb_compressed.sh`, `package_pacman_compressed.sh` | UPX variants; contract in `docs/compressed-line.md` |
+| Wrapper appendix | `tools/produce-local.sh`, `scripts/package/package_deb.sh`, `package_pacman.sh` | glibc loader line — not the mainline |
+| Upstream drift probe | `scripts/ci/probe-latest-opencode.sh`, `.github/workflows/probe-upstream.yml` | must query `/tags` — upstream v2 has no GitHub Releases |
+| Release ops | `tools/fleet-push.py`, `scripts/push-stage.sh`, `docs/handover/release-runbook.md` | batch tags `PushYYMMDD`; never rebind or reuse an existing tag |
+| System-skill hooks | `scripts/hooks/run-system-skills.sh`, `packing/manifests/system-skills/*.json` | strict/network default to safe mode |
+| Plugin lifecycle | `tools/plugin-manager.sh`, `docs/plugin-management.md` | `file://` plugin paths on Termux |
 
 ## CODE MAP
 | Symbol | Type | Location | Refs | Role |
 |---|---|---|---:|---|
-| `all`, `batch`, `selfcheck`, `matrix` | Make targets | `Makefile` | high | primary workflow control surface |
-| `build_plugin` | shell function | `tools/plugin-manager.sh` | medium | plugin build pipeline (bun/npm + fallback) |
-| `cmd_install` / `cmd_update` / `cmd_rollback` | shell functions | `tools/plugin-manager.sh` | high | plugin lifecycle commands |
-| `run-system-skills.sh` entry flow | hook runner | `scripts/hooks/run-system-skills.sh` | high | post-install/post-upgrade hook orchestration |
-| `produce-local.sh` main flow | script entrypoint | `tools/produce-local.sh` | medium | runtime acquisition + wrapper + cleanup |
-| `upgrade-matrix.sh` main flow | script entrypoint | `tools/upgrade-matrix.sh` | medium | remote install/upgrade/downgrade simulation |
+| `resolve_dep_pins` | shell function | `scripts/lib/build-pins.sh` | high | per-version pty/opentui pins; unknown VER hard-fails, no network |
+| `require_clang` / `require_hardened` | shell function | `scripts/package/lib.sh` | high | packaging gates for the seccomp shim (#17/#36) |
+| `is_store_populated` / `require_pkg_installed` / `require_file` | shell function | `scripts/lib/build-guards.sh` | high | build-side guards (#42 class silent failures) |
+| `transplant.py` main flow | python | `tools/transplant/transplant.py` | high | A-line revival pipeline |
+| `cmd_install` / `cmd_update` / `cmd_rollback` | shell function | `tools/plugin-manager.sh` | high | plugin lifecycle commands |
+| `compressed-one.sh` main flow | shell entrypoint | `tools/compressed-one.sh` | high | single-version compressed pipeline |
 
 ## CONVENTIONS
 - Shell scripts use strict mode (`set -euo pipefail`) and fail-fast checks for required binaries/files.
-- Runtime/package scripts rely on uppercase env knobs (`VER`, `VERS`, `PKG`, `ODIR`, `MIX`, `STAGED_PREFIX`, `PACKAGER_NAME`).
-- Hook execution is explicit and safe-by-default (`OPENCODE_HOOK_STRICT=0`, `OPENCODE_HOOK_ENABLE_NETWORK=0`) in package lifecycle paths.
-- Packaging sources live under `packing/*` templates; versioned package files are generated artifacts.
+- Runtime/package scripts rely on uppercase env knobs (`VER`, `VERS`, `PKG`, `TAG`, `PKGREL`, `STAGED_PREFIX`).
+- **Fail loud, never silent-skip**: if an upstream anchor drifts, the build must fail rather than ship a broken artifact (issue #42).
+- Hook execution is explicit and safe-by-default (`OPENCODE_HOOK_STRICT=0`, `OPENCODE_HOOK_ENABLE_NETWORK=0`).
+- Packaging sources live under `packing/*`; versioned packages are generated artifacts.
 
 ## ANTI-PATTERNS (THIS PROJECT)
-- Do not use musl/proot as official Termux final runtime path (`README.md`, `docs/local-production.md`).
-- Do not treat CI armv7 handoff artifacts as final release binaries.
-- Do not edit generated outputs (`artifacts/`, `packing/dpkg/work/`, `packing/pacman/pkg/`, versioned `.deb` / `.pkg.tar.xz`).
-- Do not run staging/packaging scripts against shared or wrong prefixes: several flows use destructive `rm -rf` cleanup.
+- Do not use musl/proot as the official Termux runtime path.
+- Do not treat CI armv7 handoff artifacts as release binaries.
+- Do not edit generated outputs (`artifacts/`, `packing/dpkg/work/`, `packing/pacman/pkg/`, versioned packages).
+- Do not rebind or reuse an existing batch tag; a new batch means a new `PushYYMMDD` tag.
+- Do not ship an un-hardened native binary (`ALLOW_UNHARDENED=1` is rollback/debug only).
+- Do not run staging/packaging scripts against shared or wrong prefixes (several flows use destructive `rm -rf`).
 
 ## UNIQUE STYLES
 - Packaging and hook flows are manifest-driven (`packing/manifests/system-skills/*.json`) with idempotency + registry updates.
-- Plugin management is Termux-biased toward local `file://.../index.js` registration instead of bare plugin name mode.
-- CI armv7 jobs emit JSON status artifacts (`status/*.json`) and logs for diagnosis-first iteration.
+- Plugin management is Termux-biased toward local `file://.../index.js` registration.
+- CI armv7 jobs emit JSON status artifacts (`status/*.json`), diagnosis-first.
 
 ## COMMANDS
 ```bash
-# Runtime preparation (mainline local flow)
-./tools/produce-local.sh 1.2.10
+# v2 native mainline (B line) / compressed / v1
+make family-v2-native VER=2.0.31
+make family-v2-compressed VER=2.0.31
+make family-native VER=1.19.3
 
-# Build/package via make
-make all VER=1.2.10 PKG=both
-make batch VERS='1.2.10 1.2.11' PKG=deb
+# Upstream drift check (queries tags, exits 1 on drift)
+bash scripts/ci/probe-latest-opencode.sh --check
 
-# Validation
-make selfcheck
-make matrix VERS='1.2.9 1.2.10' TARGET_HOST=192.168.1.22 TARGET_USER=u0_a258
-
-# Direct package scripts
-./scripts/package/package_deb.sh
-./scripts/package/package_pacman.sh
+# Shell unit tests
+./tests/run.sh
 ```
 
 ## NOTES
-- `packing/` (default outputs) and `packing/` (templates/manifests) are different; keep them conceptually separate.
-- When adding new workflow-critical scripts, update both `docs/README.md` navigation and this root map.
+- `packing/` holds both templates/manifests and generated outputs — keep them conceptually separate.
+- When adding workflow-critical scripts, update both `docs/README.md` (index) and this root map.
+- Release discipline and current-batch discovery: `docs/handover/release-runbook.md` + `gh release list`.

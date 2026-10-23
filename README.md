@@ -90,10 +90,13 @@ The Termux soft keyboard cannot send shift+tab, which makes the default `agent.c
 
 ### Stable releases
 
-Packages are published on [GitHub Releases](https://github.com/Hope2333/opencode-termux/releases) under rolling tags:
+Packages are published on [GitHub Releases](https://github.com/Hope2333/opencode-termux/releases) under rolling batch tags (`PushYYMMDD`). The latest batch is whatever the releases page lists first — this file intentionally does not hard-code it:
 
-- `Push260922` -- **RC3**: v2.0.[0-12] native & wrapper + v1.18.[30-32] three families, all PKGREL=3 (70 assets, per-file digest-verified)
-- `Push260912` -- archived (prerelease)
+```bash
+gh release list -R Hope2333/opencode-termux -L 3   # newest batches
+```
+
+Each batch ships the native / wrapper / compressed families for its version range, and `SHA256SUMS.txt` in the batch covers every asset.
 
 ### Package formats
 
@@ -123,7 +126,7 @@ See [docs/make-maintainer.md](./docs/make-maintainer.md) for full build referenc
 
 ## v1 and v2 (two generations)
 
-v2 (`opencode*`, 2.0.x) is the mainline; v1 (`opencode1*`, 1.18.30–32) is maintained and **coexists** with v2 — install both side by side:
+v2 (`opencode*`, 2.0.x → 2.1.x) is the mainline; v1 (`opencode1*`, 1.18.x → 1.19.x) is maintained and **coexists** with v2 — install both side by side:
 
 ```bash
 pacman -S opencode            # v2 mainline

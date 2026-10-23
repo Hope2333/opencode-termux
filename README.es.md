@@ -90,10 +90,13 @@ Alternativa sin configuración: pulsa `<leader>a` (el leader predeterminado es c
 
 ### Lanzamientos estables
 
-Los paquetes se publican en [GitHub Releases](https://github.com/Hope2333/opencode-termux/releases) con tags rotativos:
+Los paquetes se publican en [GitHub Releases](https://github.com/Hope2333/opencode-termux/releases) con tags de lote (`PushYYMMDD`). El lote más reciente es el que muestre la página de releases; este archivo no lo fija:
 
-- `Push260922` -- **RC3**: v2.0.[0-12] native y wrapper + v1.18.[30-32] tres familias, todo PKGREL=3 (70 assets, verificados por digest)
-- `Push260912` -- archivado (prerelease)
+```bash
+gh release list -R Hope2333/opencode-termux -L 3   # últimos 3 lotes
+```
+
+Cada lote incluye las familias native / wrapper / compressed de su rango de versiones, y su `SHA256SUMS.txt` cubre todos los assets.
 
 ### Formatos de paquete
 
@@ -123,7 +126,7 @@ Consulta [docs/make-maintainer.md](./docs/make-maintainer.md) para la referencia
 
 ## v1 y v2 (dos generaciones)
 
-v2 (`opencode*`, 2.0.x) es la línea principal; v1 (`opencode1*`, 1.18.30–32) se mantiene y **coexiste** con v2 — instala ambos en paralelo:
+v2 (`opencode*`, 2.0.x → 2.1.x) es la línea principal; v1 (`opencode1*`, 1.18.x → 1.19.x) se mantiene y **coexiste** con v2 — instala ambos en paralelo:
 
 ```bash
 pacman -S opencode            # línea principal v2

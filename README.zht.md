@@ -90,10 +90,13 @@ Termux 軟鍵盤無法送出 shift+tab，`agent.cycle`（切換 build/plan agent
 
 ### 穩定版
 
-套件發布在 [GitHub Releases](https://github.com/Hope2333/opencode-termux/releases)，滾動 tag：
+套件發布在 [GitHub Releases](https://github.com/Hope2333/opencode-termux/releases)，按批次 tag（`PushYYMMDD`）滾動。最新批次以發布頁為準，本文不硬編碼：
 
-- `Push260922` -- **RC3**：v2.0.[0-12] native 與 wrapper + v1.18.[30-32] 三族，全量 PKGREL=3（70 件，逐筆 digest 對帳）
-- `Push260912` -- 已歸檔（prerelease）
+```bash
+gh release list -R Hope2333/opencode-termux -L 3   # 最近三批
+```
+
+每批包含對應版本區間的 native / wrapper / compressed 三族，批次內 `SHA256SUMS.txt` 覆蓋全部資產。
 
 ### 套件格式
 
@@ -123,7 +126,7 @@ make pacman-native VER=2.0.0
 
 ## v1 與 v2（雙代）
 
-v2（`opencode*`，2.0.x）為主線；v1（`opencode1*`，1.18.30–32）持續維護並與 v2 **共存**——可雙裝：
+v2（`opencode*`，2.0.x → 2.1.x）為主線；v1（`opencode1*`，1.18.x → 1.19.x）持續維護並與 v2 **共存**——可雙裝：
 
 ```bash
 pacman -S opencode            # v2 主線

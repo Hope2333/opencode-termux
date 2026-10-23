@@ -97,7 +97,6 @@ if [[ -f "$DOCS_LIST" ]]; then
 	done <"$DOCS_LIST"
 fi
 
-# Compile statx-seccomp shim for Android/Termux compatibility
 write_build_meta "$ROOT_DIR/artifacts/opencode/build.meta" \
 	"component=opencode" \
 	"prefix=$PREFIX_DIR" \

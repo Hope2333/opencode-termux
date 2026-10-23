@@ -119,7 +119,9 @@ resolve the conflict by replacing the other provider.
 
 **互斥教义**：三家族（`opencode` native 主线 / `opencode-wrapper` / `opencode-compressed`）互斥不可共存；`opencode-wrapper` 的 deb 现为硬互斥（`Conflicts: opencode, opencode-native, opencode-compressed`；无 `Replaces`）。
 
-### 逐 tag 分类表（ground truth：`gh release list` + `gh release view` 资产实测，2026-09-06）
+### 逐 tag 分类表（历史快照：2026-09-06 的 `gh release list` + `gh release view` 资产实测）
+
+> 本表仅供**考古/分类参考**，不是安装指引——批次已推进多代。现行安装请直接取最新 tag（`gh release list -L 3`）。
 
 | Tag | plain `opencode_*` 归属 | 证据（大小 + 家族标记） | 备注 |
 |---|---|---|---|
@@ -140,23 +142,23 @@ resolve the conflict by replacing the other provider.
 
 ### 当前安装指引
 
-- 安装一律取 `Push260906`（或更新的 tag）：native 主线下 `opencode_<v>_aarch64.deb` / `opencode-<v>-1-aarch64.pkg.tar.xz`；wrapper 附录下 `opencode-wrapper_<v>_aarch64.deb` / `opencode-wrapper-<v>-1-aarch64.pkg.tar.xz`；压缩变体 `opencode-compressed_*`；UPX 运行时资产 `opencode-native-<v>-upx.xz`。
+- 安装取**最新批次 tag**（`gh release list -R Hope2333/opencode-termux -L 3` 查，本表停于 2026-09-06）：native 主线下 `opencode_<v>_aarch64.deb` / `opencode-<v>-1-aarch64.pkg.tar.xz`；wrapper 附录下 `opencode-wrapper_<v>_aarch64.deb` / `opencode-wrapper-<v>-1-aarch64.pkg.tar.xz`；压缩变体 `opencode-compressed_*`；UPX 运行时资产 `opencode-native-<v>-upx.xz`。
 - 勿从 `Push260903`（降级批次）下载任何资产。
 
 ## v2.0.0 GA 替换说明（2026-09-21）
 
-opencode 2.0.0 是全线替换版本（GA mainline），v1.18.31 为 v1 最终封版。
+opencode 2.0.0 是全线替换版本（GA mainline）。v1 后续仍发布到 1.19.x（`opencode1*` 包名），与 v2 并存；「1.18.31 封版」是当时的说法，已被后续发布推翻。
 
-| | v1（1.18.31 封版） | v2（2.0.0 GA） |
+| | v1（`opencode1*`，现 1.19.x） | v2（`opencode*`，现 2.0.x→2.1.x） |
 |---|---|---|
 | 构建线 | A 线（transplant 复活） | **B 线（android bun 源码编译）** |
 | 包名 | `opencode`（native）/ `opencode-wrapper`（glibc） | 同 v1（继承包名） |
 | TUI | ✅ | ✅（B 线构建） |
 | 插件 | V1 格式 | **V2 不兼容 V1** |
 
-### v1 包名变更（条件性）
+### v1 包名变更（已发生）
 
-如果后续 v1 出新版本需维护，包名从 `opencode*` 改为 `opencode1*`，与 v2 互斥。
+v1 新版本自 1.18.32 起已按 `opencode1*` 发布，与 v2 互斥——不再是「如果后续需要维护」的条件句。
 
 ### v1 wrapper standalone 弃用
 

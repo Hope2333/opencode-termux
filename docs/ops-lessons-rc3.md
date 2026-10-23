@@ -41,12 +41,14 @@
 - fleet-push fetch 进度回归：`fetch.py` 的 `Content-Length` 可能被代理/分块剥掉 → 进度条恒 0%（下载本身正常）。已改为控制器传入期望 size 兜底（`f5102fb`），`pct` 封顶 100。
 - 上传侧替代：curl `-K` 配置文件 + `--resolve` 真 IP；或直连代理放行后普通 curl（当前路径）。
 
-## 6. ⚠️ OPEN：v2 native 包缺 seccomp shim（#17/#24 实证）
+## 6. ✅ CLOSED（2026-10 收口）：v2 native 包缺 seccomp shim（#17/#24 实证）
+
+> **收口注（2026-10）**：`217f88d`/`080a6fd` 起 `family-v2-native` 与 compressed 链均接入 harden，打包端 ship `lib/opencode/libopencode-crhandler.so`；Push261016 的 v1/v2 全家族已 hardened，#36 报告人 Android 12 复测通过、#37 的 Android 11 设备按 `readelf -dW | grep crhandler` 可自证。以下为历史记录。
 
 - 现象：kernel 4.19（Android 11）上 v2 native `opencode 2.0.12-3` SIGSYS（Bad system call, exit 159）；包内只有 `usr/bin/opencode`，无 shim。v1 `opencode1 1.18.32-3` 正常（`lib/opencode/libopencode-crhandler.so` 在包内）。
 - 实证：`LD_PRELOAD=$PREFIX/lib/opencode/libopencode-crhandler.so opencode --version` → exit 0。
 - 根因：`family-v2-native` 链路**不经过** `harden-native`（仅 family-v2-compressed 走 harden），且 `deb-native/pacman-native` 不 ship shim。
-- **待办**：family-v2-native 接入 harden-native + deb/pacman-native 打包 ship shim（v1 布局 `lib/opencode/` + DT_RUNPATH），重建 v2 native 架上资产。修复前 workaround：`LD_PRELOAD=$PREFIX/lib/opencode/libopencode-crhandler.so opencode`。
+- ~~**待办**：family-v2-native 接入 harden-native + deb/pacman-native 打包 ship shim（v1 布局 `lib/opencode/` + DT_RUNPATH），重建 v2 native 架上资产。~~ **已完成（见上方收口注）**。历史 workaround：`LD_PRELOAD=$PREFIX/lib/opencode/libopencode-crhandler.so opencode`。
 - 待澄清：#17 报告 `pacman -U` 尝试写 `/usr`——本机 Termux pacman `pacman -U` 正常（2.0.18-1 实装验证），需对方提供 `pacman -v`（RootDir/DBPath）判断其 pacman 配置差异。
 
 ## 7. 社区运营模板

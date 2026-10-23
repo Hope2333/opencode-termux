@@ -90,10 +90,13 @@ Termux 软键盘发不出 shift+tab，而 v2 切换 build/plan agent 的 `agent.
 
 ### 稳定版
 
-包发布在 [GitHub Releases](https://github.com/Hope2333/opencode-termux/releases)，滚动 tag：
+包发布在 [GitHub Releases](https://github.com/Hope2333/opencode-termux/releases)，按批次 tag（`PushYYMMDD`）滚动。最新批次以发布页为准，本文不硬编码：
 
-- `Push260922` -- **RC3**：v2.0.[0-12] native 与 wrapper + v1.18.[30-32] 三族，全量 PKGREL=3（70 件，逐件 digest 对账）
-- `Push260912` -- 已归档（prerelease）
+```bash
+gh release list -R Hope2333/opencode-termux -L 3   # 最近三批
+```
+
+每批包含对应版本区间的 native / wrapper / compressed 三族，批次内 `SHA256SUMS.txt` 覆盖全部资产。
 
 ### 包类型
 
@@ -123,7 +126,7 @@ make pacman-native VER=2.0.0
 
 ## v1 与 v2（双代）
 
-v2（`opencode*`，2.0.x）为主线；v1（`opencode1*`，1.18.30–32）持续维护并与 v2 **共存**——可双装：
+v2（`opencode*`，2.0.x → 2.1.x）为主线；v1（`opencode1*`，1.18.x → 1.19.x）持续维护并与 v2 **共存**——可双装：
 
 ```bash
 pacman -S opencode            # v2 主线

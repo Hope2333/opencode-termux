@@ -38,7 +38,7 @@ error: no embedded Bun runtime (missing BUNWRAP1)
 |------|------|------|
 | `strip` | 减少 10-30% | ✅ 构建时自动执行 |
 | `zstd -19` 分发压缩 | 减少 60-70% | ✅ 仅用于打包分发 |
-| UPX | 减少 50-70% | ❌ 不可用 |
+| UPX | 减少 50-70% | ✅ 可用（v1/v2 compressed 族；v2 需 stub memfd 补丁，见 ops-lessons-rc3.md §11–§12） |
 
 详见：[12-bun-executable-structure.md](./12-bun-executable-structure.md)
 
@@ -121,7 +121,7 @@ error: no embedded Bun runtime (missing BUNWRAP1)
 |------|-------|---------|---------|
 | Hope2333/opencode-termux | #25 | OpenTUI 0.5.12 chunk 文件名漂移破构建 | 已修：apply-platform-patch.sh 动态发现（ce1c2ca），已关闭 |
 | Hope2333/opencode-termux | #23/#24/#17 | bun 1.4.2 SIGSEGV@0x40 / SIGSYS 报告 | RC3 全家族 bun 1.4.0 重建；v1 1.18.32-3 已获用户实证通过 |
-| Hope2333/opencode-termux | #17（open item） | **v2 native 包缺 seccomp shim**：kernel 4.19 上 SIGSYS，LD_PRELOAD v1 shim 可解 | 待办：family-v2-native 接 harden-native + deb/pacman-native ship shim，重建上架；详见 ops-lessons-rc3.md §6 |
+| Hope2333/opencode-termux | #17/#24/#36/#37 | **native 包缺 seccomp shim（已修）**：kernel 4.19/4.14 上 close_range SIGSYS | 修复：family-v2-native/compressed 接 harden-native，打包 ship `libopencode-crhandler.so`（`217f88d`/`080a6fd`）；Push261016 起全家族 hardened，用户实测通过；详见 ops-lessons-rc3.md §6 收口注 |
 
 ## 2026-09-29 追加（RC4 实测反馈，mozzaru 2/2 复现）
 

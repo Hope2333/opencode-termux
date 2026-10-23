@@ -2,7 +2,7 @@
 
 > **适用**：opencode-termux 滚动 Push tag 发布全流程（v1 `opencode1*` 1.18.x + v2 `opencode*` 2.0.x 双代）。
 > **来源**：`docs/ops-lessons-rc3.md`（2026-09-28 起 RC3/RC4/RC5 实战）、`docs/native-line-evolution.md`（2026-09-28 RC4 收口期）、`docs/make-maintainer.md`、`.omo/plans/termux-asset-update.md`（v12.x changelog + TL;DR）、`Makefile` help 段。
-> **事实基线**：RC5 = Push260930（2026-09-30，B1/native-gnu 定版，38 件，PKGREL=5）；RC4 = Push260928（2026-09-29，B2/native-musl 定版，96 资产存档）。
+> **事实基线（历史）**：RC5 = Push260930 已于 2026-10-01 **撤销**（标 prerelease + REVOKED banner，见 `docs/ops-lessons-rc3.md` §11）——**不要再把它当定版发布**；RC4 = Push260928（2026-09-29，96 资产存档）。当前批次一律以 `gh release list` 为准，本文不硬编码最新 tag。
 > **旁注**：实验机 10.254.129.10:8022 于 2026-09-30 快照离线，第 9 节双机验证待设备上线。
 
 ---
@@ -227,7 +227,7 @@ curl -s "https://github.com/Hope2333/opencode-termux/releases/latest/download/Pa
 git push https://github.com/Hope2333/<repo>.git <branch>    # 普通 push 可走 HTTPS（先 gh auth setup-git）
 ```
 
-- 正式发布后让位规则：新 Push 上架 → 旧 Push 降 prerelease 归档（Push260912→Push260922→Push260928 链），`releases/latest` 自动跟随最新正式件。
+- 正式发布后让位规则：新 Push 上架 → 旧 Push 降 prerelease 归档，`releases/latest` 自动跟随最新正式件。
 - 统一 db 保鲜：`make sync-db`（`DRY=1` 演练）兜底（site.yml HOPE_PAT 门控为双轨之一）。
 - 收尾：`tools/maintain.sh --upload … --auto-clean` 或 `make clear`，并按 `.omo/plans/termux-asset-update.md` Wave 6 清理 + 重置计划状态。
 

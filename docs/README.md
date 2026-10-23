@@ -6,7 +6,7 @@ This directory is the single source of truth for the current Termux packing/runt
 
 - `execution-checklist.md` — install/test runbook (default Termux apt first, pacman path second)
 - `skills-index.md` — concise index for prompts + quick fixes
-- `13-opencode-runtime-build.md` — canonical runtime build path (official `opencode-linux-arm64` + bun-termux-loader)
+- `transplant.md` (A line) + `scripts/build-bionic.sh` (B line) — canonical runtime build paths; `13-opencode-runtime-build.md` is a 2026-02 wrapper-era snapshot (historical, kept for reference)
 - `20-packaging-deb.md` / `21-packaging-pkg-tar-xz.md` — package layout and build outputs
 - `22-termux-services-opencode-web.md` — service behavior and web mode notes
 - `30-ci-local-build-matrix.md` — local/CI validation matrix
@@ -64,7 +64,7 @@ This directory is the single source of truth for the current Termux packing/runt
 - Old generated `artifacts/staged`, `packing/dpkg/work`, `packing/pacman/src` can contain stale runtime versions
 - `sv status opencode-web` in Termux should use full service path (`$PREFIX/var/service/opencode-web`)
 - `opencode web` under runit may restart-loop and accumulate `.*-0000*.so` files if startup crashes
-- **statx seccomp crash (kernel-dependent)**: some Android seccomp filters block `statx()` → SIGSYS → SIGSEGV; others let it through (verified working via strace on Android 11 / kernel 4.14, issue #37). The statx shim (`libstatx-shim.so`) is automatically compiled during staging and preloaded via launcher. Disable with `OPENCODE_DISABLE_STATX_SHIM=1`.
+- **statx seccomp crash (kernel-dependent)**: some Android seccomp filters block `statx()` → SIGSYS → SIGSEGV; others let it through (verified via strace on Android 11 / kernel 4.14, issue #37). **No statx shim is built or preloaded by the current packaging path** — a stale comment in `scripts/build.sh` claimed one was compiled (removed 2026-10); the epoll shim's syscall table mentions statx but is unrelated. Historical wrapper-line notes mentioned a shim and an env toggle; they do not apply to the current scripts. If you hit a statx trap, report device + kernel.
 
 ## Install policy summary
 

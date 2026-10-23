@@ -90,10 +90,13 @@ Termux のソフトキーボードは shift+tab を送出できず、`agent.cycl
 
 ### 安定版リリース
 
-パッケージは [GitHub Releases](https://github.com/Hope2333/opencode-termux/releases) にローリングタグで公開されます：
+パッケージは [GitHub Releases](https://github.com/Hope2333/opencode-termux/releases) にバッチタグ（`PushYYMMDD`）でローリング公開されます。最新バッチはリリースページを参照してください（本文では固定しません）：
 
-- `Push260922` -- **RC3**：v2.0.[0-12] native & wrapper + v1.18.[30-32] 3 ファミリー、全て PKGREL=3（70 アセット、digest 照合済み）
-- `Push260912` -- アーカイブ済み（prerelease）
+```bash
+gh release list -R Hope2333/opencode-termux -L 3   # 直近 3 バッチ
+```
+
+各バッチには対象バージョン範囲の native / wrapper / compressed が含まれ、バッチ内の `SHA256SUMS.txt` が全アセットをカバーします。
 
 ### パッケージ形式
 
@@ -123,7 +126,7 @@ make pacman-native VER=2.0.0
 
 ## v1 と v2（二世代）
 
-v2（`opencode*`、2.0.x）がメインライン。v1（`opencode1*`、1.18.30–32）はメンテナンス継続中で v2 と**共存**します — 両方同時にインストール可能：
+v2（`opencode*`、2.0.x → 2.1.x）がメインライン。v1（`opencode1*`、1.18.x → 1.19.x）はメンテナンス継続中で v2 と**共存**します — 両方同時にインストール可能：
 
 ```bash
 pacman -S opencode            # v2 メインライン

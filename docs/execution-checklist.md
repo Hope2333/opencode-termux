@@ -8,9 +8,9 @@
 2. Download `prebuild-armv7-bundle`
 3. Verify `manifest.json` and `checksums.txt`
 
-## Phase B (local Termux final package)
+## Phase B (local Termux final package – wrapper appendix line)
 
-> Status: mainline release path.
+> Status: **wrapper appendix** (`opencode-wrapper`) local build path. The native mainline (`opencode` 2.x) is built via `make family-v2-native` or `make transplant` (see `docs/transplant.md`); this section keeps the legacy wrapper workflow for the appendix family.
 
 1. Prepare runtime: `tools/produce-local.sh <version>`
    - If npm has no requested version, script falls back to GitHub release binary download for that version.
@@ -50,9 +50,9 @@
 5. Export or apply local patches when upstream changes break runtime
 6. If package-mode system skills are used, verify hook runner log + manifest status after install/upgrade
 
-## Machine2 first-time prep
+## Machine2 first-time prep (wrapper appendix only)
 
-Before opencode install tests on a clean machine2:
+The native mainline (`opencode` 2.x) is **zero-glibc** — it needs none of the packages below. They apply only to the `opencode-wrapper` appendix line (glibc loader):
 
 1. `apt install -y glibc-repo`
 2. `apt update`
@@ -61,9 +61,9 @@ Before opencode install tests on a clean machine2:
 
 Then run package install and behavior verification (`opencode --version`, `opencode --help`, `opencode web`).
 
-## Pacman-primary machine prep
+## Pacman-primary machine prep (wrapper appendix only)
 
-For Termux environments that already use pacman as primary package manager:
+For Termux environments that already use pacman as primary package manager — glibc packages are only needed by the wrapper appendix, not by the native mainline:
 
 1. `pacman -Syu`
 2. `pacman -S glibc openssl-glibc`
