@@ -408,6 +408,10 @@ src = src.replace(old_run, 'if (!options?.skipBuild) await $`bun run build`', 1)
 open(f, 'w').write(src)
 print("    app-assets.ts patched (skipBuild -> collect-only)")
 PY_PATCH
+elif [[ -f "$APP_TS" ]] && grep -qF 'if (!options?.skipBuild) await $`bun run build`' "$APP_TS"; then
+  # Idempotency: a previous build on the same (preserved) source tree already
+  # patched the file. Treat the patched form as success instead of "drift".
+  echo "==> web-ui: app-assets.ts already patched (idempotent skip)"
 else
   echo "Error: app-assets.ts skipBuild guard not found — anchor drifted upstream; refusing to build an empty-archive binary (#22 regression, issue #42)" >&2
   exit 1
