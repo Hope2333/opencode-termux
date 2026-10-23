@@ -11,7 +11,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PACKAGER_NAME="${PACKAGER_NAME:-Hope2333(幽零小喵) <u0catmiao@proton.me>}"
-PKGREL="${PKGREL:-1}"
+PKGREL="$(pkgrel_default)"
 TRANSPLANT_ROOT="${TRANSPLANT_ROOT:-$ROOT_DIR/artifacts/transplant}"
 
 require_cmd makepkg
@@ -20,10 +20,8 @@ require_cmd makepkg
 VERSION="$(resolve_version "$TRANSPLANT_ROOT")"
 
 # v1 (1.x) packages are renamed opencode1 (coexist with v2); v2 keeps `opencode`.
-case "$VERSION" in
-	1.*) PKG_NAME="opencode1" ;;
-	*)   PKG_NAME="opencode" ;;
-esac
+# Single-source dispatch lives in lib.sh:pkg_base_name (docs-reorg-maint E2).
+PKG_NAME="$(pkg_base_name "$VERSION")"
 
 # hook_enabled NAME DEFAULT-GLOB — packaging hook registry resolver (Makefile:
 # HOOKS_ENABLE / HOOKS_DISABLE / HOOK_*_VERSIONS). HOOKS_DISABLE wins over

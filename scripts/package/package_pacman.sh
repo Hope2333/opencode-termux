@@ -1,10 +1,11 @@
 #!/data/data/com.termux/files/usr/bin/bash
 set -euo pipefail
+. "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 STAGED_PREFIX="${STAGED_PREFIX:-$ROOT_DIR/artifacts/staged/prefix}"
 PACKAGER_NAME="${PACKAGER_NAME:-Hope2333(幽零小喵) <u0catmiao@proton.me>}"
-PKGREL="${PKGREL:-1}"
+PKGREL="$(pkgrel_default)"
 
 [[ -x "$STAGED_PREFIX/lib/opencode/runtime/opencode" ]] || {
 	echo "Error: missing OpenCode runtime"

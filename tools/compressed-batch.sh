@@ -6,7 +6,7 @@
 #   VERS="2.0.23 2.0.24" compressed-batch.sh        # 或环境变量给版本列表
 #   compressed-batch.sh --dry-run <ver>...          # 只判定不构建（不触网上传，只查远端）
 # 环境变量:
-#   TAG=<批次 tag>          源与上传目标 release（默认 Push261013）
+#   TAG=<批次 tag>          源与上传目标 release（必填，无默认值）
 #   WORKROOT=<目录>         缓存根（与 compressed-one.sh 共享，默认 ~/tmp/compressed-one）
 #   OCOMP_FAMILY=opencode   家族（v1 用 opencode1）
 #   UPLOAD=1                透传 compressed-one（默认 1；--dry-run 忽略）
@@ -22,7 +22,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FAMILY="${OCOMP_FAMILY:-opencode}"
-TAG="${TAG:-Push261013}"
+TAG="${TAG:?TAG is required (batch tag, e.g. Push261016) — no stale default}"
 REPO="Hope2333/opencode-termux"
 WORKROOT="${WORKROOT:-$HOME/tmp/compressed-one}"
 MAX_FAILS="${MAX_FAILS:-2}"

@@ -49,7 +49,7 @@ case "$OCOMP_LAYOUT" in
 esac
 PKG_NAME="${FAMILY}-compressed"
 PACKAGER_NAME="${PACKAGER_NAME:-Hope2333(幽零小喵) <u0catmiao@proton.me>}"
-PKGREL="${PKGREL:-1}"
+PKGREL="$(pkgrel_default)"
 TRANSPLANT_ROOT="${TRANSPLANT_ROOT:-$ROOT_DIR/artifacts/transplant}"
 
 # Optional-shim selection (OCOMP_SHIMS): space-separated subset of

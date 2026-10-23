@@ -85,8 +85,9 @@ LOG_PATH = (os.path.join(REPO_ROOT, ".omo", "evidence",
 
 # 批次滚动 tag：每批 fleet 换一个 tag（上一批 Push260903 = 压制产物批次；
 # 本批 Push261005 = 未压缩原包/压制输入，外包压制完成后压缩资产回传到本批 tag）。
-# 可用环境变量覆盖，便于同一批次内临时指向 rc 标签：FLEET_TAG=Push261005rc1
-RELEASE_TAG = os.environ.get("FLEET_TAG", "Push261005")
+# 无默认值：批次会滚动，写死默认值会静默传错批（docs-reorg-maint E2）。
+# 覆盖方式：FLEET_TAG=<tag> 或 TAG=<tag> 环境变量，或 --tag CLI 参数。
+RELEASE_TAG = os.environ.get("FLEET_TAG") or os.environ.get("TAG") or ""
 
 # ── 资产形态：raw（发布未压缩原包）vs upx（历史压制资产） ──────────────
 #

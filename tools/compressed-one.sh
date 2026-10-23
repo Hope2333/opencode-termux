@@ -20,12 +20,14 @@ set -euo pipefail
 VER="${1:?usage: compressed-one.sh <version> [upload|noupload] [--noupx]}"
 DO_UPLOAD="${2:-upload}"            # upload | noupload
 [[ "${3:-}" == "--noupx" ]] && NOUPX=1 || NOUPX="${NOUPX:-0}"
-TAG="${TAG:-Push261013}"
-REPO="Hope2333/opencode-termux"
+TAG="${TAG:?TAG is required (batch tag, e.g. Push261016) — make compressed-one passes it automatically}"
+REPO="${REPO:-Hope2333/opencode-termux}"
 FAMILY="${OCOMP_FAMILY:-opencode}"
 
 # REPO_ROOT 经 BASH_SOURCE 推导（tools/ 的上一级），禁硬编码 home
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=scripts/package/lib.sh
+. "$REPO_ROOT/scripts/package/lib.sh"
 UPX_BIN="${UPX_BIN:-$REPO_ROOT/tools/upx-stub/upx-custom-aarch64}"
 SHIM_SO="${SHIM_SO:-$REPO_ROOT/tools/upx-stub/shims/libopencode-crhandler.so}"
 WORKROOT="${WORKROOT:-$HOME/tmp/compressed-one}"
@@ -62,10 +64,10 @@ if [[ "$FAMILY" == "opencode1" ]]; then MIN_RT=120000000; else MIN_RT=200000000;
 # （issue #36：shim 随包但未 interpose=死文件）。手术在 UPX 前（零位移 DT 编辑）。
 if [[ "$NOUPX" == "1" ]]; then
   # 外部件：已手术放行，未手术拒绝（不手术已压件=UPX×graft 必崩，v12.4 教训）
-  grep -aqF libopencode-crhandler.so "$COMP" 2>/dev/null || {
+  is_hardened "$COMP" 2>/dev/null || {
     echo "FATAL: NOUPX=1 external binary not hardened (no crhandler DT_NEEDED) — pass a hardened binary"; exit 1; }
   echo "[harden] external binary already hardened"
-elif ! grep -aqF libopencode-crhandler.so "$RUNTIME" 2>/dev/null; then
+elif ! is_hardened "$RUNTIME" 2>/dev/null; then
   [[ -f "$SHIM_SO" ]] || { echo "FATAL: shim missing: $SHIM_SO"; exit 1; }
   cp "$SHIM_SO" "$RT/$VER/libopencode-crhandler.so"
   cp -p "$RUNTIME" "$RUNTIME.pre-crhandler"

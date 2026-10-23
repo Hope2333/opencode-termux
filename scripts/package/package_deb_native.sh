@@ -37,9 +37,11 @@ NATIVE_BIN="$TRANSPLANT_ROOT/$VERSION/opencode-native-tui"
 }
 
 # v1 (1.x) packages are renamed opencode1 (coexist with v2); v2 keeps `opencode`.
+# Single-source dispatch lives in lib.sh:pkg_base_name (docs-reorg-maint E2).
+PKG_NAME="$(pkg_base_name "$VERSION")"
 case "$VERSION" in
-	1.*) PKG_NAME="opencode1"; PKG_CONFLICTS="opencode1-wrapper, opencode1-compressed, opencode1-wrapper-standalone"; PKG_REPLACES="opencode (<< 2.0.0)" ;;
-	*)   PKG_NAME="opencode";  PKG_CONFLICTS="opencode-wrapper"; PKG_REPLACES="" ;;
+	1.*) PKG_CONFLICTS="opencode1-wrapper, opencode1-compressed, opencode1-wrapper-standalone"; PKG_REPLACES="opencode (<< 2.0.0)" ;;
+	*)   PKG_CONFLICTS="opencode-wrapper"; PKG_REPLACES="" ;;
 esac
 
 # hook_enabled NAME DEFAULT-GLOB — packaging hook registry resolver (Makefile:
@@ -95,7 +97,7 @@ fi
 # W11: ship the self-activating seccomp shim when the binary references it
 # (DT_NEEDED libopencode-crhandler.so). It must land in $PREFIX/lib/opencode/
 # to satisfy the binary's DT_RUNPATH $ORIGIN/../lib/opencode.
-if grep -aqF libopencode-crhandler.so "$NATIVE_BIN"; then
+if is_hardened "$NATIVE_BIN"; then
 	SHIM_SO="$(dirname "$NATIVE_BIN")/libopencode-crhandler.so"
 	if [[ ! -f "$SHIM_SO" ]]; then
 		echo "Error: hardened binary references libopencode-crhandler.so but $SHIM_SO is missing" >&2

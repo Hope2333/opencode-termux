@@ -13,10 +13,11 @@
 #
 # Usage: package_wrapper_v2.sh <VER>   e.g. package_wrapper_v2.sh 2.0.5
 set -euo pipefail
+. "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 VER="${1:-${VERSION:-}}"
 [ -n "$VER" ] || { echo "Usage: $0 <VER>   e.g. $0 2.0.5" >&2; exit 2; }
-PKGREL="${PKGREL:-1}"
+PKGREL="$(pkgrel_default)"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"

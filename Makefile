@@ -30,6 +30,9 @@ HOOK_STALE_SERVE_KILL_VERSIONS ?= 2.0.[0-3]
 # Release upload target variables
 TAG ?= Push$(shell date +%y%m%d)
 REPO ?= Hope2333/opencode-termux
+# Single source for the package-name split (v1 1.* -> opencode1, v2 -> opencode).
+# Replaces the 9 inline `case $(VER) in 1.*)` expressions (docs-reorg-maint E2).
+PKG_BASE = $(if $(filter 1.%,$(VER)),opencode1,opencode)
 # Release staging dir: /tmp is not app-writable on Termux; honor TMPDIR
 RELEASE_DIR ?= $(if $(TMPDIR),$(TMPDIR),/tmp)/oc-release-$(TAG)
 NATIVE ?=
@@ -210,9 +213,9 @@ deb-native:
 	MAINTAINER='$(PACKAGER_NAME)' VERSION='$(VER)' HOOKS_ENABLE='$(HOOKS_ENABLE)' HOOKS_DISABLE='$(HOOKS_DISABLE)' HOOK_STALE_SERVE_KILL_VERSIONS='$(HOOK_STALE_SERVE_KILL_VERSIONS)' ./scripts/package/package_deb_native.sh
 	@if [ "$(OUTPUT_ROOT)" != "$(CURDIR)/packing" ]; then \
 		if [ "$(MIX)" = "1" ]; then \
-			mkdir -p "$(OUTPUT_ROOT)" && cp -f $$(case $(VER) in 1.*) echo opencode1;; *) echo opencode;; esac)_$(VER)_aarch64.deb "$(OUTPUT_ROOT)/"; \
+			mkdir -p "$(OUTPUT_ROOT)" && cp -f $(PKG_BASE)_$(VER)_aarch64.deb "$(OUTPUT_ROOT)/"; \
 		else \
-			mkdir -p "$(OUTPUT_ROOT)/deb" && cp -f $$(case $(VER) in 1.*) echo opencode1;; *) echo opencode;; esac)_$(VER)_aarch64.deb "$(OUTPUT_ROOT)/deb/"; \
+			mkdir -p "$(OUTPUT_ROOT)/deb" && cp -f $(PKG_BASE)_$(VER)_aarch64.deb "$(OUTPUT_ROOT)/deb/"; \
 		fi; \
 	fi
 
@@ -224,15 +227,15 @@ pacman-native:
 	rm -rf packing/pacman/pkg packing/pacman/src
 	PACKAGER_NAME='$(PACKAGER_NAME)' VERSION='$(VER)' HOOKS_ENABLE='$(HOOKS_ENABLE)' HOOKS_DISABLE='$(HOOKS_DISABLE)' HOOK_STALE_SERVE_KILL_VERSIONS='$(HOOK_STALE_SERVE_KILL_VERSIONS)' ./scripts/package/package_pacman_native.sh
 	@# phase0 兜底: repack any relative-convention output to absolute members (idempotent skip on absolute input)
-	@for f in packing/pacman/$$(case $(VER) in 1.*) echo opencode1;; *) echo opencode;; esac)-$(VER)-*.pkg.*; do \
+	@for f in packing/pacman/$(PKG_BASE)-$(VER)-*.pkg.*; do \
 		[ -f "$$f" ] || continue; \
 		bash tools/pkg-abs-repack.sh "$$f" || exit 1; \
 	done
 	@if [ "$(OUTPUT_ROOT)" != "$(CURDIR)/packing" ]; then \
 		if [ "$(MIX)" = "1" ]; then \
-			mkdir -p "$(OUTPUT_ROOT)" && cp -f packing/pacman/$$(case $(VER) in 1.*) echo opencode1;; *) echo opencode;; esac)-$(VER)-*.pkg.* "$(OUTPUT_ROOT)/"; \
+			mkdir -p "$(OUTPUT_ROOT)" && cp -f packing/pacman/$(PKG_BASE)-$(VER)-*.pkg.* "$(OUTPUT_ROOT)/"; \
 		else \
-			mkdir -p "$(OUTPUT_ROOT)/pacman" && cp -f packing/pacman/$$(case $(VER) in 1.*) echo opencode1;; *) echo opencode;; esac)-$(VER)-*.pkg.* "$(OUTPUT_ROOT)/pacman/"; \
+			mkdir -p "$(OUTPUT_ROOT)/pacman" && cp -f packing/pacman/$(PKG_BASE)-$(VER)-*.pkg.* "$(OUTPUT_ROOT)/pacman/"; \
 		fi; \
 	fi
 
@@ -406,7 +409,7 @@ seccomp-harden:
 	fi; \
 	echo "==> seccomp-harden VER=$(VER) source=$$SRC"; \
 	clang -shared -fPIC -O2 -o $(NATIVE_DIR)/libopencode-crhandler.so tools/shim/sigsys_handler.c || exit 1; \
-	if grep -aqF libopencode-crhandler.so "$$SRC"; then \
+	if bash "$(CURDIR)/scripts/lib/harden-check.sh" "$$SRC"; then \
 		echo "==> seccomp-harden: $$SRC already hardened, skip (shim rebuilt)"; \
 		exit 0; \
 	fi; \
@@ -417,7 +420,7 @@ seccomp-harden:
 	@# hardened binary. transplant.py produces both tui and revived, but
 	@# seccomp-harden patches only the preferred source (typically tui).
 	if [ "$$SRC" = "$(NATIVE_DIR)/opencode-native-tui" ] && [ -f "$(NATIVE_DIR)/opencode-native-revived" ]; then \
-		if ! grep -aqF libopencode-crhandler.so "$(NATIVE_DIR)/opencode-native-revived"; then \
+		if ! bash "$(CURDIR)/scripts/lib/harden-check.sh" "$(NATIVE_DIR)/opencode-native-revived"; then \
 			rm -f "$(NATIVE_DIR)/opencode-native-revived"; \
 			cp -p "$(NATIVE_DIR)/opencode-native-tui" "$(NATIVE_DIR)/opencode-native-revived"; \
 			echo "seccomp-harden: synced hardened tui -> revived"; \
@@ -788,7 +791,7 @@ release-upload:
 		exit 1; \
 	fi
 	@if [ "$(NATIVE)" = "1" ] || [ "$(NATIVE)" = "STABLE" ]; then \
-		case "$(NATIVE_VER)" in 1.*) np=opencode1;; *) np=opencode;; esac; \
+		np=$(if $(filter 1.%,$(NATIVE_VER)),opencode1,opencode); \
 		if [ ! -f "$(NATIVE_DIR)/opencode-native-revived" ] || [ -z "$$(ls -A $(NATIVE_DIR) 2>/dev/null)" ]; then \
 			echo "Error: NATIVE=$(NATIVE) but $(NATIVE_DIR) is missing or empty (anti-empty-release)" >&2; \
 			exit 1; \
@@ -804,7 +807,7 @@ release-upload:
 	if ! gh release view "$(TAG)" --repo "$(REPO)" >/dev/null 2>&1; then \
 		echo "Creating release $(TAG)..."; \
 		if [ "$(NATIVE)" = "STABLE" ]; then \
-		case "$(NATIVE_VER)" in 1.*) np=opencode1;; *) np=opencode;; esac; \
+		np=$(if $(filter 1.%,$(NATIVE_VER)),opencode1,opencode); \
 			gh release create "$(TAG)" --repo "$(REPO)" --title "$(TAG)" --notes "OpenCode for Termux. Mainline (stable since 27/28): native bionic line - opencode-<ver>-aarch64-android-native / opencode_<ver>_aarch64.deb / opencode-<ver>-*-aarch64.pkg.* - zero-wrapper, full TUI, Android API>=28. Appendix (legacy): wrapper packages opencode1-wrapper_<ver>_aarch64.deb / opencode1-wrapper-<ver>-aarch64.pkg.tar.*." 2>&1 || exit 1; \
 		else \
 			gh release create "$(TAG)" --repo "$(REPO)" --title "$(TAG)" --notes "Dual-track OpenCode for Termux. Track 1 (wrapper appendix, renamed opencode-wrapper): wrapper packages opencode1-wrapper_<ver>_aarch64.deb / opencode1-wrapper-<ver>-aarch64.pkg.tar.* - full TUI. Track 2 (native): v1=opencode1_<ver>_aarch64.deb / opencode1-<ver>-*-aarch64.pkg.* ; v2=opencode_* / opencode-<ver>-* / *-android-native assets - zero-wrapper, full TUI (bionic libopentui.so, W10a 5/5), Android API>=28." 2>&1 || exit 1; \
@@ -824,7 +827,7 @@ release-upload:
 	echo "    wrapper line (appendix, renamed opencode1-wrapper): opencode1-wrapper_<ver>_aarch64.deb / opencode1-wrapper-<ver>-aarch64.pkg.tar.*"; \
 	echo "    native line: v1=opencode1-<ver>* / v2=opencode-<ver>* (pkg+native-ELF+report+watcher); UPX asset stays opencode-native-<ver>-upx.xz"; \
 	if [ "$(NATIVE)" = "1" ] || [ "$(NATIVE)" = "STABLE" ]; then \
-		case "$(NATIVE_VER)" in 1.*) np=opencode1;; *) np=opencode;; esac; \
+		np=$(if $(filter 1.%,$(NATIVE_VER)),opencode1,opencode); \
 		cp "$(NATIVE_DIR)/opencode-native-revived" "$(RELEASE_DIR)/$$np-$(NATIVE_VER)-aarch64-android-native"; \
 		cp "$(NATIVE_DIR)/report.json" "$(RELEASE_DIR)/$$np-$(NATIVE_VER)-report.json"; \
 		tar czf "$(RELEASE_DIR)/$$np-$(NATIVE_VER)-watcher.tar.gz" -C tools/watcher watcher shim.js install.sh; \
@@ -832,7 +835,7 @@ release-upload:
 		MAINTAINER='$(PACKAGER_NAME)' VERSION='$(NATIVE_VER)' ./scripts/package/package_deb_native.sh; \
 		PACKAGER_NAME='$(PACKAGER_NAME)' VERSION='$(NATIVE_VER)' ./scripts/package/package_pacman_native.sh; \
 		for f in packing/pacman/$$np-$(NATIVE_VER)-*.pkg.*; do [ -f "$$f" ] || continue; bash tools/pkg-abs-repack.sh "$$f" || exit 1; done; \
-		case "$(NATIVE_VER)" in 1.*) np=opencode1;; *) np=opencode;; esac; cp packing/dpkg-native/$$np_$(NATIVE_VER)_aarch64.deb "$(RELEASE_DIR)/" || exit 1; \
+		np=$(if $(filter 1.%,$(NATIVE_VER)),opencode1,opencode); cp packing/dpkg-native/$$np_$(NATIVE_VER)_aarch64.deb "$(RELEASE_DIR)/" || exit 1; \
 		cp packing/pacman/$$np-$(NATIVE_VER)-*.pkg.* "$(RELEASE_DIR)/" || exit 1; \
 		for f in "$(RELEASE_DIR)/$$np-$(NATIVE_VER)-aarch64-android-native" "$(RELEASE_DIR)/$$np-$(NATIVE_VER)-report.json" "$(RELEASE_DIR)/$$np-$(NATIVE_VER)-watcher.tar.gz" $(RELEASE_DIR)/opencode_[0-9]*.deb $(RELEASE_DIR)/opencode-[0-9]*.pkg.*; do \
 			echo "  uploading $$(basename $$f)..."; \
@@ -945,7 +948,7 @@ harden-native:
 	if [ ! -f "$$src" ]; then echo "Error: $$src missing; run 'make build-native VER=$(VER)' first"; exit 1; fi; \
 	echo "==> harden-native VER=$(VER)"; \
 	clang -shared -fPIC -O2 -o "$$HRDIR/libopencode-crhandler.so" tools/shim/sigsys_handler.c || exit 1; \
-	if grep -aqF libopencode-crhandler.so "$$src"; then \
+	if bash "$(CURDIR)/scripts/lib/harden-check.sh" "$$src"; then \
 		echo "==> already hardened, skip"; \
 		exit 0; \
 	fi; \

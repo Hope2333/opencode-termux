@@ -63,11 +63,30 @@ require_clang() {
 	}
 }
 
+# is_hardened BIN — 产物是否引用 libopencode-crhandler.so（零位移 DT_NEEDED
+# 补丁）。单一实现：Makefile 走 scripts/lib/harden-check.sh 包装，打包脚本直接调。
+is_hardened() {
+	grep -aqF libopencode-crhandler.so "$1"
+}
+
+# pkg_base_name VERSION — 包名分派单一实现（v1 1.* → opencode1，其余 opencode）。
+pkg_base_name() {
+	case "${1:-}" in
+		1.*) echo opencode1 ;;
+		*) echo opencode ;;
+	esac
+}
+
+# pkgrel_default — pacman pkgrel 默认值（PKGREL 环境变量优先）。
+pkgrel_default() {
+	echo "${PKGREL:-1}"
+}
+
 # require_hardened BIN — 产物必须引用 libopencode-crhandler.so（零位移
 # DT_NEEDED 补丁）。ALLOW_UNHARDENED=1 是显式豁免（回滚/调试），并打印原因。
 require_hardened() {
 	local bin="$1"
-	if grep -aqF libopencode-crhandler.so "$bin"; then
+	if is_hardened "$bin"; then
 		return 0
 	fi
 	if [[ "${ALLOW_UNHARDENED:-0}" == "1" ]]; then
