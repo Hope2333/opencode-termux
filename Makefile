@@ -30,6 +30,10 @@ HOOK_STALE_SERVE_KILL_VERSIONS ?= 2.0.[0-3]
 # Release upload target variables
 TAG ?= Push$(shell date +%y%m%d)
 REPO ?= Hope2333/opencode-termux
+# DRY_RUN=1 prints mutating gh commands instead of executing them (release-path
+# verification without touching real releases — docs-reorg-maint E5).
+DRY_RUN ?= 0
+GH = $(if $(filter 1,$(DRY_RUN)),echo "[dry-run] gh",gh)
 # Single source for the package-name split (v1 1.* -> opencode1, v2 -> opencode).
 # Replaces the 9 inline `case $(VER) in 1.*)` expressions (docs-reorg-maint E2).
 PKG_BASE = $(if $(filter 1.%,$(VER)),opencode1,opencode)
@@ -533,6 +537,15 @@ maintain-upload:
 		$(if $(SOURCE),--source $(SOURCE)) \
 		$(if $(DRY),--dry-run) \
 		$(if $(NO_UPLOAD),--no-upload)
+	@bash scripts/verify-upload-digest.sh "$(TAG)" "$(MANIFEST)" "$(REPO)"
+
+# verify-upload-digest: compare a local SHA256SUMS manifest against the release
+# assets on GitHub (name/size/sha256). Best-effort: SKIPs when no manifest.
+# Usage: make verify-upload-digest TAG=Push261016 [MANIFEST=/path/SHA256SUMS.txt]
+.PHONY: verify-upload-digest
+verify-upload-digest:
+	@[ -n "$(TAG)" ] || { echo "Error: TAG is required. Example: make verify-upload-digest TAG=Push261016"; exit 1; }
+	@bash scripts/verify-upload-digest.sh "$(TAG)" "$(MANIFEST)" "$(REPO)"
 
 # sync-db: refresh unified hope2333.db.tar.gz on the 5 release CDNs
 # Usage: make sync-db [DRY=1]   (also: tools/maintain.sh --sync-db)
@@ -824,18 +837,23 @@ release-upload:
 		echo "Creating release $(TAG)..."; \
 		if [ "$(NATIVE)" = "STABLE" ]; then \
 		np=$(if $(filter 1.%,$(NATIVE_VER)),opencode1,opencode); \
-			gh release create "$(TAG)" --repo "$(REPO)" --title "$(TAG)" --notes "OpenCode for Termux. Mainline (stable since 27/28): native bionic line - opencode-<ver>-aarch64-android-native / opencode_<ver>_aarch64.deb / opencode-<ver>-*-aarch64.pkg.* - zero-wrapper, full TUI, Android API>=28. Appendix (legacy): wrapper packages opencode1-wrapper_<ver>_aarch64.deb / opencode1-wrapper-<ver>-aarch64.pkg.tar.*." 2>&1 || exit 1; \
+			$(GH) release create "$(TAG)" --repo "$(REPO)" --title "$(TAG)" --notes "OpenCode for Termux. Mainline (stable since 27/28): native bionic line - opencode-<ver>-aarch64-android-native / opencode_<ver>_aarch64.deb / opencode-<ver>-*-aarch64.pkg.* - zero-wrapper, full TUI, Android API>=28. Appendix (legacy): wrapper packages opencode1-wrapper_<ver>_aarch64.deb / opencode1-wrapper-<ver>-aarch64.pkg.tar.*." 2>&1 || exit 1; \
 		else \
-			gh release create "$(TAG)" --repo "$(REPO)" --title "$(TAG)" --notes "Dual-track OpenCode for Termux. Track 1 (wrapper appendix, renamed opencode-wrapper): wrapper packages opencode1-wrapper_<ver>_aarch64.deb / opencode1-wrapper-<ver>-aarch64.pkg.tar.* - full TUI. Track 2 (native): v1=opencode1_<ver>_aarch64.deb / opencode1-<ver>-*-aarch64.pkg.* ; v2=opencode_* / opencode-<ver>-* / *-android-native assets - zero-wrapper, full TUI (bionic libopentui.so, W10a 5/5), Android API>=28." 2>&1 || exit 1; \
+			$(GH) release create "$(TAG)" --repo "$(REPO)" --title "$(TAG)" --notes "Dual-track OpenCode for Termux. Track 1 (wrapper appendix, renamed opencode-wrapper): wrapper packages opencode1-wrapper_<ver>_aarch64.deb / opencode1-wrapper-<ver>-aarch64.pkg.tar.* - full TUI. Track 2 (native): v1=opencode1_<ver>_aarch64.deb / opencode1-<ver>-*-aarch64.pkg.* ; v2=opencode_* / opencode-<ver>-* / *-android-native assets - zero-wrapper, full TUI (bionic libopentui.so, W10a 5/5), Android API>=28." 2>&1 || exit 1; \
 		fi; \
 	else \
-		echo "Release $(TAG) exists; rebinding tag to HEAD via gh api (HTTPS, SSH 22 blocked)..."; \
-		gh api -X PATCH "repos/$(REPO)/git/refs/tags/$(TAG)" -f sha="$$(git rev-parse HEAD)" >/dev/null 2>&1 || echo "  (tag rebind skipped: API refused or already current)"; \
+		if [ "$(REBIND)" != "1" ]; then \
+			echo "Error: release $(TAG) already exists — batch tags are immutable, pick a NEW PushYYMMDD tag." >&2; \
+			echo "       (REBIND=1 overrides deliberately for a same-tag re-upload)" >&2; \
+			exit 1; \
+		fi; \
+		echo "REBIND=1: rebinding tag $(TAG) to HEAD..."; \
+		$(GH) api -X PATCH "repos/$(REPO)/git/refs/tags/$(TAG)" -f sha="$$(git rev-parse HEAD)" >/dev/null 2>&1 || { echo "Error: tag rebind failed" >&2; exit 1; }; \
 	fi; \
 	for f in $(RELEASE_DIR)/opencode1-wrapper_*.deb $(RELEASE_DIR)/opencode1-wrapper-*.pkg.*; do \
 		if [ -f "$$f" ]; then \
 			echo "  uploading $$(basename $$f)..."; \
-			if ! gh release upload "$(TAG)" "$$f" --repo "$(REPO)" --clobber 2>&1; then upload_failed=1; fi; \
+			if ! $(GH) release upload "$(TAG)" "$$f" --repo "$(REPO)" --clobber 2>&1; then upload_failed=1; fi; \
 		fi; \
 	done; \
 	mkdir -p "$(RELEASE_DIR)"; \
@@ -855,7 +873,7 @@ release-upload:
 		cp packing/pacman/$$np-$(NATIVE_VER)-*.pkg.* "$(RELEASE_DIR)/" || exit 1; \
 		for f in "$(RELEASE_DIR)/$$np-$(NATIVE_VER)-aarch64-android-native" "$(RELEASE_DIR)/$$np-$(NATIVE_VER)-report.json" "$(RELEASE_DIR)/$$np-$(NATIVE_VER)-watcher.tar.gz" $(RELEASE_DIR)/opencode_[0-9]*.deb $(RELEASE_DIR)/opencode-[0-9]*.pkg.*; do \
 			echo "  uploading $$(basename $$f)..."; \
-			if ! gh release upload "$(TAG)" "$$f" --repo "$(REPO)" --clobber 2>&1; then upload_failed=1; fi; \
+			if ! $(GH) release upload "$(TAG)" "$$f" --repo "$(REPO)" --clobber 2>&1; then upload_failed=1; fi; \
 		done; \
 	fi; \
 	if [ "$$upload_failed" -ne 0 ]; then echo "Error: one or more release assets failed to upload" >&2; exit 1; fi; \
