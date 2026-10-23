@@ -35,7 +35,7 @@ case "$FILE" in
     BIN="$(find "$TMP" -type f \( -name opencode -o -name opencode1 \) | head -n1)"
     ;;
   *.pkg.tar.*)
-    tar -xOf "$FILE" --wildcards '*/opencode' '*/opencode1' >"$TMP/bin" 2>/dev/null || true
+    tar -xOf "$FILE" --wildcards '*/opencode' '*/opencode1' >"$TMP/bin" 2>/dev/null
     [[ -s "$TMP/bin" ]] && BIN="$TMP/bin"
     ;;
   *)

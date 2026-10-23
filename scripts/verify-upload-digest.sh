@@ -29,7 +29,7 @@ fi
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-REL="$(gh api "repos/$REPO/releases/tags/$TAG" --jq '.id' 2>/dev/null)" || true
+REL="$(gh api "repos/$REPO/releases/tags/$TAG" --jq '.id' 2>/dev/null)"
 [[ -n "$REL" ]] || { echo "Error: cannot resolve release $TAG in $REPO" >&2; exit 2; }
 
 : >"$TMP/assets.tsv"

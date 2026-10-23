@@ -29,7 +29,7 @@ MODE="${1:-write}"
 declare -a DIRS=("." "install" "build" "packaging" "runbooks" "reference" "history" "incidents" "measurements")
 
 meta_of() { # meta_of <file> <key>
-  sed -n '1,12s/.*'"$2"'：\([^|]*\).*/\1/p' "$1" | head -n1 | sed 's/[[:space:]]*$//'
+  sed -n '1,12s/.*'"$2"'：\([^|｜]*\).*/\1/p' "$1" | head -n1 | sed 's/[[:space:]]*$//'
 }
 
 title_of() { # title_of <file>
@@ -40,7 +40,7 @@ title_of() { # title_of <file>
 }
 
 date_of() { # date_of <file>
-  git -C "$ROOT_DIR" log -1 --format=%as -- "${1#"$ROOT_DIR"/}" 2>/dev/null || true
+  git -C "$ROOT_DIR" log -1 --format=%as -- "${1#"$ROOT_DIR"/}" 2>/dev/null || printf ''
 }
 
 generate() {
@@ -86,7 +86,7 @@ if [[ "$MODE" == "--check" ]]; then
   current="$(awk -v b="$BEGIN" -v e="$END" '$0==b{f=1} f{print} $0==e{f=0}' "$README")"
   if [[ "$current" != "$BLOCK" ]]; then
     echo "Error: docs index is stale — run tools/gen-docs-index.sh" >&2
-    diff <(printf '%s\n' "$current") <(printf '%s\n' "$BLOCK") | head -20 >&2 || true
+    diff <(printf '%s\n' "$current") <(printf '%s\n' "$BLOCK") | head -20 >&2 || echo "(diff truncated)" >&2
     exit 1
   fi
   echo "docs index: up to date"

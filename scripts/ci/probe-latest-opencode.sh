@@ -17,7 +17,7 @@
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-PIN_SCRIPT="$REPO_ROOT/scripts/build-bionic.sh"
+PIN_LIB="$REPO_ROOT/scripts/lib/build-pins.sh"
 UPSTREAM="sst/opencode"
 MODE="${1:---check}"
 ISSUE_TITLE_MARK="upstream opencode drift detected"
@@ -35,38 +35,10 @@ esac
 die() { echo "probe: ERROR: $*" >&2; exit 2; }
 
 # --- local pins -------------------------------------------------------------
-# Parsed (not sourced) so probing never triggers a build.
-read_local() {
-  python3 - "$PIN_SCRIPT" <<'PY'
-import re, sys
-src = open(sys.argv[1]).read()
-
-pty = re.search(r'PTY_VER="\$\{PTY_VER:-([^}]+)\}"', src)
-if not pty:
-    sys.exit("probe: PTY_VER default not found in pin script")
-print("LOCAL_PTY=%r" % pty.group(1))
-
-m = re.search(r'case "\$VER" in\n(.*?)\nesac', src, re.S)
-if not m:
-    sys.exit("probe: VER case table not found in pin script")
-entries, fallback = {}, None
-for line in m.group(1).splitlines():
-    hit = re.match(r'\s*([^)]+)\)\s*OPENTUI_VER="\$\{OPENTUI_VER:-([^}]+)\}"', line)
-    if not hit:
-        continue
-    pats, val = hit.group(1).strip(), hit.group(2)
-    for p in pats.split('|'):
-        p = p.strip()
-        if p == '*':
-            fallback = val
-        else:
-            entries[p] = val
-if fallback is None:
-    sys.exit("probe: no '*' fallback in VER case table")
-print("LOCAL_FALLBACK=%r" % fallback)
-for ver, val in entries.items():
-    print("LOCAL_ENTRY_%s=%r" % (ver.replace('.', '_'), val))
-PY
+# Delegates to the single pin source (scripts/lib/build-pins.sh) — never parses
+# build-bionic.sh text, so the table can move without breaking the probe.
+local_pins() { # local_pins <ver> → "PTY_VER=x OPENTUI_VER=y" or rc=1
+  bash -c 'source "$1"; resolve_dep_pins "$2"' _ "$PIN_LIB" "$1" 2>/dev/null
 }
 
 # --- upstream -----------------------------------------------------------------
@@ -101,7 +73,7 @@ write_issue_body() { # <file> <table> <reasons>
 $3
 EOF
     printf '\n## Next step\n\n'
-    printf '1. Update `scripts/build-bionic.sh` pin table (`PTY_VER` default and the `VER` case entry for the new tag).\n'
+    printf '1. Update `scripts/lib/build-pins.sh` (pty and opentui entry for the new tag).\n'
     printf '2. Read the values from the upstream tag itself (`packages/cli/package.json` for pty, root `package.json` -> `workspaces.catalog` for opentui) — never from this issue text, it goes stale.\n'
     printf '3. Watch for breaking bumps: a pty minor (0.2.x -> 0.3.x) or an opentui minor changes the store layout, and the pty splice / libopentui graft may need a matching change. Run the build on the new tag before releasing.\n'
     printf '\nThis issue is created by `.github/workflows/probe-upstream.yml`.\n'
@@ -110,8 +82,7 @@ EOF
 
 # --- probe --------------------------------------------------------------------
 if [[ "$MODE" == "--offline" ]]; then
-  eval "$(read_local)"
-  echo "offline: local pty=$LOCAL_PTY, fallback opentui=$LOCAL_FALLBACK"
+  echo "offline: pin table lives in scripts/lib/build-pins.sh (no network probe)"
   exit 0
 fi
 
@@ -130,10 +101,14 @@ UP_PTY="$(fetch_pkg packages/cli/package.json "$UP_V2" | python3 -c 'import json
 UP_OPENTUI="$(fetch_pkg package.json "$UP_V2" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("workspaces",{}).get("catalog",{}).get("@opentui/core",""))' 2>/dev/null)"
 [[ -n "$UP_PTY" && -n "$UP_OPENTUI" ]] || die "cannot read upstream pins at $UP_V2"
 
-eval "$(read_local)" || die "cannot parse local pin table"
 UP_VER="${UP_V2#v}"
-ENTRY_VAR="LOCAL_ENTRY_$(printf '%s' "$UP_VER" | tr '.' '_')"
-LOCAL_ENTRY="${!ENTRY_VAR:-NONE}"
+LOCAL_PINS="$(local_pins "$UP_VER")" || true
+if [[ -z "$LOCAL_PINS" ]]; then
+  LOCAL_PTY="NONE"; LOCAL_ENTRY="NONE"; LOCAL_FALLBACK="n/a"
+else
+  eval "$LOCAL_PINS"   # sets PTY_VER / OPENTUI_VER from the single pin source
+  LOCAL_PTY="$PTY_VER"; LOCAL_ENTRY="$OPENTUI_VER"; LOCAL_FALLBACK="n/a"
+fi
 
 TABLE="$(print_table "$UP_V2" "$UP_V1" "$UP_PTY" "$UP_OPENTUI" "$LOCAL_PTY" "$LOCAL_ENTRY" "$LOCAL_FALLBACK")"
 echo "$TABLE"
@@ -143,7 +118,7 @@ if [[ "$UP_PTY" != "$LOCAL_PTY" ]]; then
   reasons+="pty pin: upstream $UP_PTY vs local $LOCAL_PTY"$'\n'
 fi
 if [[ "$LOCAL_ENTRY" == "NONE" ]]; then
-  reasons+="pin table has no entry for $UP_VER (silently falls back to opentui $LOCAL_FALLBACK)"$'\n'
+  reasons+="pin table has no entry for $UP_VER (build now hard-fails at scripts/lib/build-pins.sh)"$'\n'
 elif [[ "$LOCAL_ENTRY" != "$UP_OPENTUI" ]]; then
   reasons+="opentui pin for $UP_VER: upstream $UP_OPENTUI vs local $LOCAL_ENTRY"$'\n'
 fi
