@@ -107,3 +107,18 @@ setup() {
   [ "$status" -ne 0 ]
   [[ "$output" == *"not embedded"* ]]
 }
+
+@test "verify-artifact: large stream check must not false-fail (SIGPIPE trap)" {
+  # `strings | grep -q` under pipefail: grep exits at the first hit, strings
+  # dies with SIGPIPE (141) and the check reports a false failure. The codebase
+  # uses `grep -c` for exactly this reason; this guards against a regression.
+  {
+    echo "# libopencode-crhandler.so"
+    echo "_assets/index-abc"
+    for i in $(seq 1 60000); do echo "padding-line-$i-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"; done
+  } >"$WORK/bigbin"
+  chmod +x "$WORK/bigbin"
+  run bash "$REPO_ROOT/scripts/verify-artifact.sh" "$WORK/bigbin" --web
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"web-ui: OK"* ]]
+}

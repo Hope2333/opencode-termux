@@ -441,7 +441,7 @@ LD_PRELOAD="$OPENAT2_SHIM" OPENCODE_VERSION="$OPENCODE_VERSION" \
 DIST_BIN="$SRC_DIR/packages/cli/dist/cli-linux-arm64/bin/opencode"
 [[ -x "$DIST_BIN" ]] || { echo "Error: build output missing: $DIST_BIN" >&2; exit 1; }
 # Hard assertion: the artifact must actually carry web UI assets (#22/#42).
-if ! strings -a "$DIST_BIN" | grep -q '/_assets/'; then
+if ! strings -a "$DIST_BIN" | grep -cE '(_)?assets/index-' >/dev/null; then
   echo "Error: web UI assets missing from artifact (#22 regression, issue #42)" >&2
   exit 1
 fi
@@ -453,7 +453,7 @@ PTY_META="$BUILD_ROOT/$VER/pty-sha256.txt"
 [[ -f "$PTY_META" ]] || { echo "Error: pty metadata missing: $PTY_META (cannot verify pty variant)" >&2; exit 1; }
 PTY_EXPECT="$(sed -n 's/^sha256=//p' "$PTY_META" | head -n1)"
 [[ -n "$PTY_EXPECT" ]] || { echo "Error: sha256 missing in $PTY_META" >&2; exit 1; }
-if ! strings -a "$DIST_BIN" | grep -q "$PTY_EXPECT"; then
+if ! strings -a "$DIST_BIN" | grep -c "$PTY_EXPECT" >/dev/null; then
   echo "Error: embedded pty asset mismatch — expected sha256 $PTY_EXPECT (from $PTY_META), binary carries another variant" >&2
   echo "       rebuild with a clean tree (stale pty asset class, docs/runbooks/release-runbook.md §2)" >&2
   exit 1

@@ -823,7 +823,7 @@ assert-pty:
 	@sha="$(SHA)"; meta="$(if $(META),$(META),$(if $(VER_IS_SET),artifacts/build/$(VER)/pty-sha256.txt,))"; \
 	if [ -z "$$sha" ] && [ -n "$$meta" ] && [ -f "$$meta" ]; then sha=$$(sed -n 's/^sha256=//p' "$$meta" | head -n1); fi; \
 	[ -n "$$sha" ] || { echo "Error: provide SHA=<sha256> or META=<pty-sha256.txt>" >&2; exit 1; }; \
-	strings -a "$(BIN)" | grep -q "$$sha" || { echo "Error: pty sha256 $$sha not embedded in $(BIN)" >&2; exit 1; }; \
+	strings -a "$(BIN)" | grep -c "$$sha" >/dev/null || { echo "Error: pty sha256 $$sha not embedded in $(BIN)" >&2; exit 1; }; \
 	echo "assert-pty: OK ($${sha:0:12}…)"
 
 # docs-check: docs index freshness + dead links + tool syntax (docs-reorg-maint D4)

@@ -64,7 +64,7 @@ echo "  harden: OK ($FILE)"
 if [[ "$WANT_WEB" -eq 1 ]]; then
   if [[ "$IS_UPX" -eq 1 ]]; then
     echo "  web-ui: SKIP (UPX-packed; verify the uncompressed native artifact)"
-  elif ! strings -a "$BIN" | grep -q '/_assets/'; then
+  elif ! strings -a "$BIN" | grep -cE '(_)?assets/index-' >/dev/null; then
     echo "Error: web UI assets missing from artifact (empty app archive, issue #42): $FILE" >&2
     exit 1
   else
@@ -75,7 +75,7 @@ fi
 if [[ -n "$PTY_SHA" ]]; then
   if [[ "$IS_UPX" -eq 1 ]]; then
     echo "  pty: SKIP (UPX-packed; verify the uncompressed native artifact)"
-  elif ! strings -a "$BIN" | grep -q "$PTY_SHA"; then
+  elif ! strings -a "$BIN" | grep -c "$PTY_SHA" >/dev/null; then
     echo "Error: pty asset sha256 $PTY_SHA not embedded (stale/mixed pty variant): $FILE" >&2
     exit 1
   else
