@@ -1,5 +1,8 @@
 # Execution Checklist
 
+
+> 状态：active ｜ 适用版本：全代
+
 ## Phase A (CI armv7 prebuild)
 
 > Status: handoff/deferred track. Not a substitute for local Termux final runtime validation.

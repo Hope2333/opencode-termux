@@ -1,5 +1,8 @@
 # 发布运行手册（Release Runbook）
 
+
+> 状态：active ｜ 适用版本：全代
+
 > **适用**：opencode-termux 滚动 Push tag 发布全流程（v1 `opencode1*` 1.18.x + v2 `opencode*` 2.0.x 双代）。
 > **来源**：`docs/ops-lessons-rc3.md`（2026-09-28 起 RC3/RC4/RC5 实战）、`docs/native-line-evolution.md`（2026-09-28 RC4 收口期）、`docs/make-maintainer.md`、`.omo/plans/termux-asset-update.md`（v12.x changelog + TL;DR）、`Makefile` help 段。
 > **事实基线（历史）**：RC5 = Push260930 已于 2026-10-01 **撤销**（标 prerelease + REVOKED banner，见 `docs/ops-lessons-rc3.md` §11）——**不要再把它当定版发布**；RC4 = Push260928（2026-09-29，96 资产存档）。当前批次一律以 `gh release list` 为准，本文不硬编码最新 tag。

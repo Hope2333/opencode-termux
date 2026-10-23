@@ -814,6 +814,15 @@ verify-artifact:
 	n=0; for f in $$files; do bash scripts/verify-artifact.sh "$$f" $$web || exit 1; n=$$((n+1)); done; \
 	echo "verify-artifact: $$n artifact(s) OK for VER=$(VER)"
 
+# docs-check: docs index freshness + dead links + tool syntax (docs-reorg-maint D4)
+.PHONY: docs-check
+docs-check:
+	@bash tools/gen-docs-index.sh --check
+	@python3 tools/check-doc-links.py
+	@bash -n tools/gen-docs-index.sh
+	@python3 -m py_compile tools/check-doc-links.py
+	@echo "docs-check: OK"
+
 release-upload:
 	@if [ -z "$(VERS)" ] && [ -z "$(VER_IS_SET)" ]; then \
 		echo "Error: VERS is required. Example: make release-upload VERS='1.15.[1-7]' TAG=Push260522"; \

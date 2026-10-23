@@ -1,5 +1,8 @@
 # System Skills + Hook Architecture (Phase C extension)
 
+
+> 状态：active ｜ 适用版本：全代
+
 This document defines the package-mode system skill and hook model used to reduce plugin breakage during install/upgrade.
 
 ## Goals

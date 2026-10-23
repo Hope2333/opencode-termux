@@ -1,5 +1,8 @@
 # CI Prebuild (armv7, cross-toolchain + binary attempts)
 
+
+> 状态：active ｜ 适用版本：armv7（deferred）
+
 Phase A now does two things:
 
 1. Prepare a Linux armv7 cross-build platform in GitHub Actions

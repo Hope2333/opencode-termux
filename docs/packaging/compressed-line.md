@@ -1,5 +1,8 @@
 # Compressed 线契约（opencode1-compressed / UPX-packed）
 
+
+> 状态：active ｜ 适用版本：v1/v2
+
 > 适用：`opencode1-compressed` deb（`scripts/package/package_deb_compressed.sh`）
 > 与 pacman 包（`scripts/package/package_pacman_compressed.sh` + `packing/pacman/PKGBUILD.compressed`）。
 

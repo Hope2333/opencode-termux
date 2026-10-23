@@ -1,5 +1,8 @@
 # Termux skills index (concise)
 
+
+> 状态：active ｜ 适用版本：全代
+
 Use this index in prompts to recall the right doc and known fixes quickly.
 
 ## Plugin + hook

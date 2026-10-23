@@ -1,5 +1,8 @@
 # Local Production Blueprint (No GitHub Actions)
 
+
+> 状态：active ｜ 适用版本：wrapper 线
+
 This repo intentionally disables GitHub Actions for release builds because the verified runtime path depends on a **real Termux/Android environment**.
 
 ## Canonical inputs

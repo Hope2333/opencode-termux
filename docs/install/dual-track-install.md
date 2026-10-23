@@ -1,5 +1,8 @@
 # Dual-track install: `opencode` providers
 
+
+> 状态：active ｜ 适用版本：v1 1.18.x–1.19.x / v2 2.0.x–2.1.x
+
 Two packaging tracks provide the same `opencode` command on Termux.
 **Pick ONE provider** — the packages conflict with each other, so installing
 one replaces the other.

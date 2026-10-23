@@ -1,5 +1,8 @@
 # Plugin Management (Online install + self-update + rollback)
 
+
+> 状态：active ｜ 适用版本：全代
+
 For Termux, user-friendly plugin management should be based on **local-plugin file URLs**, not direct package-name plugin install.
 
 ## Recommended install path (updated 2026-09)

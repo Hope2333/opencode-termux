@@ -1,5 +1,8 @@
 # 22 - opencode web 的 Termux sv 服务
 
+
+> 状态：active ｜ 适用版本：全代
+
 ## 目标
 为 `opencode web` 提供可由 `sv` 管理的常驻服务，并在安装后默认启用。
 

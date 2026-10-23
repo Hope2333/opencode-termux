@@ -1,5 +1,8 @@
 # Plugin Packaging Design (Phase C)
 
+
+> 状态：active ｜ 适用版本：全代
+
 Goal: package-manager-driven plugin lifecycle for both termux-apt and termux-pacman.
 
 ## Package model

@@ -1,5 +1,8 @@
 # 20 - Packaging as .deb
 
+
+> 状态：active ｜ 适用版本：全代
+
 ## 目标
 为 `bun` 与 `opencode` 产出可安装的 Debian 包：
 - `bun_<ver>_arm64.deb`

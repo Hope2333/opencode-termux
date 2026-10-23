@@ -1,5 +1,8 @@
 # 12 - Bun Executable Structure & Compatibility
 
+
+> 状态：active ｜ 适用版本：Bun 1.4.x
+
 ## Bun `--compile` 产物结构
 
 `bun build --compile` 生成的单文件可执行格式：

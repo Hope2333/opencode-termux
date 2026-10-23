@@ -1,5 +1,8 @@
 # 21 - Packaging as pkg.tar.xz (Pacman)
 
+
+> 状态：active ｜ 适用版本：全代
+
 ## 目标
 为 `bun` 与 `opencode` 产出：
 - `bun-<ver>-<rel>-aarch64.pkg.tar.xz`

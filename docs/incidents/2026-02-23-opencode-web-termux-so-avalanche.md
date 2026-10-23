@@ -1,5 +1,8 @@
 # TEMP-opencode-web-termux-so-avalanche
 
+
+> 状态：active ｜ 适用版本：—
+
 ## 目的
 给“信息机”快速接入调试机并继续排查：Termux 环境下 `$PREFIX/tmp/.*-0000*.so` 持续堆积导致磁盘雪崩。
 

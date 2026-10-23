@@ -1,5 +1,8 @@
 # transplant — native-android 移植操作手册
 
+
+> 状态：active ｜ 适用版本：v1 1.18.x（A 线）
+
 > [!IMPORTANT] 状态横幅：C1 路线**已复活且全链产品化**（revive 手术实证 + TUI 可用 + stable 正式发布）
 >
 > **C1 路线 = 用官方预编译 android Bun（Bionic 直跑）作为底座，

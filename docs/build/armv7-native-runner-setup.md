@@ -1,5 +1,8 @@
 # Native armv7 Runner Setup (self-hosted)
 
+
+> 状态：active ｜ 适用版本：armv7（deferred）
+
 This document describes the minimum viable setup for a GitHub Actions self-hosted runner used by the optional native armv7 Bun build fallback job.
 
 ## Goal

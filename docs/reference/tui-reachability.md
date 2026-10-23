@@ -1,5 +1,8 @@
 # TUI 可达性判定表（rc6-b2-upx-tui 终版）
 
+
+> 状态：active ｜ 适用版本：v1/v2
+
 > 目标：任意 Android（bionic）/内核组合 → 查表即得「TUI 可达性 + 对位修补清单」。
 > 依据：rc6-b2-upx-tui 四份定谳（task-1 TLSDESC / task-2 shim 落地 / task-3 readiness /
 > task-4 pty 拼接）+ 2026-10-02 终版追补（task-v1graft 双代验证 / task-ocomp-graft UPX×graft /

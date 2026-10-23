@@ -1,5 +1,8 @@
 # native 线演进史 — 从 ELF 拼接手术到 bionic 真编译
 
+
+> 状态：active ｜ 适用版本：v1/v2（演进史）
+
 > 定位：串起 native 线三个阶段的架构叙事。操作手册见 `transplant.md`（A 线）、
 > 本仓 `scripts/build-bionic.sh`（B 线），实战教训见 `ops-lessons-rc3.md`。
 > 生成：2026-09-28（RC4 收口期）。

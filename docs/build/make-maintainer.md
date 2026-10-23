@@ -1,5 +1,8 @@
 # Make Maintainer Surface
 
+
+> 状态：active ｜ 适用版本：全代
+
 Maintainer-only targets and tools for release operations, fleet UPX orchestration, and cache cleanup.
 
 ## Family Array Dispatch

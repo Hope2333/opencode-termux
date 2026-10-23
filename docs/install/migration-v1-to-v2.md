@@ -1,5 +1,8 @@
 # v1 → v2 Migration Guide
 
+
+> 状态：active ｜ 适用版本：v1 → v2
+
 > opencode 2.0.0 是全线替换版本（GA mainline）。v1.18.x 留档可降级。
 
 ## 版本对比

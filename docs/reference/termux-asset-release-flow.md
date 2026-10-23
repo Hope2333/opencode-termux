@@ -1,5 +1,8 @@
 # Termux 仓库资产更新流程
 
+
+> 状态：snapshot ｜ 适用版本：2026-09 快照
+
 > **快照说明（2026-09，已实体化入仓）**：本文原为仓外 symlink，是四仓资产发布流程的历史快照。
 > opencode-termux 的打包线此后已切到原生 bionic（native/compressed 族），本文中 "bun-termux-loader"
 > 的描述只适用于 wrapper 附录线；现行流程见 `docs/make-maintainer.md` 与 `docs/handover/release-runbook.md`。
