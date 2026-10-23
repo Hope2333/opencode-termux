@@ -452,6 +452,7 @@ family-native:
 		echo "Error: VER is required. Example: make family-native VER=1.18.21"; \
 		exit 1; \
 	fi
+	@. "$(CURDIR)/scripts/package/lib.sh" && require_clang
 	$(MAKE) transplant VER=$(VER)
 	TRANSPLANT_ROOT=$(CURDIR)/artifacts/transplant $(MAKE) harden-native VER=$(VER)
 	$(MAKE) deb-native VER=$(VER) && $(MAKE) pacman-native VER=$(VER)
@@ -464,6 +465,7 @@ family-compressed:
 		echo "Error: VER is required. Example: make family-compressed VER=1.18.21"; \
 		exit 1; \
 	fi
+	@. "$(CURDIR)/scripts/package/lib.sh" && require_clang
 	$(MAKE) transplant VER=$(VER)
 	$(MAKE) transplant-upx VER=$(VER)
 	$(MAKE) deb-compressed VER=$(VER) && $(MAKE) pacman-compressed VER=$(VER)

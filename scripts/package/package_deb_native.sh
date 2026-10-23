@@ -47,8 +47,8 @@ esac
 # HOOKS_ENABLE; otherwise the hook's default version-glob decides.
 # hook_enabled 见 lib.sh
 
-DEB_ROOT="$ROOT_DIR/packing/dpkg-native/work"
-OUT_DIR="$ROOT_DIR/packing/dpkg-native"
+DEB_ROOT="${DEB_ROOT:-$ROOT_DIR/packing/dpkg-native/work}"
+OUT_DIR="${OUT_DIR:-$ROOT_DIR/packing/dpkg-native}"
 OUT_FILE="$OUT_DIR/${PKG_NAME}_${VERSION}_${ARCH_DEB}.deb"
 
 rm -rf "$DEB_ROOT"
@@ -109,7 +109,9 @@ if grep -aqF libopencode-crhandler.so "$NATIVE_BIN"; then
 	install -m644 "$SHIM_SO" "$DEB_ROOT$PREFIX/lib/opencode/libopencode-crhandler.so"
 	echo "Packaging seccomp shim: $SHIM_SO -> $PREFIX/lib/opencode/"
 else
-	echo "Note: binary is not seccomp-hardened; shipping without libopencode-crhandler.so"
+	# E1b: an un-hardened artifact used to ship with just a Note (issue #36).
+	# Refuse unless the operator explicitly opts in (rollback/debug only).
+	require_hardened "$NATIVE_BIN" || exit 1
 fi
 
 cat >"$DEB_ROOT/DEBIAN/control" <<EOF

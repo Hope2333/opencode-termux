@@ -52,3 +52,29 @@ append_installed_size() {
 	size=$(du -sk "$1" | cut -f1)
 	echo "Installed-Size: $size" >>"$2"
 }
+
+# require_clang — seccomp shim 工具链门（docs-reorg-maint E1b）。
+# family 链必须产出 hardened 件（issue #17/#36）；此前 clang 缺失只 WARN 跳过，
+# 结果把未 harden 的包发给用户。
+require_clang() {
+	command -v clang >/dev/null 2>&1 || {
+		echo "FATAL: clang required — every native package must ship the seccomp shim (libopencode-crhandler.so, issues #17/#36)" >&2
+		exit 1
+	}
+}
+
+# require_hardened BIN — 产物必须引用 libopencode-crhandler.so（零位移
+# DT_NEEDED 补丁）。ALLOW_UNHARDENED=1 是显式豁免（回滚/调试），并打印原因。
+require_hardened() {
+	local bin="$1"
+	if grep -aqF libopencode-crhandler.so "$bin"; then
+		return 0
+	fi
+	if [[ "${ALLOW_UNHARDENED:-0}" == "1" ]]; then
+		echo "WARN: shipping un-hardened binary (ALLOW_UNHARDENED=1): $bin" >&2
+		return 0
+	fi
+	echo "Error: binary is not seccomp-hardened (no libopencode-crhandler.so reference): $bin" >&2
+	echo "       run: make harden-native VER=<ver>   (or ALLOW_UNHARDENED=1 to override)" >&2
+	return 1
+}
