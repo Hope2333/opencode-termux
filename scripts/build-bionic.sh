@@ -49,16 +49,13 @@ source "$ROOT_DIR/scripts/lib/build-guards.sh"
 # ── 依赖钉版（push261013 todo 12：issue #35「build-bionic 仍钉 0.1.13/0.5.10」）──
 # 归因结论: family-v2-native → build-native → 本脚本是 v2 native 的出厂 B-line 编译链
 # （Makefile:836），钉版直接进出厂包，故必须跟上上游逐版漂移。
-# pty: 上游 v2.0.23–2.0.27 实测均为 0.2.0（packages/cli/package.json，2026-10-13 拉取）。
-# opentui: 上游逐版不同——v2.0.23/24=0.5.14、v2.0.25=0.5.16、v2.0.26/27=0.5.17
-# （根 package.json workspaces.catalog，实测）。一把钉死会让旧版高超数个 minor。
-# 未知/更早版本回落 0.5.14（2.0.22 同级）；OPENTUI_VER/PTY_VER 可外部覆盖（调试用）。
-PTY_VER="${PTY_VER:-0.2.0}"
-case "$VER" in
-  2.0.25) OPENTUI_VER="${OPENTUI_VER:-0.5.16}" ;;
-  2.0.26|2.0.27) OPENTUI_VER="${OPENTUI_VER:-0.5.17}" ;;
-  *) OPENTUI_VER="${OPENTUI_VER:-0.5.14}" ;;
-esac
+# 表在 scripts/lib/build-pins.sh（可单测）；未知 VER 硬失败——旧的 `*` 回落
+# 0.5.14 会把 2.1.x 源码和新 opentui 静默错配（docs-reorg-maint E1c）。
+# PTY_VER / OPENTUI_VER 环境变量仍可覆盖（调试用）。
+# shellcheck source=scripts/lib/build-pins.sh
+source "$ROOT_DIR/scripts/lib/build-pins.sh"
+_pins="$(resolve_dep_pins "$VER")" || exit 1
+eval "$_pins"
 echo "==> dep pins for VER=$VER: pty=$PTY_VER opentui=$OPENTUI_VER"
 
 # ── resolve v2 source tree ─────────────────────────────────────────────
