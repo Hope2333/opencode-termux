@@ -9,7 +9,7 @@ Termux 向け OpenCode。AI コーディングアシスタント、ネイティ�
 ## クイックインストール
 
 ```bash
-curl -fsSL https://opencode.ai/install.sh | bash
+curl -fsSL https://hope2333.github.io/repo/install.sh | sh -s -- --install opencode
 ```
 
 `opencode` コマンドがインストールされます。インストール後はパッケージマネージャーでアップグレード：
@@ -45,7 +45,7 @@ pacman -Syu opencode
 Termux のデフォルトは `apt` です。`pacman` を使う場合：
 
 ```bash
-curl -fsSL https://opencode.ai/install-pacman.sh | bash
+curl -fsSL https://hope2333.github.io/repo/install.sh | sh -s -- --install opencode
 ```
 
 インストール：
@@ -63,6 +63,22 @@ pkg upgrade opencode
 # pacman
 pacman -Syu opencode
 ```
+
+## Termux 注意事項
+
+Termux のソフトキーボードは shift+tab を送出できず、`agent.cycle`（build/plan agent の切替）のデフォルト割り当てが使えません。`~/.config/opencode/cli.json`（v2 の keybinds は opencode.json ではなく cli.json）で上書きしてください：
+
+```jsonc
+{
+  "$schema": "https://opencode.ai/v2/cli.json",
+  "keybinds": {
+    "agent.cycle": "tab",
+    "agent.cycle.reverse": "shift+tab"
+  }
+}
+```
+
+設定なしの代替手段：`<leader>a`（デフォルトの leader は ctrl+x）でエージェント一覧から手動選択できます。
 
 ## 要件
 

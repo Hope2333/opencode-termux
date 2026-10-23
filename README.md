@@ -9,7 +9,7 @@ OpenCode on Termux. AI-powered coding assistant, native bionic runtime, zero gli
 ## Quick install
 
 ```bash
-curl -fsSL https://opencode.ai/install.sh | bash
+curl -fsSL https://hope2333.github.io/repo/install.sh | sh -s -- --install opencode
 ```
 
 This installs the `opencode` command. After installation, upgrade via package manager:
@@ -45,7 +45,7 @@ Within one generation pick exactly ONE of native / wrapper / compressed; v1 (`op
 Termux uses `apt` by default. If you prefer `pacman`:
 
 ```bash
-curl -fsSL https://opencode.ai/install-pacman.sh | bash
+curl -fsSL https://hope2333.github.io/repo/install.sh | sh -s -- --install opencode
 ```
 
 Then install:
@@ -63,6 +63,22 @@ pkg upgrade opencode
 # pacman
 pacman -Syu opencode
 ```
+
+## Termux notes
+
+The Termux soft keyboard cannot send shift+tab, which makes the default `agent.cycle` keybind (shift+tab, used to switch between build/plan agents) unreachable. Override it in `~/.config/opencode/cli.json` (note: in v2, keybinds live in cli.json, not opencode.json):
+
+```jsonc
+{
+  "$schema": "https://opencode.ai/v2/cli.json",
+  "keybinds": {
+    "agent.cycle": "tab",
+    "agent.cycle.reverse": "shift+tab"
+  }
+}
+```
+
+`tab` is unbound in the v2 defaults, so it does not conflict. Zero-config alternative: press `<leader>a` (default leader is ctrl+x) to pick an agent from the list.
 
 ## Requirements
 

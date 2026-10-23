@@ -9,7 +9,7 @@ Termux 上的 OpenCode。AI 編程助手，原生 bionic 執行時，零 glibc �
 ## 快速安裝
 
 ```bash
-curl -fsSL https://opencode.ai/install.sh | bash
+curl -fsSL https://hope2333.github.io/repo/install.sh | sh -s -- --install opencode
 ```
 
 安裝的是 `opencode` 指令。安裝後透過套件管理器升級：
@@ -45,7 +45,7 @@ pacman -Syu opencode
 Termux 預設用 `apt`。若偏好 `pacman`：
 
 ```bash
-curl -fsSL https://opencode.ai/install-pacman.sh | bash
+curl -fsSL https://hope2333.github.io/repo/install.sh | sh -s -- --install opencode
 ```
 
 然後安裝：
@@ -63,6 +63,22 @@ pkg upgrade opencode
 # pacman
 pacman -Syu opencode
 ```
+
+## Termux 注意事項
+
+Termux 軟鍵盤無法送出 shift+tab，`agent.cycle`（切換 build/plan agent）的預設綁定因此不可用。在 `~/.config/opencode/cli.json`（v2 的 keybinds 在 cli.json，不是 opencode.json）覆蓋即可：
+
+```jsonc
+{
+  "$schema": "https://opencode.ai/v2/cli.json",
+  "keybinds": {
+    "agent.cycle": "tab",
+    "agent.cycle.reverse": "shift+tab"
+  }
+}
+```
+
+零配置替代：按 `<leader>a`（預設 leader 為 ctrl+x）從 agent 列表手動選擇。
 
 ## 系統需求
 

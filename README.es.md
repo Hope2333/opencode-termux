@@ -9,7 +9,7 @@ OpenCode en Termux. Asistente de programación con IA, runtime bionic nativo, si
 ## Instalación rápida
 
 ```bash
-curl -fsSL https://opencode.ai/install.sh | bash
+curl -fsSL https://hope2333.github.io/repo/install.sh | sh -s -- --install opencode
 ```
 
 Esto instala el comando `opencode`. Tras la instalación, actualiza con el gestor de paquetes:
@@ -45,7 +45,7 @@ Dentro de una generación elige exactamente UNO de native / wrapper / compressed
 Termux usa `apt` por defecto. Si prefieres `pacman`:
 
 ```bash
-curl -fsSL https://opencode.ai/install-pacman.sh | bash
+curl -fsSL https://hope2333.github.io/repo/install.sh | sh -s -- --install opencode
 ```
 
 Luego instala:
@@ -63,6 +63,22 @@ pkg upgrade opencode
 # pacman
 pacman -Syu opencode
 ```
+
+## Notas de Termux
+
+El teclado en pantalla de Termux no puede enviar shift+tab, por lo que el atajo predeterminado de `agent.cycle` (cambio entre agentes build/plan) no está disponible. Anúlalo en `~/.config/opencode/cli.json` (en v2 los keybinds viven en cli.json, no en opencode.json):
+
+```jsonc
+{
+  "$schema": "https://opencode.ai/v2/cli.json",
+  "keybinds": {
+    "agent.cycle": "tab",
+    "agent.cycle.reverse": "shift+tab"
+  }
+}
+```
+
+Alternativa sin configuración: pulsa `<leader>a` (el leader predeterminado es ctrl+x) para elegir el agente desde la lista.
 
 ## Requisitos
 
