@@ -166,9 +166,20 @@ for pkg in "@opentui/core-linux-arm64-musl@$OPENTUI_VER" "@opentui/solid-linux-a
   fi
 done
 cd "$ROOT_DIR"
+# ── FFI symbol gate (version-aware): 0.5.x exposes the direct
+# kitty/image/buffer surface; 0.6.x renamed all of it into the ot_* context
+# ABI (upstream 0.6.8 glibc lib exports ZERO of the 0.5.x names — verified
+# against @opentui/core-linux-arm64@0.6.8), so the old list would false-fail.
+if [[ "$OPENTUI_VER" == 0.5.* ]]; then
 NEEDED_SYMS=(cancelKittyImageTransport editBufferSetTabWidth getBufferWidthMethod \
   getKittyImageTransport imageCreateFromPixels imageUpdatePixels pollKittyImageTransport \
   processKittyImageReply setKittyImageTransport pthread_tryjoin_np)
+else
+NEEDED_SYMS=(ot_scene_set_hooks ot_session_set_kitty_image_transport \
+  ot_session_cancel_kitty_image_transport ot_session_get_kitty_image_transport \
+  ot_session_poll_kitty_image_transport ot_session_process_kitty_image_reply \
+  ot_session_start_kitty_file_probe pthread_tryjoin_np)
+fi
 
 # ── rc2 (#20): ALWAYS deploy verified bionic .so to EVERY candidate store key ──
 # bun may keep the store under SRC_DIR/node_modules/.bun OR
@@ -176,14 +187,29 @@ NEEDED_SYMS=(cancelKittyImageTransport editBufferSetTabWidth getBufferWidthMetho
 # @opentui+core@ key found so a later build.ts resolution can never pick up a glibc lib.
 # TLSDESC-shim build (fix-tlsdesc-pipeline): the old opentui-bionic/ base is
 # shim-less (028eaf46) and crashes TUI init on bionic 9 hosts.
-BUILTIN="$ROOT_DIR/artifacts/transplant/opentui-bionic-tlsdesc/libopentui.so"
+# ── per-version builtin selection (2.1.4 wiring): 0.5.x pins keep the tlsdesc
+# gold (2.0.x all-gen dependency); 0.6.8 has its own bionic build; anything
+# else hard-fails. Falling back to the 0.5.x tlsdesc lib for a 0.6.x host is
+# exactly the wrong-ABI root cause of the 2.1.4 TUI crash — no silent fallback.
+if [[ -n "${OPENTUI_BUILTIN:-}" ]]; then
+  BUILTIN="$OPENTUI_BUILTIN"
+  echo "==> OPENTUI_BUILTIN override: $BUILTIN (OPENTUI_VER=$OPENTUI_VER)"
+elif [[ "$OPENTUI_VER" == 0.5.* ]]; then
+  BUILTIN="$ROOT_DIR/artifacts/transplant/opentui-bionic-tlsdesc/libopentui.so"
+elif [[ "$OPENTUI_VER" == "0.6.8" ]]; then
+  BUILTIN="$ROOT_DIR/artifacts/transplant/opentui-bionic-0.6.8/libopentui.so"
+else
+  echo "Error: OPENTUI_VER=$OPENTUI_VER has no matching bionic build — refusing to fall back to the 0.5.x tlsdesc lib (wrong-ABI TUI crash root cause)" >&2
+  echo "       build it first: bash tools/transplant/build-libopentui.sh  ->  artifacts/transplant/opentui-bionic-<ver>/libopentui.so" >&2
+  exit 1
+fi
 if [[ ! -f "$BUILTIN" ]]; then
-  echo "Error: bionic libopentui.so not found at $BUILTIN — refusing to bundle glibc store lib (issue #20)" >&2
+  echo "Error: bionic libopentui.so not found at $BUILTIN (OPENTUI_VER=$OPENTUI_VER) — refusing to bundle glibc store lib (issue #20)" >&2
   echo "       build it first: bash tools/transplant/build-libopentui.sh" >&2
   exit 1
 fi
 if readelf -d "$BUILTIN" 2>/dev/null | grep -Eq 'NEEDED.*lib(c|m|dl|pthread|rt)\.so\.[0-9]'; then
-  echo "Error: $BUILTIN itself is glibc-linked (NEEDED libc.so.6 & co) — refusing to deploy a broken lib" >&2
+  echo "Error: $BUILTIN (OPENTUI_VER=$OPENTUI_VER) itself is glibc-linked (NEEDED libc.so.6 & co) — refusing to deploy a broken lib" >&2
   exit 1
 fi
 GLIBC_SO_KEYS=()
@@ -226,7 +252,7 @@ elif [[ "${OPENTUI_REBUILD:-0}" == "1" ]]; then
   bash "$ROOT_DIR/tools/transplant/build-libopentui.sh"
   TUI_DIR="$(dirname "$TUI_SO")"
   mkdir -p "$TUI_DIR"
-  cp -f "$ROOT_DIR/artifacts/transplant/opentui-bionic-tlsdesc/libopentui.so" "$TUI_DIR/libopentui.so"
+  cp -f "$BUILTIN" "$TUI_DIR/libopentui.so"
 else
   echo "==> opentui bionic runtime stale/broken; refusing auto-rebuild (patch drift risk)"
   echo "    TUI_SO=$TUI_SO missing FFI symbols — graft a verified .so then re-run"
