@@ -36,14 +36,23 @@ done
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 BIN=""
 
+# Pick the LARGEST opencode/opencode1 member: v1 packages ship a ~10 KB shell
+# launcher with the same basename as the real 160 MB runtime, and `find | head -n1`
+# used to pick whichever came first — the launcher has no DT_NEEDED, so every
+# hardened v1 package failed the harden gate.
+pick_runtime() {
+  find "$1" -type f \( -name opencode -o -name opencode1 \) -printf '%s %p\n' 2>/dev/null |
+    sort -rn | head -n1 | cut -d' ' -f2-
+}
+
 case "$FILE" in
   *.deb)
     dpkg-deb -x "$FILE" "$TMP" 2>/dev/null || { echo "Error: cannot extract deb: $FILE" >&2; exit 1; }
-    BIN="$(find "$TMP" -type f \( -name opencode -o -name opencode1 \) | head -n1)"
+    BIN="$(pick_runtime "$TMP")"
     ;;
   *.pkg.tar.*)
-    tar -xOf "$FILE" --wildcards '*/opencode' '*/opencode1' >"$TMP/bin" 2>/dev/null
-    [[ -s "$TMP/bin" ]] && BIN="$TMP/bin"
+    mkdir -p "$TMP/x" && tar -xf "$FILE" -C "$TMP/x" 2>/dev/null
+    BIN="$(pick_runtime "$TMP/x")"
     ;;
   *)
     BIN="$FILE"

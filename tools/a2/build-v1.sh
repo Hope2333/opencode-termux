@@ -105,7 +105,11 @@ if readelf -d "$BUILTIN_SO" 2>/dev/null | grep -Eq 'NEEDED.*lib(c|m|dl|pthread|r
 # TUI init on bionic 9 hosts (oscar dual-build evidence, .omo/evidence/
 # a2-v1-effect-rebuild). Grafting a shim-less renderer silently reintroduces
 # that crash, so refuse it here instead of discovering it on device.
-if ! nm "$BUILTIN_SO" 2>/dev/null | grep -q ' t tlsdesc_shim_init'; then
+# Count instead of `nm | grep -q`: under `set -o pipefail`, grep -q exits on the
+# first match, nm takes SIGPIPE, and the pipeline reports failure — the exact
+# false-negative class fixed for strings|grep in 4441d4a.
+SHIM_HITS="$(nm "$BUILTIN_SO" 2>/dev/null | grep -c ' t tlsdesc_shim_init' || true)"
+if [ "${SHIM_HITS:-0}" -lt 1 ]; then
   echo "Error: $BUILTIN_SO has no TLSDESC shim (tlsdesc_shim_init) — refusing to graft a shim-less renderer" >&2
   echo "       use the tlsdesc build: artifacts/transplant/opentui-bionic-tlsdesc/libopentui.so" >&2
   exit 1
