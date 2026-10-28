@@ -58,3 +58,5 @@ node_modules/
 
 # fleet 打包锁（跨 driver flock 串行用，运行期产物）
 packing/pacman/.fleet-pkg.lock
+# build-hygiene 构建状态清单（运行期产物，write_build_state 生成）
+packing/build-state.json

@@ -10,6 +10,8 @@ PACKAGER_NAME ?= Hope2333(幽零小喵) <u0catmiao@proton.me>
 MORE ?=
 ODIR ?=
 MIX ?= 0
+# df gate (scripts/build-hygiene.sh): minimum free KB on DF_TARGET before builds
+DF_MIN_KB ?= 3000000
 
 # ── Packaging hook registry (version-ranged; resolved at packaging time) ──
 # Hooks ship inside package maintainer scripts (postinst / .INSTALL) and are
@@ -974,11 +976,16 @@ family-v2-native:
 		echo "Error: VER is required. Example: make family-v2-native VER=2.0.0"; \
 		exit 1; \
 	fi
+	@DF_MIN_KB='$(DF_MIN_KB)' . scripts/build-hygiene.sh; \
+	df_gate "$(DF_MIN_KB)" || { echo "Error: df gate blocked build: disk still tight after hygiene sweeps (need $(DF_MIN_KB) KB free; see $${HYG_LOG:-$${TMPDIR:-/data/data/com.termux/files/usr/tmp}/build-hygiene.log})"; exit 1; }
 	$(MAKE) --no-print-directory build-native VER=$(VER) V2_SRC='$(V2_SRC)'
 	command -v clang >/dev/null 2>&1 || { echo "FATAL: clang required — v2 native must ship the seccomp shim (issue #17)"; exit 1; }
 	$(MAKE) --no-print-directory harden-native VER=$(VER)
 	TRANSPLANT_ROOT=$(CURDIR)/artifacts/build $(MAKE) --no-print-directory deb-native VER=$(VER)
 	TRANSPLANT_ROOT=$(CURDIR)/artifacts/build $(MAKE) --no-print-directory pacman-native VER=$(VER)
+	@. scripts/build-hygiene.sh; \
+	write_build_state "$(VER)" "$(PTY_VARIANT)" "$(PKGREL)" || exit 1; \
+	KEEP_BINS=1 sweep_intermediates
 	@if [ -n "$(VER_IS_SET)" ] && [ "$(NOT_CLEAN)" != "1" ]; then $(MAKE) --no-print-directory clean-version VER=$(VER) || exit 1; fi
 
 # family-v2-compressed: B-line + UPX + compressed deb/pacman (v1 standalone scheme)
@@ -990,6 +997,8 @@ family-v2-compressed:
 		echo "Error: VER is required. Example: make family-v2-compressed VER=2.0.0"; \
 		exit 1; \
 	fi
+	@DF_MIN_KB='$(DF_MIN_KB)' . scripts/build-hygiene.sh; \
+	df_gate "$(DF_MIN_KB)" || { echo "Error: df gate blocked build: disk still tight after hygiene sweeps (need $(DF_MIN_KB) KB free; see $${HYG_LOG:-$${TMPDIR:-/data/data/com.termux/files/usr/tmp}/build-hygiene.log})"; exit 1; }
 	$(MAKE) --no-print-directory build-native VER=$(VER) V2_SRC='$(V2_SRC)'
 	$(MAKE) --no-print-directory harden-native VER=$(VER)
 	UPX_BIN='$(UPX_BIN)' $(MAKE) --no-print-directory build-native-upx VER=$(VER)
