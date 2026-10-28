@@ -166,20 +166,22 @@ for pkg in "@opentui/core-linux-arm64-musl@$OPENTUI_VER" "@opentui/solid-linux-a
   fi
 done
 cd "$ROOT_DIR"
-# ── FFI symbol gate (version-aware): 0.5.x exposes the direct
-# kitty/image/buffer surface; 0.6.x renamed all of it into the ot_* context
-# ABI (upstream 0.6.8 glibc lib exports ZERO of the 0.5.x names — verified
-# against @opentui/core-linux-arm64@0.6.8), so the old list would false-fail.
-if [[ "$OPENTUI_VER" == 0.5.* ]]; then
-NEEDED_SYMS=(cancelKittyImageTransport editBufferSetTabWidth getBufferWidthMethod \
-  getKittyImageTransport imageCreateFromPixels imageUpdatePixels pollKittyImageTransport \
-  processKittyImageReply setKittyImageTransport pthread_tryjoin_np)
-else
-NEEDED_SYMS=(ot_scene_set_hooks ot_session_set_kitty_image_transport \
-  ot_session_cancel_kitty_image_transport ot_session_get_kitty_image_transport \
-  ot_session_poll_kitty_image_transport ot_session_process_kitty_image_reply \
-  ot_session_start_kitty_file_probe pthread_tryjoin_np)
+# ── FFI symbol gate (profile-driven; single source: build/matrix/pins.sh) ──
+# 0.5.x exposes the direct kitty/image/buffer surface; 0.6.x renamed all of it
+# into the ot_* context ABI (upstream 0.6.8 glibc lib exports ZERO of the 0.5.x
+# names). The profile comes from the SAME table that picks the renderer library,
+# so the two can never drift again (the 2.1.4 wrong-ABI crash).
+FFI_PROFILE="$(resolve_pin_matrix "$VER" | sed -n 's/^FFI_PROFILE=//p')"
+if [[ -z "$FFI_PROFILE" ]]; then
+  echo "Error: no FFI profile for VER=$VER — add its row to build/matrix/pins.sh" >&2
+  exit 1
 fi
+mapfile -t NEEDED_SYMS < <(matrix_ffi_syms "$FFI_PROFILE")
+if [[ ${#NEEDED_SYMS[@]} -eq 0 ]]; then
+  echo "Error: empty FFI symbol set for profile '$FFI_PROFILE' (build/matrix/pins.sh)" >&2
+  exit 1
+fi
+echo "==> FFI gate: profile=$FFI_PROFILE (${#NEEDED_SYMS[@]} symbols)"
 
 # ── rc2 (#20): ALWAYS deploy verified bionic .so to EVERY candidate store key ──
 # bun may keep the store under SRC_DIR/node_modules/.bun OR
@@ -187,21 +189,23 @@ fi
 # @opentui+core@ key found so a later build.ts resolution can never pick up a glibc lib.
 # TLSDESC-shim build (fix-tlsdesc-pipeline): the old opentui-bionic/ base is
 # shim-less (028eaf46) and crashes TUI init on bionic 9 hosts.
-# ── per-version builtin selection (2.1.4 wiring): 0.5.x pins keep the tlsdesc
-# gold (2.0.x all-gen dependency); 0.6.8 has its own bionic build; anything
-# else hard-fails. Falling back to the 0.5.x tlsdesc lib for a 0.6.x host is
-# exactly the wrong-ABI root cause of the 2.1.4 TUI crash — no silent fallback.
+# ── per-version builtin from the matrix (no hardcoded if/elif) ──
+# lib=missing means this opentui version has no bionic build yet: hard-fail
+# instead of falling back to the 0.5.x tlsdesc lib (wrong-ABI TUI crash root
+# cause). Falling back was exactly how 2.1.4 shipped the 0.5.x renderer.
 if [[ -n "${OPENTUI_BUILTIN:-}" ]]; then
   BUILTIN="$OPENTUI_BUILTIN"
   echo "==> OPENTUI_BUILTIN override: $BUILTIN (OPENTUI_VER=$OPENTUI_VER)"
-elif [[ "$OPENTUI_VER" == 0.5.* ]]; then
-  BUILTIN="$ROOT_DIR/artifacts/transplant/opentui-bionic-tlsdesc/libopentui.so"
-elif [[ "$OPENTUI_VER" == "0.6.8" ]]; then
-  BUILTIN="$ROOT_DIR/artifacts/transplant/opentui-bionic-0.6.8/libopentui.so"
 else
-  echo "Error: OPENTUI_VER=$OPENTUI_VER has no matching bionic build — refusing to fall back to the 0.5.x tlsdesc lib (wrong-ABI TUI crash root cause)" >&2
-  echo "       build it first: bash tools/transplant/build-libopentui.sh  ->  artifacts/transplant/opentui-bionic-<ver>/libopentui.so" >&2
-  exit 1
+  BUILTIN="$(resolve_pin_matrix "$VER" | sed -n 's/^LIBOPENTUI_SO=//p')"
+  LIBOPENTUI_NAME="$(resolve_pin_matrix "$VER" | sed -n 's/^LIBOPENTUI_NAME=//p')"
+  if [[ -z "$BUILTIN" ]]; then
+    echo "Error: OPENTUI_VER=$OPENTUI_VER has no bionic build registered (matrix lib=${LIBOPENTUI_NAME:-?}) — refusing to fall back to the 0.5.x tlsdesc lib (wrong-ABI TUI crash root cause)" >&2
+    echo "       build it first: bash tools/transplant/build-libopentui.sh  ->  artifacts/transplant/opentui-bionic-<ver>/libopentui.so" >&2
+    echo "       then set lib=opentui-<ver> for VER=$VER in build/matrix/pins.sh" >&2
+    exit 1
+  fi
+  echo "==> libopentui via matrix: $BUILTIN (OPENTUI_VER=$OPENTUI_VER)"
 fi
 if [[ ! -f "$BUILTIN" ]]; then
   echo "Error: bionic libopentui.so not found at $BUILTIN (OPENTUI_VER=$OPENTUI_VER) — refusing to bundle glibc store lib (issue #20)" >&2
@@ -316,7 +320,10 @@ PTY_VARIANT="${PTY_VARIANT:-musl}"
 case "$PTY_VARIANT" in
   musl)
     echo "==> installing musl PTY helper (issue #27: gnu variant cannot run on bionic)..."
-    if LD_PRELOAD="$OPENAT2_SHIM" "$ANDROID_BUN" install --force --ignore-scripts --os=linux --cpu=arm64 "@opencode-ai/pty-linux-arm64-musl@$PTY_VER" 2>&1 | tail -1; then :; fi
+    # Run inside SRC_DIR: `bun install <pkg>` mutates the package.json/bun.lock of
+    # whatever CWD it runs in. This script's CWD is the repo root, which is how
+    # the root package.json/bun.lock kept drifting to the build's PTY_VER.
+    if (cd "$SRC_DIR" && LD_PRELOAD="$OPENAT2_SHIM" "$ANDROID_BUN" install --force --ignore-scripts --os=linux --cpu=arm64 "@opencode-ai/pty-linux-arm64-musl@$PTY_VER" 2>&1 | tail -1); then :; fi
     PTY_MUSL_BIN="$(find "$STORE" "$SRC_DIR/node_modules" -path '*pty-linux-arm64-musl/bin/opencode-pty' -type f 2>/dev/null | head -n1)"
     if [[ -z "$PTY_MUSL_BIN" ]] || ! file "$PTY_MUSL_BIN" | grep -q 'statically linked'; then
       echo "Error: static musl opencode-pty not found/valid — bionic PTY would be broken (issue #27)" >&2
