@@ -19,14 +19,14 @@ _REPO_ROOT_PINS="$(cd "$_BUILD_PINS_DIR/../.." && pwd)"
 
 resolve_dep_pins() {
 	local ver="${1:-}"
-	local row pty opentui lib ffi
+	local row pty opentui lib ffi effect
 	[[ -n "$ver" ]] || { echo "Error: resolve_dep_pins: version required" >&2; return 1; }
 
 	if ! row="$(matrix_pins_for "$ver")"; then
 		echo "Error: unknown VER=$ver — add its row to build/matrix/pins.sh (pty: packages/cli/package.json; opentui: root package.json workspaces.catalog)" >&2
 		return 1
 	fi
-	read -r pty opentui lib ffi <<<"$row"
+	read -r pty opentui lib ffi effect <<<"$row"
 
 	printf 'PTY_VER=%s OPENTUI_VER=%s\n' "${PTY_VER:-$pty}" "${OPENTUI_VER:-$opentui}"
 }
@@ -35,14 +35,14 @@ resolve_dep_pins() {
 # Prints KEY=VALUE lines so callers can eval or grep without parsing prose.
 resolve_pin_matrix() {
 	local ver="${1:-}"
-	local row pty opentui lib ffi so
+	local row pty opentui lib ffi effect so
 	[[ -n "$ver" ]] || { echo "Error: resolve_pin_matrix: version required" >&2; return 1; }
 
 	if ! row="$(matrix_pins_for "$ver")"; then
 		echo "Error: unknown VER=$ver — add its row to build/matrix/pins.sh" >&2
 		return 1
 	fi
-	read -r pty opentui lib ffi <<<"$row"
+	read -r pty opentui lib ffi effect <<<"$row"
 	so="$(matrix_libopentui_path "$_REPO_ROOT_PINS" "$lib")"
 	[[ -n "$so" ]] || so=""
 
@@ -51,4 +51,5 @@ resolve_pin_matrix() {
 	printf 'LIBOPENTUI_NAME=%s\n' "$lib"
 	printf 'LIBOPENTUI_SO=%s\n' "$so"
 	printf 'FFI_PROFILE=%s\n' "$ffi"
+	printf 'EFFECT_VER=%s\n' "$effect"
 }

@@ -69,6 +69,8 @@ except Exception:
 cat = (d.get("workspaces") or {}).get("catalog") or {}
 if field == "opentui":
     print(cat.get("@opentui/core", ""))
+elif field == "effect":
+    print(cat.get("effect", ""))
 elif field == "pty":
     # v2 declares it in packages/cli; the root cache cannot answer this.
     print("")
@@ -108,12 +110,12 @@ override_reason() { # ver field
 }
 
 check_version() {
-	local ver="$1" row pty opentui lib ffi up_ot up_pty ov rc
+	local ver="$1" row pty opentui lib ffi effect up_ot up_pty up_effect ov rc
 	if ! row="$(matrix_pins_for "$ver")"; then
 		echo "DRIFT  $ver: not registered in build/matrix/pins.sh"
 		return 1
 	fi
-	read -r pty opentui lib ffi <<<"$row"
+	read -r pty opentui lib ffi effect <<<"$row"
 
 	# schema
 	case "$lib" in
@@ -161,7 +163,27 @@ check_version() {
 		fi
 	fi
 
-	[[ $rc -eq 0 ]] && echo "OK      $ver pty=$pty opentui=$opentui lib=$lib ffi=$ffi"
+	case "$effect" in
+		-|""|[0-9]*) ;;
+		*) echo "SCHEMA $ver: bad effect field '$effect'"; return 1 ;;
+	esac
+	if [[ "$effect" != "-" && -n "$effect" ]]; then
+		up_effect="$(field_from_upstream "$ver" effect)" || { echo "NETERR $ver: upstream effect unavailable"; return 1; }
+		if [[ -n "$up_effect" && "$up_effect" != "$effect" ]]; then
+			ov="$(override_value "$ver" effect || true)"
+			if [[ -n "$ov" && "$ov" = "$effect" ]]; then
+				echo "OK-OVERRIDE $ver effect=$effect (upstream $up_effect; $(override_reason "$ver" effect))"
+			else
+				echo "DRIFT  $ver effect: matrix=$effect upstream=$up_effect"
+				rc=1
+			fi
+		elif [[ -n "$up_effect" && -n "$(override_value "$ver" effect || true)" ]]; then
+			echo "STALE-OVERRIDE $ver effect: override present but matrix already matches upstream"
+			rc=1
+		fi
+	fi
+
+	[[ $rc -eq 0 ]] && echo "OK      $ver pty=$pty opentui=$opentui lib=$lib ffi=$ffi effect=$effect"
 	return $rc
 }
 
