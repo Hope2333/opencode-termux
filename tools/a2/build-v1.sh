@@ -98,6 +98,19 @@ echo "    effect version gate OK: $EFFECT_INSTALLED"
 # ── 3. opentui graft (every libopentui.so under node_modules) ─────────
 if readelf -d "$BUILTIN_SO" 2>/dev/null | grep -Eq 'NEEDED.*lib(c|m|dl|pthread|rt)\.so\.[0-9]'; then
   echo "Error: $BUILTIN_SO is glibc-linked — refusing" >&2; exit 1; fi
+
+# ── TLSDESC shim gate (A2 todo4b) ──────────────────────────────────────
+# The tlsdesc build carries a local `tlsdesc_shim_init` plus an INIT_ARRAY
+# constructor. The older opentui-bionic/ base is shim-less and segfaults at
+# TUI init on bionic 9 hosts (oscar dual-build evidence, .omo/evidence/
+# a2-v1-effect-rebuild). Grafting a shim-less renderer silently reintroduces
+# that crash, so refuse it here instead of discovering it on device.
+if ! nm "$BUILTIN_SO" 2>/dev/null | grep -q ' t tlsdesc_shim_init'; then
+  echo "Error: $BUILTIN_SO has no TLSDESC shim (tlsdesc_shim_init) — refusing to graft a shim-less renderer" >&2
+  echo "       use the tlsdesc build: artifacts/transplant/opentui-bionic-tlsdesc/libopentui.so" >&2
+  exit 1
+fi
+echo "    tlsdesc shim gate OK: $(basename "$BUILTIN_SO")"
 mapfile -t SO_TARGETS < <(find "$V1_SRC/node_modules" "$V1_SRC/packages/opencode/node_modules" \
   -name libopentui.so 2>/dev/null | sort -u)
 [[ ${#SO_TARGETS[@]} -ge 1 ]] || { echo "Error: no libopentui.so found in store" >&2; exit 1; }
