@@ -45,7 +45,9 @@ matrix_pins_for() {
 		# @opencode-ai/pty dependency. effect is a deliberate upgrade:
 		# upstream 4.0.0-beta.83 segfaults on the 3.18 kernel, so the rebuild
 		# uses 4.0.0-beta.103 (see build/matrix/overrides.tsv).
-		1.19.4) printf 'none 0.4.5 missing legacy 4.0.0-beta.103\n' ;;
+		# lib=tlsdesc: the 0.5.x gold is a strict C-ABI superset of 0.4.5
+		# (1673 C exports, 0 missing; the only 42 gaps are yoga C++ internals).
+		1.19.4) printf 'none 0.4.5 tlsdesc legacy 4.0.0-beta.103\n' ;;
 		*) return 1 ;;
 	esac
 }
