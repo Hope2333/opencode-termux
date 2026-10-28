@@ -1,40 +1,54 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # build-pins.sh — per-version dependency pins for the v2 native build (B line).
 #
-# Values are read from the upstream tag itself (2026-10-23):
+# The table itself now lives in build/matrix/pins.sh (single source of truth):
 #   pty     <- packages/cli/package.json  dependencies["@opencode-ai/pty"]
 #   opentui <- root package.json          workspaces.catalog["@opentui/core"]
+#   lib     -> which bionic libopentui build to deploy
+#   ffi     -> which FFI symbol profile the deployed library must satisfy
 #
 # Unknown versions are a hard error. The previous `*) OPENTUI_VER=0.5.14`
 # fallback silently paired a new source tree with a two-minor-old opentui
 # (docs-reorg-maint E1c). PTY_VER / OPENTUI_VER in the environment still win,
 # for debug builds.
 
+_BUILD_PINS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_REPO_ROOT_PINS="$(cd "$_BUILD_PINS_DIR/../.." && pwd)"
+# shellcheck source=/dev/null
+. "$_REPO_ROOT_PINS/build/matrix/pins.sh"
+
 resolve_dep_pins() {
 	local ver="${1:-}"
-	local pty opentui
+	local row pty opentui lib ffi
 	[[ -n "$ver" ]] || { echo "Error: resolve_dep_pins: version required" >&2; return 1; }
 
-	case "$ver" in
-		2.0.0|2.0.[1-9]|2.0.1[0-9]|2.0.2[0-4]) opentui="0.5.14" ;;
-		2.0.25) opentui="0.5.16" ;;
-		2.0.2[6-9]|2.0.3[0-2]) opentui="0.5.17" ;;
-		2.1.[0-3]) opentui="0.6.6" ;;
-		2.1.4) opentui="0.6.8" ;;
-		*)
-			echo "Error: unknown VER=$ver — add its upstream pins to scripts/lib/build-pins.sh (pty: packages/cli/package.json; opentui: root package.json workspaces.catalog)" >&2
-			return 1
-			;;
-	esac
-
-	case "$ver" in
-		2.0.*) pty="0.2.0" ;;
-		2.1.*) pty="0.3.1" ;;
-		*)
-			echo "Error: unknown VER=$ver — no pty pin line" >&2
-			return 1
-			;;
-	esac
+	if ! row="$(matrix_pins_for "$ver")"; then
+		echo "Error: unknown VER=$ver — add its row to build/matrix/pins.sh (pty: packages/cli/package.json; opentui: root package.json workspaces.catalog)" >&2
+		return 1
+	fi
+	read -r pty opentui lib ffi <<<"$row"
 
 	printf 'PTY_VER=%s OPENTUI_VER=%s\n' "${PTY_VER:-$pty}" "${OPENTUI_VER:-$opentui}"
+}
+
+# Full matrix resolution for the bionic build: pins + renderer library + FFI profile.
+# Prints KEY=VALUE lines so callers can eval or grep without parsing prose.
+resolve_pin_matrix() {
+	local ver="${1:-}"
+	local row pty opentui lib ffi so
+	[[ -n "$ver" ]] || { echo "Error: resolve_pin_matrix: version required" >&2; return 1; }
+
+	if ! row="$(matrix_pins_for "$ver")"; then
+		echo "Error: unknown VER=$ver — add its row to build/matrix/pins.sh" >&2
+		return 1
+	fi
+	read -r pty opentui lib ffi <<<"$row"
+	so="$(matrix_libopentui_path "$_REPO_ROOT_PINS" "$lib")"
+	[[ -n "$so" ]] || so=""
+
+	printf 'PTY_VER=%s\n' "${PTY_VER:-$pty}"
+	printf 'OPENTUI_VER=%s\n' "${OPENTUI_VER:-$opentui}"
+	printf 'LIBOPENTUI_NAME=%s\n' "$lib"
+	printf 'LIBOPENTUI_SO=%s\n' "$so"
+	printf 'FFI_PROFILE=%s\n' "$ffi"
 }
