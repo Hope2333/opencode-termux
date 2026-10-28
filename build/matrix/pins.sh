@@ -26,13 +26,33 @@ matrix_pins_for() {
 	local ver="${1:-}"
 	[[ -n "$ver" ]] || return 1
 	case "$ver" in
-		2.0.0|2.0.[1-9]|2.0.1[0-9]|2.0.2[0-4]) printf '0.2.0 0.5.14 tlsdesc legacy\n' ;;
+		# Ranges below are read from the upstream tag itself (verified by
+		# tools/matrix-check.sh against gh api, 2026-10-26). The old single
+		# `2.0.0-2.0.24 -> 0.5.14 / pty 0.2.0` row was an unchecked carry-over:
+		# upstream actually shipped 0.5.10 (pty 0.1.13) until 2.0.16.
+		2.0.0|2.0.[1-9]|2.0.1[0-6]) printf '0.1.13 0.5.10 tlsdesc legacy\n' ;;
+		2.0.1[7-9]|2.0.20) printf '0.1.13 0.5.12 tlsdesc legacy\n' ;;
+		2.0.2[12]) printf '0.1.13 0.5.14 tlsdesc legacy\n' ;;
+		2.0.2[34]) printf '0.2.0 0.5.14 tlsdesc legacy\n' ;;
 		2.0.25) printf '0.2.0 0.5.16 tlsdesc legacy\n' ;;
 		2.0.2[6-9]|2.0.3[0-2]) printf '0.2.0 0.5.17 tlsdesc legacy\n' ;;
 		2.1.[0-3]) printf '0.3.1 0.6.6 missing ot_ctx\n' ;;
 		2.1.4) printf '0.3.1 0.6.8 opentui-0.6.8 ot_ctx\n' ;;
 		*) return 1 ;;
 	esac
+}
+
+# Enumerate every registered version (used by tools/matrix-check.sh).
+# Ranges are expanded explicitly so callers never have to parse case patterns.
+matrix_versions() {
+	local major minor
+	for minor in 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 \
+		25 26 27 28 29 30 31 32; do
+		printf '2.0.%s\n' "$minor"
+	done
+	for minor in 0 1 2 3 4; do
+		printf '2.1.%s\n' "$minor"
+	done
 }
 
 # Resolve a lib name to an absolute .so path (empty when the build is missing).
