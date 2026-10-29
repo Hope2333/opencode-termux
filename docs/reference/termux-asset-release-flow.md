@@ -332,7 +332,7 @@ make release-upload TAG=Push<YYMMDD> VERS='1.0.[1-3]'
 ```bash
 gh release edit Push<YYMMDD> --repo Hope2333/<repo> --notes "## BUILD LOG
 <YYMMDD>: v<版本>
-Lasted: v<最新版本>
+Latest: v<最新版本>
 
 ...
 "
@@ -340,14 +340,22 @@ Lasted: v<最新版本>
 
 ---
 
-## 9. 各仓库版本对照表（截至 2026-06-12）
+## 9. 各仓库版本对照表（截至 2026-10-30）
 
-| 仓库 | 最新版本 | 最新 Push Tag | 包含版本范围 |
-|------|:-------:|:------------:|:-----------:|
-| opencode-termux | v1.17.3 | Push260522 | v1.15.1 ~ v1.17.3 |
-| MiMoCode-Termux | v0.1.0 | Push260611 | v0.1.0 |
-| freebuff-termux | v0.0.106 | Push260611 | v0.0.106 |
-| codebuff-termux | v1.0.681 | Push260611 | v1.0.681 |
+> 本表是**快照**，会过期。发布前用命令取真值，不要拿这张表当依据：
+> `gh release list --repo Hope2333/<repo> --limit 3`
+
+| 仓库 | 最新版本 | 最新 Push Tag |
+|------|:-------:|:------------:|
+| opencode-termux | v2 `2.1.4` / v1 `1.19.4` | `Push261026` |
+| MiMoCode-Termux | `0.1.13`（wrapper `0.1.15`） | `Push260912` |
+| freebuff-termux | `0.2.29` | `Push260914` |
+| codebuff-termux | `1.0.688` | `Push260911` |
+| codegraph-termux | `1.6.0` | `Push260803` |
+
+版本取自统一 pacman 索引 `hope2333.db`（随最新批次发布）；tag 取自 `gh api
+repos/<owner>/<repo>/releases?per_page=1`。opencode-termux 的双代版本口径：
+v2 = `opencode`，v1 = `opencode1`，两者独立跟踪、可共存安装。
 
 ---
 
@@ -366,7 +374,7 @@ Push<YYMMDD>
 ```markdown
 ## BUILD LOG
 <YYMMDD>: v<版本范围>
-Lasted: v<最新版本>
+Latest: v<最新版本>
 
 ## <项目名> for Termux
 
