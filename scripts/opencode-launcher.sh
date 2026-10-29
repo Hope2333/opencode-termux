@@ -72,7 +72,18 @@ if [ -f "$(dirname "$OC_RT")/.grafted" ]; then
 fi
 if [ "$_oc_force_tui" -eq 0 ] && [ "$_oc_grafted" -eq 0 ] && [ "$(uname -r | cut -d. -f1)" -lt 4 ] 2>/dev/null; then
 	_oc_ver="$("$OC_RT" --version 2>/dev/null | grep -oE '[0-9]+(\.[0-9]+){2}' | head -n1 || true)"
-	if [ -n "$_oc_ver" ] && [ "$(printf '%s\n%s\n' "$_oc_ver" 1.18.35 | sort -V | head -n1)" = 1.18.35 ]; then
+	# Per-line threshold: the first build whose TUI actually works on kernel 3.x.
+	#   v2 -> 2.0.32  (0.5.17 renderer + per-version FFI gate; 2.0.31 and older
+	#                  still crash, so they keep the CLI fallback)
+	#   v1 -> 1.19.4  (our effect-beta.103 rebuild; upstream 1.18.35..1.19.3 crash)
+	# Using a single 1.18.35 gate meant every v2 build (2.x > 1.18.35) was
+	# degraded to CLI on legacy kernels even though its TUI works.
+	if [ -n "$_oc_ver" ] && {
+		_oc_min_ok=1.19.4
+		case "${_oc_ver%%.*}" in 2|3|4|5|6|7|8|9) _oc_min_ok=2.0.32 ;; esac
+		[ "$_oc_ver" != "$_oc_min_ok" ] &&
+			[ "$(printf '%s\n%s\n' "$_oc_ver" "$_oc_min_ok" | sort -V | head -n1)" = "$_oc_ver" ]
+	}; then
 		echo "opencode: 老内核 TUI 不兼容, 已降级 CLI 模式（可用 --force-tui 强试）" >&2
 		echo "opencode: Legacy kernel detected: TUI disabled, running CLI mode (use --force-tui to force)" >&2
 		if [ "$_oc_meta" -eq 0 ]; then
