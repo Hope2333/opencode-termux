@@ -420,7 +420,11 @@ seccomp-harden:
 		exit 0; \
 	fi; \
 	cp -p "$$SRC" "$$SRC.pre-crhandler" || exit 1; \
-	python3 tools/transplant/crhandler_patch.py "$$SRC" || exit 1; \
+	if ! python3 tools/transplant/crhandler_patch.py "$$SRC"; then \
+		echo "==> crhandler_patch found no sectionless zero run (bun 1.19.4 layout); falling back to patchelf" >&2; \
+		command -v patchelf >/dev/null 2>&1 || { echo "Error: patchelf missing — cannot harden $$SRC" >&2; exit 1; }; \
+		patchelf --add-needed libopencode-crhandler.so --set-rpath '$$ORIGIN/../lib/opencode' "$$SRC" || exit 1; \
+	fi; \
 	echo "seccomp-harden: pre-patch copy kept at $$SRC.pre-crhandler";
 	@# Post-patch sync: when tui was patched, ensure revived reflects the
 	@# hardened binary. transplant.py produces both tui and revived, but
