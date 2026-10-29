@@ -50,6 +50,9 @@ OPENAT2_SHIM="${OPENAT2_SHIM:-$ROOT_DIR/tools/transplant/toolchain/openat2_shim.
 # Store graft source = the TLSDESC-shim build (fix-tlsdesc-pipeline): the old
 # opentui-bionic/ base is shim-less (028eaf46) and SIGSEGVs TUI init on bionic 9.
 BUILTIN_SO="${BUILTIN_SO:-$ROOT_DIR/artifacts/transplant/opentui-bionic-tlsdesc/libopentui.so}"
+# version→pin table (pty/opentui/lib/ffi/effect); matrix_pins_for is used below
+# shellcheck source=scripts/lib/build-pins.sh
+source "$ROOT_DIR/scripts/lib/build-pins.sh"
 BUILD_ROOT="${BUILD_ROOT:-$ROOT_DIR/artifacts/build}"
 MODELS_JSON="${MODELS_JSON:-${TMPDIR:-/data/data/com.termux/files/usr/tmp}/a2-src/models.dev-api.json}"
 OUT_DIR="$BUILD_ROOT/$VER"
@@ -83,6 +86,19 @@ if [[ ! -s "$MODELS_JSON" ]]; then
 fi
 echo "    models snapshot: $(du -h "$MODELS_JSON" | cut -f1) ($MODELS_JSON)"
 
+# ── 1c. effect migration (idempotent, anchor-checked) ──────────────────
+# Upstream v1 pins effect 4.0.0-beta.83; beta.103 renamed/removed several APIs
+# and moved http|process|socket under unstable/. Doing those edits by hand made
+# the artifact un-rebuildable, so they live in tools/a2/effect-migrate.py.
+# Skipped for the beta.83 control anchor (nothing to migrate).
+OPENTUI_VER="$(matrix_pins_for "$VER" 2>/dev/null | awk '{print $2}')"
+[[ -n "$OPENTUI_VER" ]] || { echo "Error: cannot resolve opentui pin for VER=$VER (build/matrix/pins.sh)" >&2; exit 1; }
+if [[ "$EFFECT_VER" != "4.0.0-beta.83" ]]; then
+  echo "==> effect migration -> $EFFECT_VER (opentui $OPENTUI_VER)"
+  python3 "$ROOT_DIR/tools/a2/effect-migrate.py" pre \
+    --src "$V1_SRC" --effect "$EFFECT_VER" --opentui "$OPENTUI_VER" || exit 1
+fi
+
 # ── 2. deps (idempotent; store completeness keyed on effect version) ──
 if ! ls -d "$V1_SRC/node_modules/.bun/effect@$EFFECT_VER" >/dev/null 2>&1; then
   echo "==> bun install (effect $EFFECT_VER store missing)..."
@@ -94,6 +110,12 @@ EFFECT_INSTALLED="$(grep -o '"version": "[^"]*"' "$V1_SRC/packages/opencode/node
 [[ "$EFFECT_INSTALLED" == "$EFFECT_VER" ]] || {
   echo "Error: effect version mismatch: node_modules=$EFFECT_INSTALLED expected=$EFFECT_VER" >&2; exit 1; }
 echo "    effect version gate OK: $EFFECT_INSTALLED"
+
+# ── 2b. optional platform package (bun skips optional deps for this host) ──
+if [[ "$EFFECT_VER" != "4.0.0-beta.83" ]]; then
+  python3 "$ROOT_DIR/tools/a2/effect-migrate.py" post \
+    --src "$V1_SRC" --opentui "$OPENTUI_VER" || exit 1
+fi
 
 # ── 3. opentui graft (every libopentui.so under node_modules) ─────────
 if readelf -d "$BUILTIN_SO" 2>/dev/null | grep -Eq 'NEEDED.*lib(c|m|dl|pthread|rt)\.so\.[0-9]'; then
