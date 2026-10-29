@@ -118,7 +118,13 @@ if [[ "$SHIP_PTY" == "1" && -f "$PTY_SPLICE_DIR/librust_pty_arm64_musl_patched.s
 	echo "pty splice assets: shipping from $OPENCODE_PTY_SPLICE_DIR"
 else
 	unset OPENCODE_PTY_SPLICE_DIR || true
-	echo "pty splice assets not shipped (OCOMP_SHIMS='$OCOMP_SHIMS' or assets missing under $PTY_SPLICE_DIR — launcher degrades gracefully)"
+	if [[ "$SHIP_PTY" == "1" ]]; then
+		# Requested but unavailable -> fatal. Only an explicit SHIP_PTY=0
+		# (OCOMP_SHIMS opt-out) may ship without BUN_PTY_LIB.
+		echo "Error: pty splice requested but assets missing under $PTY_SPLICE_DIR — refusing to ship without BUN_PTY_LIB" >&2
+		exit 1
+	fi
+	echo "pty splice assets not shipped (explicit OCOMP_SHIMS opt-out: '$OCOMP_SHIMS')"
 fi
 
 # epoll compat shim (OPTIONAL, backward compatible, v1 family ONLY — v2

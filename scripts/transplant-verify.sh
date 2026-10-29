@@ -16,8 +16,9 @@
 #
 # 网络项失败策略 (item 3): 记录 WARN 不 FAIL —— 设计如此。网络缺失是环境
 # 问题, 不应与移植缺陷混淆; 移植缺陷由 item 2 (dlopen/崩溃) 与 item 4 (serve)
-# 捕获。--offline 模式下 item 2 的非崩溃/非 dlopen 失败同样降级为 WARN
-# (chat 命令依赖网络, 离线时无法区分环境与缺陷)。
+# 捕获。**item 2 不再降级**（2026-10-30 政策：不允许把未验证的失败放宽成 WARN）：
+# 无论是否 --offline，TUI 冒烟的非预期退出都记 FAIL。只有 item 3（外部网络项）
+# 在 --offline 下跳过并记 WARN —— 那是环境缺失，不是产品缺陷。
 
 set -euo pipefail
 
@@ -124,8 +125,6 @@ printf '[env] android sdk check ... %s (%s)\n' "$API_STATUS" "$API_NOTE"
     record 2 "TUI render smoke (run hi --mode=dev)" "FAIL" "dlopen failure: ${mod:-$(sanitize "$dlopen_line")}"
   elif [[ "$rc" -ge 128 ]]; then
     record 2 "TUI render smoke (run hi --mode=dev)" "FAIL" "signal exit=$rc"
-  elif [[ "$OFFLINE" -eq 1 ]]; then
-    record 2 "TUI render smoke (run hi --mode=dev)" "WARN" "exit=$rc (offline: chat 命令依赖网络, 无法区分环境与缺陷)"
   else
     record 2 "TUI render smoke (run hi --mode=dev)" "FAIL" "unexpected exit=$rc (期望 0/124); stderr: $(sanitize "$(head -3 "$local_err")")"
   fi

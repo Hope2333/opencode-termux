@@ -34,79 +34,23 @@ if [ ! -x "$OC_RT" ]; then
 	exit 127
 fi
 
-# ── oldkernel compat guard (A 档 CLI 兜底; OSC-001) ────────────────────────────
-# Launcher is a product file: consumer machines (e.g. oscar) have no
-# .omo/compat-ledger.jsonl, so the OSC-001 entry is inlined here (source of
-# truth: .omo/compat-ledger.jsonl in the build repo).
-#   OSC-001: kernel_max="3.x"  first_bad=1.18.35  verdict=graft-ok
-#   symptom: opencode >= 1.18.35 (embedded OpenTUI 0.5.14+) TUI render path
-#            SIGSEGV on kernel 3.x (oscar 3.18.140-mokee, pty rc=139 5/5)
-# Trigger: kernel < 4.x AND runtime >= 1.18.35 -> bilingual warning, and the
-# TUI-default scenario (no CLI subcommand) degrades to `serve` (CLI-usable;
-# --print/serve semantics are provided by opencode itself). --force-tui skips
-# the degradation entirely (B 档 graft hybrid users: TUI actually works there)
-# and is stripped from the runtime argv either way. A `.grafted` marker next
-# to the runtime (shipped by the T6 graft build, scripts/compat/
-# compat-graft-build.sh) skips it the same way: B 档 hybrid installs run the
-# TUI bare — no --force-tui needed.
-# Kernel >= 4.x or runtime < 1.18.35: zero behavior change — the version
-# probe below only runs when the kernel is old, so new kernels pay nothing.
-_oc_force_tui=0
-_oc_meta=0
 _oc_args=()
 for _a in "$@"; do
 	case "$_a" in
-	--force-tui) _oc_force_tui=1; continue ;;
+	--force-tui) continue ;;   # accepted for compatibility, no effect any more
 	-h|--help|-v|--version) _oc_meta=1 ;;
 	esac
 	_oc_args+=("$_a")
 done
-# graft probe (follow-up fix): `.grafted` beside the runtime marks a B 档
-# hybrid install (new CLI + donor 1.18.34 OpenTUI, OSC-001 verdict=graft-ok)
-# whose TUI genuinely works on kernel 3.x — skip the degradation entirely so
-# bare `opencode` starts the TUI. Absent marker = A 档 package: the T4
-# behavior below is unchanged.
-_oc_grafted=0
-if [ -f "$(dirname "$OC_RT")/.grafted" ]; then
-	_oc_grafted=1
-fi
-if [ "$_oc_force_tui" -eq 0 ] && [ "$_oc_grafted" -eq 0 ] && [ "$(uname -r | cut -d. -f1)" -lt 4 ] 2>/dev/null; then
-	_oc_ver="$("$OC_RT" --version 2>/dev/null | grep -oE '[0-9]+(\.[0-9]+){2}' | head -n1 || true)"
-	# Per-line threshold: the first build whose TUI actually works on kernel 3.x.
-	#   v2 -> 2.0.32  (0.5.17 renderer + per-version FFI gate; 2.0.31 and older
-	#                  still crash, so they keep the CLI fallback)
-	#   v1 -> 1.19.4  (our effect-beta.103 rebuild; upstream 1.18.35..1.19.3 crash)
-	# Using a single 1.18.35 gate meant every v2 build (2.x > 1.18.35) was
-	# degraded to CLI on legacy kernels even though its TUI works.
-	if [ -n "$_oc_ver" ] && {
-		_oc_min_ok=1.19.4
-		case "${_oc_ver%%.*}" in 2|3|4|5|6|7|8|9) _oc_min_ok=2.0.32 ;; esac
-		[ "$_oc_ver" != "$_oc_min_ok" ] &&
-			[ "$(printf '%s\n%s\n' "$_oc_ver" "$_oc_min_ok" | sort -V | head -n1)" = "$_oc_ver" ]
-	}; then
-		echo "opencode: 老内核 TUI 不兼容, 已降级 CLI 模式（可用 --force-tui 强试）" >&2
-		echo "opencode: Legacy kernel detected: TUI disabled, running CLI mode (use --force-tui to force)" >&2
-		if [ "$_oc_meta" -eq 0 ]; then
-			_oc_sub=""
-			for _a in "${_oc_args[@]}"; do
-				case "$_a" in -*) ;; *) _oc_sub="$_a"; break ;; esac
-			done
-			case "$_oc_sub" in
-			# explicit CLI subcommand -> pass through unchanged
-			completion|acp|mcp|attach|run|debug|providers|auth|agent|upgrade|uninstall|serve|web|models|stats|export|import|github|pr|session|plugin|db) ;;
-			# TUI-default scenario (no args, flags only, or project path):
-			# degrade to headless serve, carrying long options only
-			*)
-				_oc_serve_args=()
-				for _a in "${_oc_args[@]}"; do
-					case "$_a" in --*) _oc_serve_args+=("$_a") ;; esac
-				done
-				exec "$OC_RT" serve ${_oc_serve_args[@]+"${_oc_serve_args[@]}"}
-				;;
-			esac
-		fi
-	fi
-fi
+
+# ── no legacy-kernel degradation (policy 2026-10-30) ─────────────────────────
+# The launcher used to detect kernel < 4 and swap the TUI for `serve`, first for
+# every runtime >= 1.18.35 and later with a per-line version threshold. Both are
+# gone: this product ships the TUI as the only interactive entry point. Verified
+# working on kernel 3.18.140 (OC105): v2 2.0.32 / 2.1.x, v1 1.19.4 rebuild.
+# --force-tui is still accepted (and stripped) so existing invocations keep
+# working, but it no longer changes anything.
+
 # ── oldkernel crash trap (T5; OSC-001 动态取证) ───────────────────────────────
 # TUI scenario (the runtime would start its interactive TUI: --force-tui, or
 # no explicit CLI subcommand) no longer bare-execs. The runtime runs as a
@@ -125,7 +69,7 @@ for _a in "${_oc_args[@]}"; do
 	case "$_a" in -*) ;; *) _oc_has_sub=1; break ;; esac
 done
 _oc_is_tui=0
-if [ "$_oc_force_tui" -eq 1 ] || [ "$_oc_has_sub" -eq 0 ]; then
+if [ "$_oc_has_sub" -eq 0 ]; then
 	_oc_is_tui=1
 fi
 if [ "$_oc_is_tui" -eq 1 ] && _oc_err="$(mktemp "${TMPDIR:-/tmp}/opencode-crash-stderr.XXXXXX" 2>/dev/null)"; then

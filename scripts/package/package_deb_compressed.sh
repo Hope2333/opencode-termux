@@ -86,7 +86,11 @@ if [[ -f "$PTY_SPLICE_DIR/librust_pty_arm64_musl_patched.so" && -f "$PTY_SPLICE_
 	install -D -m755 "$PTY_SPLICE_DIR/shim.so" "$DEB_ROOT$PREFIX/lib/$FAMILY/pty/shim.so"
 	echo "Packaged pty splice assets (BUN_PTY_LIB) from $PTY_SPLICE_DIR"
 	else
-		echo "pty splice assets not found under $PTY_SPLICE_DIR — shipping without (launcher degrades gracefully)"
+		# No graceful degradation (policy 2026-10-30): without BUN_PTY_LIB the
+		# TUI runs on a degraded PTY path. Refuse to ship.
+		echo "Error: pty splice assets missing under $PTY_SPLICE_DIR — refusing to ship a package without BUN_PTY_LIB" >&2
+		echo "       expected: librust_pty_arm64_musl_patched.so + shim.so (run tools/bun-pty-splice build)" >&2
+		exit 1
 fi
 
 # epoll compat shim (OPTIONAL, backward compatible, v1 family ONLY — the v2
