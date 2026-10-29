@@ -67,7 +67,7 @@
 | [Execution Checklist](runbooks/install-and-verify.md) | active | 全代 | 2026-10-24 |
 | [Local Production Blueprint (No GitHub Actions)](runbooks/local-production.md) | active | wrapper 线 | 2026-10-24 |
 | [D2 — 机器与环境手册](runbooks/machine-env.md) | active | 全代 | 2026-10-24 |
-| [发布运行手册（Release Runbook）](runbooks/release-runbook.md) | active | 全代 | 2026-10-24 |
+| [发布运行手册（Release Runbook）](runbooks/release-runbook.md) | active | 全代 | 2026-10-29 |
 
 ### `reference`
 
@@ -79,10 +79,11 @@
 | [Plugin Management (Online install + self-update + rollback)](reference/plugin-management.md) | active | 全代 | 2026-10-24 |
 | [Plugin Packaging Design (Phase C)](reference/plugin-packaging-design.md) | active | 全代 | 2026-10-24 |
 | [Termux skills index (concise)](reference/skills-index.md) | active | 全代 | 2026-10-24 |
-| [Termux 仓库资产更新流程](reference/termux-asset-release-flow.md) | snapshot | 2026-09 快照 | 2026-10-24 |
+| [Termux 仓库资产更新流程](reference/termux-asset-release-flow.md) | snapshot | 2026-09 快照 | 2026-10-30 |
 | [22 - opencode web 的 Termux sv 服务](reference/termux-services.md) | active | 全代 | 2026-10-24 |
 | [TUI 可达性判定表（rc6-b2-upx-tui 终版）](reference/tui-reachability.md) | active | v1/v2 | 2026-10-24 |
 | [上游 issue 与同步台账](reference/upstream-issues.md) | active | 全代（v1/v2） | 2026-10-24 |
+| [Version probe (device criteria)](reference/version-probe.md) | active | — | — |
 
 ### `history`
 

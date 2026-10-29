@@ -84,6 +84,28 @@ rows:
     ffi: ot_ctx
     effect: "-"
 
+  # 2.2.x pins opentui 0.7.0. No bionic build of 0.7.0 exists yet; the 0.6.8
+  # build covers every C export except 5 (ot_scene_set_debug_flags,
+  # ot_session_input_expect/feed/reset, otYogaConfigSetRoundsPositionsFromAbsoluteEdges
+  # — measured 2026-10-30). Ship on 0.6.8 first and let the device probe decide:
+  # if the frame or the input path breaks, build 0.7.0 and switch lib over.
+  # 2.2.2 also drops @opencode-ai/pty upstream.
+  - from: "2.2.0"
+    to: "2.2.1"
+    pty: "0.3.1"
+    opentui: "0.7.0"
+    lib: opentui-0.6.8
+    ffi: ot_ctx
+    effect: "-"
+
+  - from: "2.2.2"
+    to: "2.2.2"
+    pty: none
+    opentui: "0.7.0"
+    lib: opentui-0.6.8
+    ffi: ot_ctx
+    effect: "-"
+
   # v1 line: upstream 1.19.4 pins opentui 0.4.5 and declares no
   # @opencode-ai/pty dependency. effect is a deliberate upgrade: upstream
   # 4.0.0-beta.83 segfaults on the 3.18 kernel, so the rebuild uses
