@@ -47,6 +47,14 @@ mkdir -p "$CACHE_DIR"
 problems=0
 checked=0
 
+# pins.sh is generated from pins.yaml (tools/matrix-render.sh). A hand edit is
+# drift by definition — catch it before looking at upstream values.
+if ! bash "$REPO_ROOT/tools/matrix-render.sh" --check >/dev/null 2>&1; then
+	echo "DRIFT  build/matrix/pins.sh does not match build/matrix/pins.yaml (hand edit?)"
+	echo "       run: tools/matrix-render.sh"
+	problems=$((problems + 1))
+fi
+
 field_from_upstream() { # ver field
 	local ver="$1" field="$2" cache
 	cache="$CACHE_DIR/$ver.json"

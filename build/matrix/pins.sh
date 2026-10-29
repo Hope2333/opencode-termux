@@ -1,55 +1,60 @@
 #!/data/data/com.termux/files/usr/bin/bash
-# build/matrix/pins.sh — SINGLE SOURCE OF TRUTH for per-version build pins.
+# build/matrix/pins.sh — GENERATED FILE. DO NOT EDIT.
+#
+# Source of truth: build/matrix/pins.yaml
+# Regenerate:      tools/matrix-render.sh
+# Drift check:     tools/matrix-render.sh --check   (also run by matrix-check)
 #
 # Consumers:
 #   scripts/lib/build-pins.sh   (resolve_dep_pins / resolve_pin_matrix)
 #   scripts/build-bionic.sh     (deploys the matching bionic libopentui + FFI gate)
 #   tools/matrix-check.sh       (schema + upstream drift + deliberate upgrades)
 #
-# Why this file exists: the version→opentui table used to live inside
-# build-pins.sh while version→libopentui.so was a separate hardcoded if/elif in
-# build-bionic.sh. The two drifted and 2.1.4 shipped the 0.5.x renderer against
-# 0.6.8 JS (TUI died with ot_scene_set_hooks missing). One table, five columns.
-#
-# Columns (space separated, printed by matrix_pins_for):
-#   pty      upstream @opencode-ai/pty version (`none` when upstream declares none)
-#   opentui  upstream workspaces.catalog["@opentui/core"] version
-#   lib      bionic renderer build name:
-#              tlsdesc          -> artifacts/transplant/opentui-bionic-tlsdesc/
-#              opentui-<ver>    -> artifacts/transplant/opentui-bionic-<ver>/
-#              missing          -> not built yet; builds MUST hard-fail
-#   ffi      FFI symbol profile: legacy (0.5.x direct surface) | ot_ctx (0.6.x ot_* ABI)
-#   effect   effect version the build must use; `-` = upstream default. A value
-#            that differs from upstream needs an entry in build/matrix/overrides.tsv.
-#
+# Columns printed by matrix_pins_for: pty opentui lib ffi effect
 # Unknown versions return 1 — never fall back to a default pin.
-#
-# History: the pin ranges were re-read from the upstream tags on 2026-10-26
-# (tools/matrix-check.sh). The previous single `2.0.0-2.0.24 -> 0.5.14 / pty
-# 0.2.0` row was an unchecked carry-over; upstream shipped 0.5.10 + pty 0.1.13
-# until 2.0.16.
 
 matrix_pins_for() {
 	local ver="${1:-}"
 	[[ -n "$ver" ]] || return 1
 	case "$ver" in
-		2.0.0|2.0.[1-9]|2.0.1[0-6]) printf '0.1.13 0.5.10 tlsdesc legacy -\n' ;;
-		2.0.1[7-9]|2.0.20) printf '0.1.13 0.5.12 tlsdesc legacy -\n' ;;
-		2.0.2[12]) printf '0.1.13 0.5.14 tlsdesc legacy -\n' ;;
-		2.0.2[34]) printf '0.2.0 0.5.14 tlsdesc legacy -\n' ;;
+		2.0.0) printf '0.1.13 0.5.10 tlsdesc legacy -\n' ;;
+		2.0.1) printf '0.1.13 0.5.10 tlsdesc legacy -\n' ;;
+		2.0.2) printf '0.1.13 0.5.10 tlsdesc legacy -\n' ;;
+		2.0.3) printf '0.1.13 0.5.10 tlsdesc legacy -\n' ;;
+		2.0.4) printf '0.1.13 0.5.10 tlsdesc legacy -\n' ;;
+		2.0.5) printf '0.1.13 0.5.10 tlsdesc legacy -\n' ;;
+		2.0.6) printf '0.1.13 0.5.10 tlsdesc legacy -\n' ;;
+		2.0.7) printf '0.1.13 0.5.10 tlsdesc legacy -\n' ;;
+		2.0.8) printf '0.1.13 0.5.10 tlsdesc legacy -\n' ;;
+		2.0.9) printf '0.1.13 0.5.10 tlsdesc legacy -\n' ;;
+		2.0.10) printf '0.1.13 0.5.10 tlsdesc legacy -\n' ;;
+		2.0.11) printf '0.1.13 0.5.10 tlsdesc legacy -\n' ;;
+		2.0.12) printf '0.1.13 0.5.10 tlsdesc legacy -\n' ;;
+		2.0.13) printf '0.1.13 0.5.10 tlsdesc legacy -\n' ;;
+		2.0.14) printf '0.1.13 0.5.10 tlsdesc legacy -\n' ;;
+		2.0.15) printf '0.1.13 0.5.10 tlsdesc legacy -\n' ;;
+		2.0.16) printf '0.1.13 0.5.10 tlsdesc legacy -\n' ;;
+		2.0.17) printf '0.1.13 0.5.12 tlsdesc legacy -\n' ;;
+		2.0.18) printf '0.1.13 0.5.12 tlsdesc legacy -\n' ;;
+		2.0.19) printf '0.1.13 0.5.12 tlsdesc legacy -\n' ;;
+		2.0.20) printf '0.1.13 0.5.12 tlsdesc legacy -\n' ;;
+		2.0.21) printf '0.1.13 0.5.14 tlsdesc legacy -\n' ;;
+		2.0.22) printf '0.1.13 0.5.14 tlsdesc legacy -\n' ;;
+		2.0.23) printf '0.2.0 0.5.14 tlsdesc legacy -\n' ;;
+		2.0.24) printf '0.2.0 0.5.14 tlsdesc legacy -\n' ;;
 		2.0.25) printf '0.2.0 0.5.16 tlsdesc legacy -\n' ;;
-		2.0.2[6-9]|2.0.3[0-2]) printf '0.2.0 0.5.17 tlsdesc legacy -\n' ;;
-		# 2.1.0-2.1.3 pin opentui 0.6.6 but reuse the 0.6.8 bionic build: upstream
-		# 0.6.6 exports 1912 symbols and the 0.6.8 build covers every C export
-		# (0 missing; verified 2026-10-30). Same ot_ctx FFI profile.
-		2.1.[0-3]) printf '0.3.1 0.6.6 opentui-0.6.8 ot_ctx -\n' ;;
+		2.0.26) printf '0.2.0 0.5.17 tlsdesc legacy -\n' ;;
+		2.0.27) printf '0.2.0 0.5.17 tlsdesc legacy -\n' ;;
+		2.0.28) printf '0.2.0 0.5.17 tlsdesc legacy -\n' ;;
+		2.0.29) printf '0.2.0 0.5.17 tlsdesc legacy -\n' ;;
+		2.0.30) printf '0.2.0 0.5.17 tlsdesc legacy -\n' ;;
+		2.0.31) printf '0.2.0 0.5.17 tlsdesc legacy -\n' ;;
+		2.0.32) printf '0.2.0 0.5.17 tlsdesc legacy -\n' ;;
+		2.1.0) printf '0.3.1 0.6.6 opentui-0.6.8 ot_ctx -\n' ;;
+		2.1.1) printf '0.3.1 0.6.6 opentui-0.6.8 ot_ctx -\n' ;;
+		2.1.2) printf '0.3.1 0.6.6 opentui-0.6.8 ot_ctx -\n' ;;
+		2.1.3) printf '0.3.1 0.6.6 opentui-0.6.8 ot_ctx -\n' ;;
 		2.1.4) printf '0.3.1 0.6.8 opentui-0.6.8 ot_ctx -\n' ;;
-		# v1 line: upstream 1.19.4 pins opentui 0.4.5 and declares no
-		# @opencode-ai/pty dependency. effect is a deliberate upgrade:
-		# upstream 4.0.0-beta.83 segfaults on the 3.18 kernel, so the rebuild
-		# uses 4.0.0-beta.103 (see build/matrix/overrides.tsv).
-		# lib=tlsdesc: the 0.5.x gold is a strict C-ABI superset of 0.4.5
-		# (1673 C exports, 0 missing; the only 42 gaps are yoga C++ internals).
 		1.19.4) printf 'none 0.4.5 tlsdesc legacy 4.0.0-beta.103\n' ;;
 		*) return 1 ;;
 	esac
@@ -57,15 +62,17 @@ matrix_pins_for() {
 
 # Enumerate every registered version (used by tools/matrix-check.sh).
 matrix_versions() {
-	local minor
-	for minor in 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 \
-		25 26 27 28 29 30 31 32; do
-		printf '2.0.%s\n' "$minor"
-	done
-	for minor in 0 1 2 3 4; do
-		printf '2.1.%s\n' "$minor"
-	done
-	printf '1.19.4\n'
+	printf '%s\n' \
+		2.0.0 2.0.1 2.0.2 2.0.3 \
+		2.0.4 2.0.5 2.0.6 2.0.7 \
+		2.0.8 2.0.9 2.0.10 2.0.11 \
+		2.0.12 2.0.13 2.0.14 2.0.15 \
+		2.0.16 2.0.17 2.0.18 2.0.19 \
+		2.0.20 2.0.21 2.0.22 2.0.23 \
+		2.0.24 2.0.25 2.0.26 2.0.27 \
+		2.0.28 2.0.29 2.0.30 2.0.31 \
+		2.0.32 2.1.0 2.1.1 2.1.2 \
+		2.1.3 2.1.4 1.19.4
 }
 
 # Resolve a lib name to an absolute .so path (empty when the build is missing).
@@ -79,8 +86,6 @@ matrix_libopentui_path() {
 }
 
 # FFI profile → symbols that MUST be exported by the deployed renderer library.
-# legacy: 0.5.x direct bindings. ot_ctx: 0.6.x renamed everything into the
-# ot_* context ABI; upstream 0.6.8's glibc build exports ZERO of the legacy names.
 matrix_ffi_syms() {
 	case "${1:-}" in
 		legacy)

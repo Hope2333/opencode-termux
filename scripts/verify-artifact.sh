@@ -62,9 +62,34 @@ esac
 [[ -n "$BIN" && -s "$BIN" ]] || { echo "Error: no runtime binary found inside $FILE" >&2; exit 1; }
 
 IS_UPX=0
-head -c 4 "$BIN" 2>/dev/null | grep -q 'UPX!' && IS_UPX=1
+# UPX keeps the ELF magic at offset 0 and puts its "UPX!" marker further in,
+# so `head -c4` never matches. Probe with the tool itself (custom build first).
+UPX_TOOL_PROBE="${UPX_UNPACK_TOOL:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/tools/upx-stub/upx-custom-aarch64}"
+[[ -x "$UPX_TOOL_PROBE" ]] || UPX_TOOL_PROBE="$(command -v upx 2>/dev/null || true)"
+if [[ -n "$UPX_TOOL_PROBE" ]] && "$UPX_TOOL_PROBE" -l "$BIN" >/dev/null 2>&1; then
+  IS_UPX=1
+elif head -c 4096 "$BIN" 2>/dev/null | grep -aq 'UPX!'; then
+  IS_UPX=1
+fi
 
-if ! is_hardened "$BIN"; then
+# UPX replaces the program headers and hides the dynamic section, so a plain
+# string search for the DT_NEEDED name fails on a perfectly hardened packed
+# binary (the compressed family always ships libopencode-crhandler.so next to
+# it). Unpack a scratch copy and gate on that instead.
+GATE_BIN="$BIN"
+if [[ "$IS_UPX" -eq 1 ]]; then
+  UNP="$TMP/unpacked-for-gate"
+  UPX_TOOL="${UPX_UNPACK_TOOL:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/tools/upx-stub/upx-custom-aarch64}"
+  [[ -x "$UPX_TOOL" ]] || UPX_TOOL="$(command -v upx 2>/dev/null || true)"
+  if [[ -n "$UPX_TOOL" ]] && "$UPX_TOOL" -d -q -o "$UNP" "$BIN" >/dev/null 2>&1 && [[ -s "$UNP" ]]; then
+    GATE_BIN="$UNP"
+  else
+    echo "Error: cannot unpack UPX payload to run the harden gate: $FILE" >&2
+    exit 1
+  fi
+fi
+
+if ! is_hardened "$GATE_BIN"; then
   echo "Error: artifact is not seccomp-hardened (no libopencode-crhandler.so reference): $FILE" >&2
   exit 1
 fi

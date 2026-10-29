@@ -1,0 +1,99 @@
+# build/matrix/pins.yaml — SINGLE SOURCE OF TRUTH for per-version build pins.
+#
+# The shell file build/matrix/pins.sh is GENERATED from this file by
+# tools/matrix-render.sh. Never edit the generated file: tools/matrix-check.sh
+# re-renders and compares, and will fail on any hand edit.
+#
+# Row fields (all required):
+#   from / to   inclusive version range (or a single `version:` entry)
+#   pty         upstream @opencode-ai/pty version; `none` when upstream declares none
+#   opentui     upstream workspaces.catalog["@opentui/core"]
+#   lib         bionic renderer build: tlsdesc | opentui-<ver> | missing
+#               (missing = no build exists; the build must hard-fail)
+#   ffi         FFI symbol profile: legacy (0.5.x) | ot_ctx (0.6.x)
+#   effect      effect version to use; "-" = upstream default. A value that
+#               differs from upstream needs an entry in build/matrix/overrides.tsv
+#               with a reason (deliberate upgrade), so matrix-check shows
+#               OK-OVERRIDE instead of drift.
+
+rows:
+  - from: "2.0.0"
+    to: "2.0.16"
+    pty: "0.1.13"
+    opentui: "0.5.10"
+    lib: tlsdesc
+    ffi: legacy
+    effect: "-"
+
+  - from: "2.0.17"
+    to: "2.0.20"
+    pty: "0.1.13"
+    opentui: "0.5.12"
+    lib: tlsdesc
+    ffi: legacy
+    effect: "-"
+
+  - from: "2.0.21"
+    to: "2.0.22"
+    pty: "0.1.13"
+    opentui: "0.5.14"
+    lib: tlsdesc
+    ffi: legacy
+    effect: "-"
+
+  - from: "2.0.23"
+    to: "2.0.24"
+    pty: "0.2.0"
+    opentui: "0.5.14"
+    lib: tlsdesc
+    ffi: legacy
+    effect: "-"
+
+  - from: "2.0.25"
+    to: "2.0.25"
+    pty: "0.2.0"
+    opentui: "0.5.16"
+    lib: tlsdesc
+    ffi: legacy
+    effect: "-"
+
+  - from: "2.0.26"
+    to: "2.0.32"
+    pty: "0.2.0"
+    opentui: "0.5.17"
+    lib: tlsdesc
+    ffi: legacy
+    effect: "-"
+
+  # 2.1.0-2.1.3 pin opentui 0.6.6 but reuse the 0.6.8 bionic build: upstream
+  # 0.6.6 exports 1912 symbols and the 0.6.8 build covers every C export
+  # (0 missing, verified 2026-10-30). Same ot_ctx FFI profile.
+  - from: "2.1.0"
+    to: "2.1.3"
+    pty: "0.3.1"
+    opentui: "0.6.6"
+    lib: opentui-0.6.8
+    ffi: ot_ctx
+    effect: "-"
+
+  - from: "2.1.4"
+    to: "2.1.4"
+    pty: "0.3.1"
+    opentui: "0.6.8"
+    lib: opentui-0.6.8
+    ffi: ot_ctx
+    effect: "-"
+
+  # v1 line: upstream 1.19.4 pins opentui 0.4.5 and declares no
+  # @opencode-ai/pty dependency. effect is a deliberate upgrade: upstream
+  # 4.0.0-beta.83 segfaults on the 3.18 kernel, so the rebuild uses
+  # 4.0.0-beta.103 (see build/matrix/overrides.tsv).
+  # lib=tlsdesc: the 0.5.x gold is a strict C-ABI superset of 0.4.5
+  # (1673 C exports, 0 missing; the only 42 gaps are yoga C++ internals).
+  - from: "1.19.4"
+    to: "1.19.4"
+    pty: none
+    opentui: "0.4.5"
+    lib: tlsdesc
+    ffi: legacy
+    effect: "4.0.0-beta.103"
