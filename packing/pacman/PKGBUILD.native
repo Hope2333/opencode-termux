@@ -77,11 +77,17 @@ package() {
             error "hardened binary references libopencode-crhandler.so but $shim_so is missing (run: make seccomp-harden)"
             return 1
         fi
-        # pinned to usr/lib/opencode = binary DT_RUNPATH $ORIGIN/../lib/opencode;
-        # must NOT follow OPENCODE_BIN_NAME (opencode1 rename broke the link)
-        mkdir -p "$pkgdir/data/data/com.termux/files/usr/lib/opencode"
-        install -m644 "$shim_so" "$pkgdir/data/data/com.termux/files/usr/lib/opencode/libopencode-crhandler.so"
-        msg "Packaging seccomp shim: $shim_so -> usr/lib/opencode/"
+        # per generation (task-20 forensics): v2 -> usr/lib/opencode (its runtime
+        # RUNPATH resolves there); v1 -> usr/lib/opencode1, which the v1 launcher
+        # already searches. The two generations no longer write the same file.
+        if [[ "${pkgver%%.*}" -lt 2 ]]; then
+            shim_dir="$pkgdir/data/data/com.termux/files/usr/lib/opencode1"
+        else
+            shim_dir="$pkgdir/data/data/com.termux/files/usr/lib/opencode"
+        fi
+        mkdir -p "$shim_dir"
+        install -m644 "$shim_so" "$shim_dir/libopencode-crhandler.so"
+        msg "Packaging seccomp shim: $shim_so -> ${shim_dir#$pkgdir/data/data/com.termux/files/}"
     else
         msg "binary is not seccomp-hardened; shipping without libopencode-crhandler.so"
     fi

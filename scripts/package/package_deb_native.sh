@@ -104,12 +104,21 @@ if is_hardened "$NATIVE_BIN"; then
 		echo "       (run: make seccomp-harden VER=$VERSION)" >&2
 		exit 1
 	fi
-	# shim dir is pinned to lib/opencode (the binary's DT_RUNPATH
-	# $ORIGIN/../lib/opencode) — renaming the dir with the opencode1
-	# package rename broke CANNOT LINK for any hardened v1 build (#23-adjacent).
-	mkdir -p "$DEB_ROOT$PREFIX/lib/opencode"
-	install -m644 "$SHIM_SO" "$DEB_ROOT$PREFIX/lib/opencode/libopencode-crhandler.so"
-	echo "Packaging seccomp shim: $SHIM_SO -> $PREFIX/lib/opencode/"
+	# shim dir per generation (task-20 forensics): v2's runtime RUNPATH resolves
+	# to lib/opencode, so v2 keeps that path. v1's runtime sits under
+	# lib/opencode1/runtime and its RUNPATH never resolves — the launcher's
+	# LD_LIBRARY_PATH does the lookup — so v1 can own lib/opencode1 instead.
+	# Splitting them is what stops the two generations writing the same file
+	# (the --force-overwrite conflict). lib/opencode stays in the v1 launcher as
+	# a trailing fallback for packages installed under the old single-root layout.
+	if [[ "${VERSION%%.*}" -lt 2 ]]; then
+		SHIM_DIR="$DEB_ROOT$PREFIX/lib/opencode1"
+	else
+		SHIM_DIR="$DEB_ROOT$PREFIX/lib/opencode"
+	fi
+	mkdir -p "$SHIM_DIR"
+	install -m644 "$SHIM_SO" "$SHIM_DIR/libopencode-crhandler.so"
+	echo "Packaging seccomp shim: $SHIM_SO -> ${SHIM_DIR#$DEB_ROOT}/"
 else
 	# E1b: an un-hardened artifact used to ship with just a Note (issue #36).
 	# Refuse unless the operator explicitly opts in (rollback/debug only).

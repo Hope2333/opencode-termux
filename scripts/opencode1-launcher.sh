@@ -9,16 +9,19 @@
 # v2 keeps the plain roots untouched — the two generations never share a dir.
 #
 # LD_LIBRARY_PATH covers DT_RUNPATH $ORIGIN/../lib/opencode after the runtime
-# moves under lib/opencode1/runtime/; compressed additionally ships its shim in
-# lib/opencode1/ — both roots are listed so every package layout resolves
-# (absent dirs are harmless: the dynamic linker just skips them).
+# moves under lib/opencode1/runtime/ — that RUNPATH resolves to a path that does
+# not exist, so the lookup is really done here. v1 ships its own shim in
+# lib/opencode1 (see package_deb_native.sh / PKGBUILD.native), listed first.
 set -euo pipefail
 P="${PREFIX:-/data/data/com.termux/files/usr}"
 export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}/opencode1"
 export XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}/opencode1"
 export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.cache}/opencode1"
 export XDG_STATE_HOME="${XDG_STATE_HOME:-$HOME/.local/state}/opencode1"
-export LD_LIBRARY_PATH="$P/lib/opencode:$P/lib/opencode1:$P/lib/opencode1/pty${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+# lib/opencode1 comes first (this package ships its seccomp shim there);
+# lib/opencode is kept last as a fallback for the pre-split layout where the
+# shim lived under the v2 root. Absent dirs are harmless — the linker skips them.
+export LD_LIBRARY_PATH="$P/lib/opencode1:$P/lib/opencode1/pty:$P/lib/opencode${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
 # service-port split (readiness fix, evidence: tools/opencode-readiness-fix/):
 # both v2 generations default the managed service port to 0xc0de=49374, but the
