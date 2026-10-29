@@ -39,7 +39,10 @@ matrix_pins_for() {
 		2.0.2[34]) printf '0.2.0 0.5.14 tlsdesc legacy -\n' ;;
 		2.0.25) printf '0.2.0 0.5.16 tlsdesc legacy -\n' ;;
 		2.0.2[6-9]|2.0.3[0-2]) printf '0.2.0 0.5.17 tlsdesc legacy -\n' ;;
-		2.1.[0-3]) printf '0.3.1 0.6.6 missing ot_ctx -\n' ;;
+		# 2.1.0-2.1.3 pin opentui 0.6.6 but reuse the 0.6.8 bionic build: upstream
+		# 0.6.6 exports 1912 symbols and the 0.6.8 build covers every C export
+		# (0 missing; verified 2026-10-30). Same ot_ctx FFI profile.
+		2.1.[0-3]) printf '0.3.1 0.6.6 opentui-0.6.8 ot_ctx -\n' ;;
 		2.1.4) printf '0.3.1 0.6.8 opentui-0.6.8 ot_ctx -\n' ;;
 		# v1 line: upstream 1.19.4 pins opentui 0.4.5 and declares no
 		# @opencode-ai/pty dependency. effect is a deliberate upgrade:
