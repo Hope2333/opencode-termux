@@ -125,7 +125,7 @@ def phase_pre(args):
                     files.append(os.path.join(dirpath, fn))
 
     unstable_map = {"http": "http", "process": "process", "socket": "socket"}
-    counts = {"unstable": 0, "tracer": 0, "schedule": 0}
+    counts = {"unstable": 0, "tracer": 0, "schedule": 0, "ctxref": 0, "schedule_max": 0}
     for path in files:
         with open(path, encoding="utf-8") as fh:
             text = fh.read()
@@ -151,6 +151,9 @@ def phase_pre(args):
             r"Schedule\.either\(Schedule\.spaced\(([^)]*)\)\),",
             re.M,
         )
+        both_pat = re.compile(
+            r'Schedule\.spaced\("([^"]+)"\)\.pipe\(Schedule\.both\(Schedule\.recurs\((\d+)\)\)\)'
+        )
         if "Schedule.either(" in text:
             def repl(m):
                 return (
@@ -169,6 +172,28 @@ def phase_pre(args):
             text = new_text
             counts["schedule"] += n
 
+        # Context.getReferenceUnsafe was removed in beta.103. The call sites want
+        # "unbound -> undefined" (they use `?? fallback` / `? :` right after), so
+        # getOrUndefinedUnsafe is the exact replacement, not getUnsafe (which throws).
+        if "Context.getReferenceUnsafe(" in text:
+            text = text.replace("Context.getReferenceUnsafe(", "Context.getOrUndefinedUnsafe(")
+            counts["ctxref"] += 1
+
+        # Schedule.both(a, b) -> Schedule.max([a, b]) — same array form as min;
+        # both means "keep going until either would stop", i.e. the larger one.
+        if "Schedule.both(" in text:
+            def repl_both(m):
+                return 'Schedule.max([Schedule.spaced("%s"), Schedule.recurs(%s)])' % (m.group(1), m.group(2))
+            new_text, n = both_pat.subn(repl_both, text)
+            if n == 0:
+                die(
+                    "Schedule.both( found but the known spaced/recurs shape did not match "
+                    f"in {path} — rewrite it manually (beta.103 replaced either/both "
+                    "with array-taking min/max)"
+                )
+            text = new_text
+            counts["schedule_max"] += n
+
         if text != orig:
             with open(path, "w", encoding="utf-8") as fh:
                 fh.write(text)
@@ -176,7 +201,7 @@ def phase_pre(args):
 
     note(
         "source rewrites: unstable-path files={unstable} tracer-files={tracer} "
-        "schedule-sites={schedule}".format(**counts)
+        "schedule-min={schedule} ctx-ref-unsafe={ctxref} schedule-max={schedule_max}".format(**counts)
     )
 
     # 5) assertion: no stale subpaths remain
@@ -187,6 +212,18 @@ def phase_pre(args):
     if leftovers:
         die(f"stale effect subpaths still present:\n{leftovers}")
     note("assert: no effect/http|process|socket/ imports remain")
+
+    for bad, msg in (
+        (r"Context\.getReferenceUnsafe\(", "Context.getReferenceUnsafe (removed in beta.103)"),
+        (r"Schedule\.(either|both)\(", "Schedule.either/both (removed in beta.103)"),
+    ):
+        hits = subprocess.run(
+            ["grep", "-rl", "--include=*.ts", "-E", bad, *roots],
+            capture_output=True, text=True,
+        ).stdout.strip()
+        if hits:
+            die(f"stale effect API still present ({msg}):\n{hits}")
+    note("assert: no removed effect APIs remain (getReferenceUnsafe / Schedule.either|both)")
     return 0
 
 
