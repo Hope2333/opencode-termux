@@ -189,6 +189,15 @@ bash .omo/evidence/opencode-v2-port/rc2-rebuild/upload29-verify.sh
 ```
 
 - title 四段式（双代，v12.1 2026-09-28）：`<v2-lasted> <v1-lasted> <v2-库存区间> <v1-库存区间>`，段空塌缩删段。
+
+- **发布前自检（2026-10-29 加；261016/261013/261026 曾连续偏离）**：`gh release view <TAG> --json name,body` 后逐项打勾，缺一项就别发布——
+  ① title 是四段式且**含 v1 段**（v1 无新版时写架上最新 v1，不得整段删）；
+  ② body 第 2 行是 `[中文版](<io 页面>)`；
+  ③ 家族表**按家族分行、只写包名/格式**，且**v1 三行（native/wrapper/compressed）必须存在**——本批没构建的家族在 Overview 注明「本批未构建」而不是从表里删掉；
+  ④ 有 `## BUILD LOG`（日期行 + `Latest:` 末行）；
+  ⑤ 有 Install / Family matrix & coexistence / Verification / Links 四段；
+  ⑥ 零 Contributors、零 `@user`。
+  自检不过的典型症状：只有 Overview 一段英文、title 退化成纯 `Push<id>`、正文里出现「本批只有 v2」就顺手把 v1 行删掉。
 - 发布 note：`GIT_SSL_NO_VERIFY=1 GH_INSECURE=1 gh release edit <TAG> --repo Hope2333/opencode-termux --notes-file <file>`（不要 `--title`；zsh 特殊字符 title 走 `gh api --input JSON`）。
 
 ## 9. 双机验证（本机 + 实验机）
