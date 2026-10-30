@@ -93,6 +93,11 @@ echo "    models snapshot: $(du -h "$MODELS_JSON" | cut -f1) ($MODELS_JSON)"
 # Skipped for the beta.83 control anchor (nothing to migrate).
 OPENTUI_VER="$(matrix_pins_for "$VER" 2>/dev/null | awk '{print $2}')"
 [[ -n "$OPENTUI_VER" ]] || { echo "Error: cannot resolve opentui pin for VER=$VER (build/matrix/pins.sh)" >&2; exit 1; }
+
+# Old v1 trees (1.18.x / early 1.19.x) ship a photon-node patch whose last hunk
+# carries trailing whitespace bun refuses to apply, which kills `bun install`
+# before anything is compiled. Swap in the known-good copy (see the script doc).
+python3 "$ROOT_DIR/tools/a2/fix-photon-patch.py" --src "$V1_SRC" || exit 1
 if [[ "$EFFECT_VER" != "4.0.0-beta.83" ]]; then
   echo "==> effect migration -> $EFFECT_VER (opentui $OPENTUI_VER)"
   python3 "$ROOT_DIR/tools/a2/effect-migrate.py" pre \
@@ -100,8 +105,15 @@ if [[ "$EFFECT_VER" != "4.0.0-beta.83" ]]; then
 fi
 
 # ── 2. deps (idempotent; store completeness keyed on effect version) ──
-if ! ls -d "$V1_SRC/node_modules/.bun/effect@$EFFECT_VER" >/dev/null 2>&1; then
-  echo "==> bun install (effect $EFFECT_VER store missing)..."
+# Both halves must hold: the bun store AND the workspace link that the version
+# gate below reads. A previous aborted install leaves the store populated with a
+# half-built node_modules, and "store present" alone then skips the install and
+# dies later on a missing packages/opencode/node_modules/effect/package.json.
+DEPS_OK=1
+[[ -d "$V1_SRC/node_modules/.bun/effect@$EFFECT_VER" ]] || DEPS_OK=0
+[[ -f "$V1_SRC/packages/opencode/node_modules/effect/package.json" ]] || DEPS_OK=0
+if [[ "$DEPS_OK" -eq 0 ]]; then
+  echo "==> bun install (effect $EFFECT_VER store or workspace link missing)..."
   (cd "$V1_SRC" && LD_PRELOAD="$OPENAT2_SHIM" "$ANDROID_BUN" install --force --ignore-scripts 2>&1 | tail -3)
 else
   echo "==> deps OK (effect $EFFECT_VER store present, $(ls "$V1_SRC/node_modules/.bun" | wc -l) store keys)"
@@ -110,6 +122,18 @@ EFFECT_INSTALLED="$(grep -o '"version": "[^"]*"' "$V1_SRC/packages/opencode/node
 [[ "$EFFECT_INSTALLED" == "$EFFECT_VER" ]] || {
   echo "Error: effect version mismatch: node_modules=$EFFECT_INSTALLED expected=$EFFECT_VER" >&2; exit 1; }
 echo "    effect version gate OK: $EFFECT_INSTALLED"
+
+# ── 2a. @ff-labs/fff-bun (trees <= 1.19.3) ────────────────────────────────
+# The package declares os: [darwin, linux, win32] — no "android" — so bun skips
+# it on this host and the compile then dies with Could not resolve. Install it
+# explicitly for the linux/arm64 ABI we are actually targeting. 1.19.4 replaced
+# it with the native `#fff` export map, so the guard is version-independent.
+FFF_VER="$(python3 -c 'import json;print(json.load(open("'"$V1_SRC"'/packages/core/package.json")).get("dependencies",{}).get("@ff-labs/fff-bun",""))' 2>/dev/null)"
+if [[ -n "$FFF_VER" ]] && [[ ! -d "$V1_SRC/node_modules/@ff-labs/fff-bun" ]]; then
+  echo "==> installing platform package @ff-labs/fff-bun@$FFF_VER (os=linux cpu=arm64)"
+  (cd "$V1_SRC" && LD_PRELOAD="$OPENAT2_SHIM" "$ANDROID_BUN" install --force --ignore-scripts \
+    --os=linux --cpu=arm64 "@ff-labs/fff-bun@$FFF_VER" 2>&1 | tail -2)
+fi
 
 # ── 2b. optional platform package (bun skips optional deps for this host) ──
 if [[ "$EFFECT_VER" != "4.0.0-beta.83" ]]; then
