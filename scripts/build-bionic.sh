@@ -473,7 +473,11 @@ else
 fi
 
 echo "==> compiling (android bun, target=opencode-linux-arm64)"
-LD_PRELOAD="$OPENAT2_SHIM" OPENCODE_VERSION="$OPENCODE_VERSION" \
+# Upstream moved target selection from `--target=` (argv) to OPENCODE_TARGET (env)
+# in 2.2.0. Pass both: new trees read the env, old trees read the flag, and each
+# ignores the other. Without the env a 2.2.x tree falls back to "all 12 targets"
+# and dies on the x64 pty package we deliberately do not install.
+LD_PRELOAD="$OPENAT2_SHIM" OPENCODE_VERSION="$OPENCODE_VERSION" OPENCODE_TARGET=linux-arm64 \
   "$ANDROID_BUN" script/build.ts --target=opencode-linux-arm64 --skip-install --skip-web-ui
 DIST_BIN="$SRC_DIR/packages/cli/dist/cli-linux-arm64/bin/opencode"
 [[ -x "$DIST_BIN" ]] || { echo "Error: build output missing: $DIST_BIN" >&2; exit 1; }

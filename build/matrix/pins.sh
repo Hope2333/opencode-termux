@@ -58,6 +58,11 @@ matrix_pins_for() {
 		2.2.0) printf '0.3.1 0.7.0 opentui-0.6.8 ot_ctx -\n' ;;
 		2.2.1) printf '0.3.1 0.7.0 opentui-0.6.8 ot_ctx -\n' ;;
 		2.2.2) printf 'none 0.7.0 opentui-0.6.8 ot_ctx -\n' ;;
+		1.18.35) printf 'none 0.4.5 tlsdesc legacy 4.0.0-beta.103\n' ;;
+		1.19.0) printf 'none 0.4.5 tlsdesc legacy 4.0.0-beta.103\n' ;;
+		1.19.1) printf 'none 0.4.5 tlsdesc legacy 4.0.0-beta.103\n' ;;
+		1.19.2) printf 'none 0.4.5 tlsdesc legacy 4.0.0-beta.103\n' ;;
+		1.19.3) printf 'none 0.4.5 tlsdesc legacy 4.0.0-beta.103\n' ;;
 		1.19.4) printf 'none 0.4.5 tlsdesc legacy 4.0.0-beta.103\n' ;;
 		*) return 1 ;;
 	esac
@@ -76,7 +81,8 @@ matrix_versions() {
 		2.0.28 2.0.29 2.0.30 2.0.31 \
 		2.0.32 2.1.0 2.1.1 2.1.2 \
 		2.1.3 2.1.4 2.2.0 2.2.1 \
-		2.2.2 1.19.4
+		2.2.2 1.18.35 1.19.0 1.19.1 \
+		1.19.2 1.19.3 1.19.4
 }
 
 # Resolve a lib name to an absolute .so path (empty when the build is missing).

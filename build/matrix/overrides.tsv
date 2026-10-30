@@ -1,1 +1,6 @@
 1.19.4	effect	4.0.0-beta.103	3.18 内核 SIGSEGV：需 >= beta.103 的上游修复
+1.18.35	effect	4.0.0-beta.103	3.18 内核 SIGSEGV：与 1.19.4 同因，重建用 beta.103
+1.19.0	effect	4.0.0-beta.103	3.18 内核 SIGSEGV：与 1.19.4 同因，重建用 beta.103
+1.19.1	effect	4.0.0-beta.103	3.18 内核 SIGSEGV：与 1.19.4 同因，重建用 beta.103
+1.19.2	effect	4.0.0-beta.103	3.18 内核 SIGSEGV：与 1.19.4 同因，重建用 beta.103
+1.19.3	effect	4.0.0-beta.103	3.18 内核 SIGSEGV：与 1.19.4 同因，重建用 beta.103

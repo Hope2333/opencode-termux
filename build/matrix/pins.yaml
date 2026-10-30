@@ -106,12 +106,32 @@ rows:
     ffi: ot_ctx
     effect: "-"
 
+  # 1.18.35-1.19.3: same opentui 0.4.5 as 1.19.4, but those upstream builds
+  # crash on the 3.18 kernel (measured on oscar: serve 200, TUI frame 0 B,
+  # process gone). Rebuild them on effect 4.0.0-beta.103 exactly like 1.19.4 —
+  # that is what turns "ships but crashes" into a working package.
+  - from: "1.18.35"
+    to: "1.18.35"
+    pty: none
+    opentui: "0.4.5"
+    lib: tlsdesc
+    ffi: legacy
+    effect: "4.0.0-beta.103"
+
   # v1 line: upstream 1.19.4 pins opentui 0.4.5 and declares no
   # @opencode-ai/pty dependency. effect is a deliberate upgrade: upstream
   # 4.0.0-beta.83 segfaults on the 3.18 kernel, so the rebuild uses
   # 4.0.0-beta.103 (see build/matrix/overrides.tsv).
   # lib=tlsdesc: the 0.5.x gold is a strict C-ABI superset of 0.4.5
   # (1673 C exports, 0 missing; the only 42 gaps are yoga C++ internals).
+  - from: "1.19.0"
+    to: "1.19.3"
+    pty: none
+    opentui: "0.4.5"
+    lib: tlsdesc
+    ffi: legacy
+    effect: "4.0.0-beta.103"
+
   - from: "1.19.4"
     to: "1.19.4"
     pty: none

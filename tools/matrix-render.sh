@@ -62,6 +62,13 @@ def expand(row):
     if va > vb:
         print(f"Error: range from>{a} to={b}", file=sys.stderr)
         sys.exit(1)
+    # Crossing a minor version is a hard error, not a long loop: upstream skips
+    # patches (1.18.35 then 1.19.0), and walking the patch counter across a minor
+    # would generate hundreds of thousands of phantom versions and OOM the host.
+    if va[:2] != vb[:2]:
+        print(f"Error: range {a}..{b} crosses a minor version — write one row per minor "
+              f"(or one row per version)", file=sys.stderr)
+        sys.exit(1)
     out, cur = [], va
     while cur <= vb:
         out.append("%d.%d.%d" % cur)

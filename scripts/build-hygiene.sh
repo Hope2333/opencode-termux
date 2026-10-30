@@ -21,6 +21,7 @@ TREE_ROOT="${TREE_ROOT:-${TMPDIR:-/data/data/com.termux/files/usr/tmp}/v2src}"
 TREE_KEEP="${TREE_KEEP:-2}"                              # LRU 保留棵数
 DF_MIN_KB="${DF_MIN_KB:-3000000}"                        # 3G
 DF_TARGET="${DF_TARGET:-/data}"
+MEM_MIN_KB="${MEM_MIN_KB:-4194304}"                       # 4G
 HYG_ARTIFACTS_BUILD="${HYG_ARTIFACTS_BUILD:-artifacts/build}"
 
 hg_log() { echo "[$(date -Iseconds)] $*" >> "$HYG_LOG"; }
@@ -89,6 +90,31 @@ df_gate() {
   fi
   hg_log "df_gate FAIL after ${tries} sweeps: ${free}K free < ${min_kb}K required on ${DF_TARGET}"
   echo "df_gate FAIL: ${free}K free < ${min_kb}K required on ${DF_TARGET}; hygiene sweeps exhausted (log: $HYG_LOG)" >&2
+  return 1
+}
+
+mem_available_kb() { awk '/^MemAvailable:/{print $2; exit}' /proc/meminfo 2>/dev/null; }
+
+# F1b: 内存门。v2 编译期 bun 的峰值 RSS 会打到 6G 以上；本机总量 15G、基线已占 9G，
+# 与 matrix-check / 打包等重活并发时会被 LMK 连同主进程一起杀掉（已发生两次）。
+# 与其硬扛，不如在建前先判：低于阈值先扫中间件与 bun cache，仍不足就 loudly 退出。
+mem_gate() {
+  local min_kb="${1:-$MEM_MIN_KB}" tries=0 avail
+  avail=$(mem_available_kb)
+  while [ "${avail:-0}" -lt "$min_kb" ] && [ "$tries" -lt 2 ]; do
+    tries=$((tries + 1))
+    case $tries in
+      1) sweep_intermediates ;;
+      2) bun_cache_gc ;;
+    esac
+    avail=$(mem_available_kb)
+  done
+  if [ "${avail:-0}" -ge "$min_kb" ]; then
+    hg_log "mem_gate ok (${tries} sweeps, ${avail}K avail >= ${min_kb}K)"
+    return 0
+  fi
+  hg_log "mem_gate FAIL after ${tries} sweeps: ${avail}K < ${min_kb}K required"
+  echo "mem_gate FAIL: only ${avail}K available, need ${min_kb}K — stop other heavy jobs (builds/checks) before retrying" >&2
   return 1
 }
 

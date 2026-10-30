@@ -12,6 +12,8 @@ ODIR ?=
 MIX ?= 0
 # df gate (scripts/build-hygiene.sh): minimum free KB on DF_TARGET before builds
 DF_MIN_KB ?= 3000000
+# mem gate (scripts/build-hygiene.sh): minimum MemAvailable KB before builds
+MEM_MIN_KB ?= 4194304
 
 # ── Packaging hook registry (version-ranged; resolved at packaging time) ──
 # Hooks ship inside package maintainer scripts (postinst / .INSTALL) and are
@@ -982,6 +984,8 @@ family-v2-native:
 	fi
 	@DF_MIN_KB='$(DF_MIN_KB)' . scripts/build-hygiene.sh; \
 	df_gate "$(DF_MIN_KB)" || { echo "Error: df gate blocked build: disk still tight after hygiene sweeps (need $(DF_MIN_KB) KB free; see $${HYG_LOG:-$${TMPDIR:-/data/data/com.termux/files/usr/tmp}/build-hygiene.log})"; exit 1; }
+	@MEM_MIN_KB='$(MEM_MIN_KB)' . scripts/build-hygiene.sh; \
+	mem_gate "$(MEM_MIN_KB)" || { echo "Error: mem gate blocked build: too little RAM free (need $(MEM_MIN_KB) KB available)"; exit 1; }
 	$(MAKE) --no-print-directory build-native VER=$(VER) V2_SRC='$(V2_SRC)'
 	command -v clang >/dev/null 2>&1 || { echo "FATAL: clang required — v2 native must ship the seccomp shim (issue #17)"; exit 1; }
 	$(MAKE) --no-print-directory harden-native VER=$(VER)
@@ -1003,6 +1007,8 @@ family-v2-compressed:
 	fi
 	@DF_MIN_KB='$(DF_MIN_KB)' . scripts/build-hygiene.sh; \
 	df_gate "$(DF_MIN_KB)" || { echo "Error: df gate blocked build: disk still tight after hygiene sweeps (need $(DF_MIN_KB) KB free; see $${HYG_LOG:-$${TMPDIR:-/data/data/com.termux/files/usr/tmp}/build-hygiene.log})"; exit 1; }
+	@MEM_MIN_KB='$(MEM_MIN_KB)' . scripts/build-hygiene.sh; \
+	mem_gate "$(MEM_MIN_KB)" || { echo "Error: mem gate blocked build: too little RAM free (need $(MEM_MIN_KB) KB available)"; exit 1; }
 	$(MAKE) --no-print-directory build-native VER=$(VER) V2_SRC='$(V2_SRC)'
 	$(MAKE) --no-print-directory harden-native VER=$(VER)
 	UPX_BIN='$(UPX_BIN)' $(MAKE) --no-print-directory build-native-upx VER=$(VER)
