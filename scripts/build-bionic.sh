@@ -117,14 +117,24 @@ STORE="$SRC_DIR/node_modules/.bun"
 echo "==> installing dependencies (bun install --force --ignore-scripts + shim)..."
 cd "$SRC_DIR/packages/cli"
 install_ok=0
-for attempt in 1 2 3 4 5; do
-  if LD_PRELOAD="$OPENAT2_SHIM" "$ANDROID_BUN" install --force --ignore-scripts 2>&1 | tail -3; then
-    install_ok=1
-    break
-  fi
-  echo "    WARN: bun install attempt $attempt failed (transient TLS/network?), retrying in $((attempt * 5))s..." >&2
-  sleep $((attempt * 5))
-done
+if [[ "${SKIP_INSTALL:-0}" == "1" ]]; then
+  # Reuse an existing node_modules (iteration on packaging/renderer work).
+  # The store-populated guard below still runs, so a half-empty tree fails loud.
+  echo "    SKIP_INSTALL=1 — reusing the existing node_modules"
+  install_ok=1
+else
+  # Each attempt gets a hard timeout: a stalled fetch (low CPU, no progress)
+  # otherwise burns 20+ minutes per retry while the loop looks healthy.
+  INSTALL_TIMEOUT="${INSTALL_TIMEOUT:-900}"
+  for attempt in 1 2 3 4 5; do
+    if LD_PRELOAD="$OPENAT2_SHIM" timeout "$INSTALL_TIMEOUT" "$ANDROID_BUN" install --force --ignore-scripts 2>&1 | tail -3; then
+      install_ok=1
+      break
+    fi
+    echo "    WARN: bun install attempt $attempt failed or timed out (${INSTALL_TIMEOUT}s), retrying in $((attempt * 5))s..." >&2
+    sleep $((attempt * 5))
+  done
+fi
 if [[ $install_ok -ne 1 ]]; then
   # E1a: continuing with an empty store only produced an unusable binary later.
   # Offline builds stay supported when the store is already populated.
@@ -145,14 +155,29 @@ cd "$ROOT_DIR"
 # mandatory targets hard-fail, optional (musl/solid) warn-and-continue.
 echo "==> installing platform packages one-by-one (pty, watcher, core, fonts)..."
 cd "$SRC_DIR/packages/cli"
+PLATFORM_INSTALL_TIMEOUT="${PLATFORM_INSTALL_TIMEOUT:-600}"
+pkg_installed() { # pkg_installed <name@ver> → 0 when the store already has it
+  # bun stores scoped packages as "@scope+name@ver", not "@scope/name@ver".
+  local name="${1%@*}" ver="${1##*@}"
+  local key="${name//\//+}@${ver}"
+  [ -d "$SRC_DIR/node_modules/.bun/$key" ] && return 0
+  ls "$SRC_DIR/node_modules/.bun" 2>/dev/null | grep -qx "$key" && return 0
+  return 1
+}
 for pkg in "@opencode-ai/pty-linux-arm64-gnu@$PTY_VER" "@parcel/watcher-linux-arm64-glibc@2.5.1" "@opentui/core-linux-arm64@$OPENTUI_VER"; do
   pkg_ok=0
+  # Already present → don't re-resolve the whole graph: --force here costs a full
+  # registry round-trip per package and is the main place a flaky link hangs.
+  if pkg_installed "$pkg"; then
+    echo "    SKIP $pkg (already in store)"
+    continue
+  fi
   for attempt in 1 2 3 4 5; do
-    if LD_PRELOAD="$OPENAT2_SHIM" "$ANDROID_BUN" install --force --ignore-scripts --os=linux --cpu=arm64 "$pkg" 2>&1 | tail -2; then
+    if LD_PRELOAD="$OPENAT2_SHIM" timeout "$PLATFORM_INSTALL_TIMEOUT" "$ANDROID_BUN" install --force --ignore-scripts --os=linux --cpu=arm64 "$pkg" 2>&1 | tail -2; then
       pkg_ok=1
       break
     fi
-    echo "    WARN: $pkg attempt $attempt failed (transient TLS/network?), retrying in $((attempt * 5))s..." >&2
+    echo "    WARN: $pkg attempt $attempt failed or timed out (${PLATFORM_INSTALL_TIMEOUT}s), retrying in $((attempt * 5))s..." >&2
     sleep $((attempt * 5))
   done
   [[ $pkg_ok -eq 1 ]] || { echo "Error: mandatory platform package failed after 5 attempts: $pkg" >&2; exit 1; }
