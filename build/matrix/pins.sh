@@ -55,9 +55,9 @@ matrix_pins_for() {
 		2.1.2) printf '0.3.1 0.6.6 opentui-0.6.8 ot_ctx -\n' ;;
 		2.1.3) printf '0.3.1 0.6.6 opentui-0.6.8 ot_ctx -\n' ;;
 		2.1.4) printf '0.3.1 0.6.8 opentui-0.6.8 ot_ctx -\n' ;;
-		2.2.0) printf '0.3.1 0.7.0 opentui-0.6.8 ot_ctx -\n' ;;
-		2.2.1) printf '0.3.1 0.7.0 opentui-0.6.8 ot_ctx -\n' ;;
-		2.2.2) printf 'none 0.7.0 opentui-0.6.8 ot_ctx -\n' ;;
+		2.2.0) printf '0.3.1 0.7.0 opentui-0.7.0 ot_ctx -\n' ;;
+		2.2.1) printf '0.3.1 0.7.0 opentui-0.7.0 ot_ctx -\n' ;;
+		2.2.2) printf 'none 0.7.0 opentui-0.7.0 ot_ctx -\n' ;;
 		1.18.35) printf 'none 0.4.5 tlsdesc legacy 4.0.0-beta.103\n' ;;
 		1.19.0) printf 'none 0.4.5 tlsdesc legacy 4.0.0-beta.103\n' ;;
 		1.19.1) printf 'none 0.4.5 tlsdesc legacy 4.0.0-beta.103\n' ;;

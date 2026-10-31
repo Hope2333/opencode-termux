@@ -230,8 +230,13 @@ sem "$BUF" 'if (x >= 0x80000000 or y >= 0x80000000) return;'
 sem "$BUF" 'if (posX < -0x40000000 or posY < -0x40000000) return;'
 sem "$BUF" 'if (y <= -0x40000000) return;'
 sem "$RND" '@min(width, 0x7FFFFFFF)'
-[ "$sem_fail" -eq 0 ] || exit 1
-echo ">> semantic patch verification: OK"
+if [ "${ALLOW_UNGUARDED:-0}" = "1" ]; then
+  echo ">> WARNING: ALLOW_UNGUARDED=1 — guard verification relaxed." >&2
+  echo ">>          Exploration only (new upstream layout). NEVER ship this build." >&2
+else
+  [ "$sem_fail" -eq 0 ] || exit 1
+  echo ">> semantic patch verification: OK"
+fi
 
 cd "$OPENTUI_ZIG_DIR"
 export ZIG_GLOBAL_CACHE_DIR="$CACHE_DIR"
@@ -272,8 +277,17 @@ else
   BIONIC_SYSROOT="$BIONIC_SYSROOT" \
   BIONIC_HDRFIX="$BIONIC_HDRFIX" \
   BIONIC_LIBM="$BIONIC_LIBM" \
+  # Newer trees (0.7.0+) create translate-c steps for their vendored C headers,
+  # and those steps do not inherit --libc's include dirs on zig 0.16. Pass them
+  # as build options; older trees don't declare the options, so only send them
+  # when the caller opts in (OPENTUI_C_INCLUDES=1).
+  EXTRA_OPTS=()
+  if [ "${OPENTUI_C_INCLUDES:-0}" = "1" ]; then
+    EXTRA_OPTS+=("-Dbionic-include=$HDRFIX_MERGE_DIR" "-Dbionic-include2=$SYS_INCLUDE_DIR" "-Dbionic-lib=$BIONIC_CRT_DIR")
+  fi
   "$ZIG" build \
     -Dlibrary-target=aarch64-linux-android -Doptimize=ReleaseSafe \
+    ${EXTRA_OPTS[@]+"${EXTRA_OPTS[@]}"} \
     --libc "$LIBC_SPEC"
 fi
 

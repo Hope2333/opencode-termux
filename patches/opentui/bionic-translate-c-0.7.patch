@@ -1,0 +1,93 @@
+diff --git a/packages/native/build.zig b/packages/native/build.zig
+index c2d5b1e..1fb296b 100644
+--- a/packages/native/build.zig
++++ b/packages/native/build.zig
+@@ -366,6 +366,9 @@ fn addNativeAudioDependencies(
+     switch (target.result.os.tag) {
+         .macos => addMacOSSystemLibraries(b, module, macos_sdk_path.?),
+         .linux => {
++            // android: dl/pthread/m are bionic, not searchable by default —
++            // the caller passes the dir holding the crt + lib symlinks.
++            if (g_libdir) |d| module.addLibraryPath(.{ .cwd_relative = d });
+             module.linkSystemLibrary("dl", .{});
+             module.linkSystemLibrary("pthread", .{});
+             module.linkSystemLibrary("m", .{});
+@@ -404,18 +407,41 @@ fn ghosttyVtAvailable(target: std.Build.ResolvedTarget) bool {
+     };
+ }
+ 
++
++// --- local (android/bionic) addition: translate-c needs the bionic header
++// --- search path explicitly; the global --libc spec is not inherited by
++// --- translate-c steps on zig 0.16. Paths come from the environment so the
++// --- tree stays upstream-clean for everyone else.
++
++var g_libdir: ?[]const u8 = null;
++var g_inc1: ?[]const u8 = null;
++var g_inc2: ?[]const u8 = null;
++
++fn addIncs(inc1: ?[]const u8, inc2: ?[]const u8, step: anytype) void {
++    if (inc1) |p| step.addIncludePath(.{ .cwd_relative = p });
++    if (inc2) |p| step.addIncludePath(.{ .cwd_relative = p });
++}
++
+ fn addTranslatedCImports(
+     b: *std.Build,
+     module: *std.Build.Module,
+     optimize: std.builtin.OptimizeMode,
+     target: std.Build.ResolvedTarget,
+ ) void {
++    // Local (android/bionic) addition: translate-c does not inherit the global
++    // --libc include dirs on zig 0.16, so bionic headers are passed explicitly.
++    // The values live in file-scope globals: this function runs once per target
++    // and b.option panics if the same name is declared twice.
++    const inc1 = g_inc1;
++    const inc2 = g_inc2;
++
+     const miniaudio_translate = b.addTranslateC(.{
+         .root_source_file = b.path("src/vendor/miniaudio/miniaudio.h"),
+         .target = target,
+         .optimize = optimize,
+     });
+     miniaudio_translate.addIncludePath(b.path("src"));
++    addIncs(inc1, inc2, miniaudio_translate);
+     module.addImport("miniaudio", miniaudio_translate.createModule());
+ 
+     const yoga_dep = b.dependency("yoga", .{});
+@@ -425,8 +451,9 @@ fn addTranslatedCImports(
+         .optimize = optimize,
+     });
+     yoga_translate.addIncludePath(yoga_dep.path(""));
++    addIncs(inc1, inc2, yoga_translate);
+     module.addImport("yoga", yoga_translate.createModule());
+-    addContextABIHeader(b, module, optimize, target);
++    addContextABIHeader(b, module, optimize, target, inc1, inc2);
+ }
+ 
+ fn addContextABIHeader(
+@@ -434,12 +461,15 @@ fn addContextABIHeader(
+     module: *std.Build.Module,
+     optimize: std.builtin.OptimizeMode,
+     target: std.Build.ResolvedTarget,
++    inc1: ?[]const u8,
++    inc2: ?[]const u8,
+ ) void {
+     const header = b.addTranslateC(.{
+         .root_source_file = b.path("include/opentui.h"),
+         .target = target,
+         .optimize = optimize,
+     });
++    addIncs(inc1, inc2, header);
+     module.addImport("context_abi_c", header.createModule());
+ }
+ 
+@@ -535,6 +565,9 @@ fn checkZigVersion() void {
+ }
+ 
+ pub fn build(b: *std.Build) void {
++    g_libdir = b.option([]const u8, "bionic-lib", "bionic lib dir (-L for dl/pthread/m)");
++    g_inc1 = b.option([]const u8, "bionic-include", "merged bionic C headers");
++    g_inc2 = b.option([]const u8, "bionic-include2", "termux sysroot include");
+     checkZigVersion();
+ 
+     const optimize = b.standardOptimizeOption(.{});

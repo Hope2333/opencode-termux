@@ -49,8 +49,11 @@ case "$KIND" in v1|v2) ;; *) die "--kind must be v1 or v2" ;; esac
 VERS="$(printf '%s\n' $VERS | sed '/^$/d' | sort -u -V)"
 [ -n "$VERS" ] || die "give at least one version (--ver/--list/--range)"
 
-SSH_BASE=(ssh -p "$SSH_PORT" -o BatchMode=yes -o ConnectTimeout=10 "$DEVICE")
-SCP_BASE=(scp -P "$SSH_PORT" -o BatchMode=yes)
+# accept-new, not strict: lab devices change IP far more often than host keys,
+# and pinning an IP in known_hosts turns every DHCP move into "host key
+# verification failed". Identity is still verified out-of-band (kernel/model).
+SSH_BASE=(ssh -p "$SSH_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 "$DEVICE")
+SCP_BASE=(scp -P "$SSH_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new)
 
 remote() { "${SSH_BASE[@]}" "$@"; }
 

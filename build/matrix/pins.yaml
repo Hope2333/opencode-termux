@@ -94,7 +94,7 @@ rows:
     to: "2.2.1"
     pty: "0.3.1"
     opentui: "0.7.0"
-    lib: opentui-0.6.8
+    lib: opentui-0.7.0
     ffi: ot_ctx
     effect: "-"
 
@@ -102,7 +102,7 @@ rows:
     to: "2.2.2"
     pty: none
     opentui: "0.7.0"
-    lib: opentui-0.6.8
+    lib: opentui-0.7.0
     ffi: ot_ctx
     effect: "-"
 
