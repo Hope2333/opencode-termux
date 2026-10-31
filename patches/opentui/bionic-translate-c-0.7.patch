@@ -1,8 +1,18 @@
 diff --git a/packages/native/build.zig b/packages/native/build.zig
-index c2d5b1e..1fb296b 100644
+index c2d5b1e..59e0630 100644
 --- a/packages/native/build.zig
 +++ b/packages/native/build.zig
-@@ -366,6 +366,9 @@ fn addNativeAudioDependencies(
+@@ -362,10 +362,19 @@ fn addNativeAudioDependencies(
+ ) void {
+     addMiniaudioShim(b, module, target, macos_sdk_path);
+     addImageShim(b, module, target, macos_sdk_path);
++    // tlsdesc-shim.c: self-contained TLSDESC fallback resolver for bionic < 11
++    // (zig-emitted .generaldynamic TLS is TLSDESC-lowered unconditionally on
++    // aarch64; bionic 9 ignores those relocs -> resolver NULL -> blr 0 crash).
++    // Must be built into the module it fixes; see the file header for the
++    // full rationale (offline IE relaxation is not viable on either end).
++    module.addCSourceFile(.{ .file = b.path("src/tlsdesc-shim.c"), .flags = &.{"-std=c99"} });
+ 
      switch (target.result.os.tag) {
          .macos => addMacOSSystemLibraries(b, module, macos_sdk_path.?),
          .linux => {
@@ -12,7 +22,7 @@ index c2d5b1e..1fb296b 100644
              module.linkSystemLibrary("dl", .{});
              module.linkSystemLibrary("pthread", .{});
              module.linkSystemLibrary("m", .{});
-@@ -404,18 +407,41 @@ fn ghosttyVtAvailable(target: std.Build.ResolvedTarget) bool {
+@@ -404,18 +413,42 @@ fn ghosttyVtAvailable(target: std.Build.ResolvedTarget) bool {
      };
  }
  
@@ -22,6 +32,7 @@ index c2d5b1e..1fb296b 100644
 +// --- translate-c steps on zig 0.16. Paths come from the environment so the
 +// --- tree stays upstream-clean for everyone else.
 +
++var g_unwind: ?[]const u8 = null;
 +var g_libdir: ?[]const u8 = null;
 +var g_inc1: ?[]const u8 = null;
 +var g_inc2: ?[]const u8 = null;
@@ -54,7 +65,7 @@ index c2d5b1e..1fb296b 100644
      module.addImport("miniaudio", miniaudio_translate.createModule());
  
      const yoga_dep = b.dependency("yoga", .{});
-@@ -425,8 +451,9 @@ fn addTranslatedCImports(
+@@ -425,8 +458,9 @@ fn addTranslatedCImports(
          .optimize = optimize,
      });
      yoga_translate.addIncludePath(yoga_dep.path(""));
@@ -65,7 +76,7 @@ index c2d5b1e..1fb296b 100644
  }
  
  fn addContextABIHeader(
-@@ -434,12 +461,15 @@ fn addContextABIHeader(
+@@ -434,12 +468,15 @@ fn addContextABIHeader(
      module: *std.Build.Module,
      optimize: std.builtin.OptimizeMode,
      target: std.Build.ResolvedTarget,
@@ -81,13 +92,55 @@ index c2d5b1e..1fb296b 100644
      module.addImport("context_abi_c", header.createModule());
  }
  
-@@ -535,6 +565,9 @@ fn checkZigVersion() void {
+@@ -535,6 +572,10 @@ fn checkZigVersion() void {
  }
  
  pub fn build(b: *std.Build) void {
++    g_unwind = b.option([]const u8, "bionic-unwind-lib", "static libunwind.a to link in");
 +    g_libdir = b.option([]const u8, "bionic-lib", "bionic lib dir (-L for dl/pthread/m)");
 +    g_inc1 = b.option([]const u8, "bionic-include", "merged bionic C headers");
 +    g_inc2 = b.option([]const u8, "bionic-include2", "termux sysroot include");
      checkZigVersion();
  
      const optimize = b.standardOptimizeOption(.{});
+@@ -893,12 +934,20 @@ fn createLibraries(
+         .linkage = .dynamic,
+     });
+     if (target.result.os.tag == .linux and optimize != .Debug) shared.build_id = .sha1;
++    // bionic's libc does not export the C++ unwinder; zig resolves _Unwind_*
++    // against the libc stub at link time, so the .so comes out with undefined
++    // _Unwind_*@LIBC_R and dlopen dies with "cannot locate symbol".
++    // Link a static libunwind.a so the artifact carries its own unwinder.
++    if (g_unwind) |unwind| {
++        module.addObjectFile(.{ .cwd_relative = unwind });
++    }
+     const static = b.addLibrary(.{
+         // COFF uses .lib for both archives and DLL import libraries.
+         .name = if (target.result.os.tag == .windows) "opentui-static" else LIB_NAME,
+         .root_module = module,
+         .linkage = .static,
+     });
++
+     shared.installHeader(b.path("include/opentui.h"), "opentui.h");
+     static.installHeader(b.path("include/opentui.h"), "opentui.h");
+     return .{ shared, static };
+diff --git a/packages/native/src/lib.zig b/packages/native/src/lib.zig
+index 8c662de..272b971 100644
+--- a/packages/native/src/lib.zig
++++ b/packages/native/src/lib.zig
+@@ -9,3 +9,15 @@ comptime {
+     _ = @import("runtime-abi.zig");
+     _ = @import("yoga.zig");
+ }
++
++// bionic 缺少 glibc 专属符号 pthread_tryjoin_np；zig std(linux/glibc 门)对 android
++// 误生成引用，导致 .so 带着未定义符号、dlopen 直接失败。这里导出同名符号自我满足，
++// 与 w7b(0.6.8) 金件同一实现：kill(0) 探测存活 + join 回收已退线程。
++extern "c" fn pthread_kill(t: @import("std").c.pthread_t, sig: c_int) c_int;
++extern "c" fn pthread_join(t: @import("std").c.pthread_t, retval: ?*?*anyopaque) c_int;
++export fn pthread_tryjoin_np(thread: @import("std").c.pthread_t, retval: ?*?*anyopaque) c_int {
++    const r = pthread_kill(thread, 0);
++    if (r == 0) return 16; // EBUSY — 线程仍存活
++    if (r == 3) return pthread_join(thread, retval); // ESRCH — 已退出，join 回收
++    return r;
++}
