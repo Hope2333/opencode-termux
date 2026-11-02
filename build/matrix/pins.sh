@@ -58,6 +58,9 @@ matrix_pins_for() {
 		2.2.0) printf '0.3.1 0.7.0 opentui-0.7.0 ot_ctx -\n' ;;
 		2.2.1) printf '0.3.1 0.7.0 opentui-0.7.0 ot_ctx -\n' ;;
 		2.2.2) printf 'none 0.7.0 opentui-0.7.0 ot_ctx -\n' ;;
+		2.2.3) printf '0.3.3 0.8.0 opentui-0.8.0 ot_ctx -\n' ;;
+		2.2.4) printf '0.3.3 0.8.0 opentui-0.8.0 ot_ctx -\n' ;;
+		2.2.5) printf '0.3.3 0.8.0 opentui-0.8.0 ot_ctx -\n' ;;
 		1.18.35) printf 'none 0.4.5 tlsdesc legacy 4.0.0-beta.103\n' ;;
 		1.19.0) printf 'none 0.4.5 tlsdesc legacy 4.0.0-beta.103\n' ;;
 		1.19.1) printf 'none 0.4.5 tlsdesc legacy 4.0.0-beta.103\n' ;;
@@ -65,6 +68,19 @@ matrix_pins_for() {
 		1.19.3) printf 'none 0.4.5 tlsdesc legacy 4.0.0-beta.103\n' ;;
 		1.19.4) printf 'none 0.4.5 tlsdesc legacy 4.0.0-beta.103\n' ;;
 		*) return 1 ;;
+	esac
+}
+
+# PTY helper package name. Upstream renamed @opencode-ai/pty -> @opencode/pty
+# in 2.2.3 (2.2.2 shipped none at all), and the platform packages follow the
+# same rename (@opencode/pty-linux-arm64-{gnu,musl}). The build used to hardcode
+# the old scope, so 2.2.3+ died at compile with
+#   Cannot find module '@opencode/pty-linux-arm64-gnu/bin/opencode-pty'.
+matrix_pty_pkg() {
+	local ver="${1:-}"
+	case "$ver" in
+		2.2.3|2.2.4|2.2.5) printf '@opencode/pty' ;;
+		*) printf '@opencode-ai/pty' ;;
 	esac
 }
 
@@ -81,7 +97,8 @@ matrix_versions() {
 		2.0.28 2.0.29 2.0.30 2.0.31 \
 		2.0.32 2.1.0 2.1.1 2.1.2 \
 		2.1.3 2.1.4 2.2.0 2.2.1 \
-		2.2.2 1.18.35 1.19.0 1.19.1 \
+		2.2.2 2.2.3 2.2.4 2.2.5 \
+		1.18.35 1.19.0 1.19.1 \
 		1.19.2 1.19.3 1.19.4
 }
 

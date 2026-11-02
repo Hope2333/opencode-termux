@@ -75,7 +75,8 @@ BUN_REGISTRY_ARGS=()
 [[ -n "$BUN_REGISTRY" ]] && BUN_REGISTRY_ARGS=(--registry "$BUN_REGISTRY")
 _pins="$(resolve_dep_pins "$VER")" || exit 1
 eval "$_pins"
-echo "==> dep pins for VER=$VER: pty=$PTY_VER opentui=$OPENTUI_VER"
+PTY_PKG="$(matrix_pty_pkg "$VER")"
+echo "==> dep pins for VER=$VER: pty=$PTY_VER ($PTY_PKG) opentui=$OPENTUI_VER"
 
 # ── resolve v2 source tree ─────────────────────────────────────────────
 if [[ -n "${V2_SRC:-}" ]]; then
@@ -186,7 +187,7 @@ pkg_installed() { # pkg_installed <name@ver> → 0 when the store already has it
 # 2.2.2+ dropped @opencode-ai/pty upstream, so PTY_VER is "none" there —
 # installing "@opencode-ai/pty-linux-arm64-gnu@none" fails with tag not found.
 PTY_PKGS=()
-[[ "$PTY_VER" != "none" ]] && PTY_PKGS+=("@opencode-ai/pty-linux-arm64-gnu@$PTY_VER")
+[[ "$PTY_VER" != "none" ]] && PTY_PKGS+=("$PTY_PKG-linux-arm64-gnu@$PTY_VER")
 for pkg in "${PTY_PKGS[@]}" "@parcel/watcher-linux-arm64-glibc@2.5.1" "@opentui/core-linux-arm64@$OPENTUI_VER"; do
   pkg_ok=0
   # Already present → don't re-resolve the whole graph: --force here costs a full
@@ -330,7 +331,7 @@ cd "$SRC_DIR"
 # fails, and the later require_pkg_installed would abort on a package that is
 # legitimately absent.
 LINUX_PKGS=()
-[[ "$PTY_VER" != "none" ]] && LINUX_PKGS+=("@opencode-ai/pty@$PTY_VER")
+[[ "$PTY_VER" != "none" ]] && LINUX_PKGS+=("$PTY_PKG@$PTY_VER")
 LINUX_PKGS+=("@parcel/watcher-linux-arm64-glibc@2.5.1")
 for pkg in "${LINUX_PKGS[@]}"; do
   # Strip only the version suffix: scoped names start with '@', so the greedy
@@ -398,8 +399,8 @@ case "$PTY_VARIANT" in
     # Run inside SRC_DIR: `bun install <pkg>` mutates the package.json/bun.lock of
     # whatever CWD it runs in. This script's CWD is the repo root, which is how
     # the root package.json/bun.lock kept drifting to the build's PTY_VER.
-    if (cd "$SRC_DIR" && install_pkg_direct "@opencode-ai/pty-linux-arm64-musl@$PTY_VER" "$SRC_DIR/node_modules" "$NPM_TARBALL_CACHE" >/dev/null 2>&1) \
-       || (cd "$SRC_DIR" && LD_PRELOAD="$OPENAT2_SHIM" timeout "${PLATFORM_INSTALL_TIMEOUT:-600}" "$ANDROID_BUN" install --force --ignore-scripts --os=linux --cpu=arm64 "${BUN_REGISTRY_ARGS[@]}" "@opencode-ai/pty-linux-arm64-musl@$PTY_VER" 2>&1 | tail -1); then :; fi
+    if (cd "$SRC_DIR" && install_pkg_direct "$PTY_PKG-linux-arm64-musl@$PTY_VER" "$SRC_DIR/node_modules" "$NPM_TARBALL_CACHE" >/dev/null 2>&1) \
+       || (cd "$SRC_DIR" && LD_PRELOAD="$OPENAT2_SHIM" timeout "${PLATFORM_INSTALL_TIMEOUT:-600}" "$ANDROID_BUN" install --force --ignore-scripts --os=linux --cpu=arm64 "${BUN_REGISTRY_ARGS[@]}" "$PTY_PKG-linux-arm64-musl@$PTY_VER" 2>&1 | tail -1); then :; fi
     PTY_MUSL_BIN="$(find "$STORE" "$SRC_DIR/node_modules" -path '*pty-linux-arm64-musl/bin/opencode-pty' -type f 2>/dev/null | head -n1)"
     if [[ -z "$PTY_MUSL_BIN" ]] || ! file "$PTY_MUSL_BIN" | grep -q 'statically linked'; then
       echo "Error: static musl opencode-pty not found/valid — bionic PTY would be broken (issue #27)" >&2
