@@ -866,6 +866,7 @@ release-upload:
 		pty_sha=""; \
 		if [ -n "$(VER)" ] && [ -f "artifacts/build/$(VER)/pty-sha256.txt" ]; then \
 			pty_sha=$$(sed -n 's/^sha256=//p' "artifacts/build/$(VER)/pty-sha256.txt" | head -n1); \
+			[ "$$pty_sha" = "none" ] && pty_sha=""; \
 		fi; \
 		bash scripts/verify-release-dir.sh "$(RELEASE_DIR)" "$(VER)" "$(PTY_VARIANT)" "$$pty_sha" || exit 1; \
 	else \

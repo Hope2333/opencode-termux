@@ -54,6 +54,25 @@ source "$ROOT_DIR/scripts/lib/build-guards.sh"
 # PTY_VER / OPENTUI_VER 环境变量仍可覆盖（调试用）。
 # shellcheck source=scripts/lib/build-pins.sh
 source "$ROOT_DIR/scripts/lib/build-pins.sh"
+
+# android-arm64 optional native bindings, pruned by the --os=linux installs
+# further down (vite 8 / rolldown, lightningcss, @tailwindcss/oxide).
+# shellcheck source=scripts/lib/napi-android.sh
+source "$ROOT_DIR/scripts/lib/napi-android.sh"
+
+# Single-package tarball installs: `bun install <pkg>` re-resolves the whole
+# tree (slow + prunes android optional deps), so platform packages are fetched
+# straight from the registry and only fall back to bun when that fails.
+# shellcheck source=scripts/lib/npm-fetch.sh
+source "$ROOT_DIR/scripts/lib/npm-fetch.sh"
+NPM_TARBALL_CACHE="${NPM_TARBALL_CACHE:-${TMPDIR:-/data/data/com.termux/files/usr/tmp}/v2src/.npm-tarball-cache}"
+# Registry override for `bun install`. The canonical npm registry throttles
+# this host hard enough that a 1750-package resolve never completes; pointing
+# BUN_REGISTRY (and NPM_REGISTRY for the tarball helpers) at a mirror turned
+# the same resolve into ~5 minutes. Empty = upstream behaviour.
+BUN_REGISTRY="${BUN_REGISTRY:-}"
+BUN_REGISTRY_ARGS=()
+[[ -n "$BUN_REGISTRY" ]] && BUN_REGISTRY_ARGS=(--registry "$BUN_REGISTRY")
 _pins="$(resolve_dep_pins "$VER")" || exit 1
 eval "$_pins"
 echo "==> dep pins for VER=$VER: pty=$PTY_VER opentui=$OPENTUI_VER"
@@ -127,7 +146,7 @@ else
   # otherwise burns 20+ minutes per retry while the loop looks healthy.
   INSTALL_TIMEOUT="${INSTALL_TIMEOUT:-900}"
   for attempt in 1 2 3 4 5; do
-    if LD_PRELOAD="$OPENAT2_SHIM" timeout "$INSTALL_TIMEOUT" "$ANDROID_BUN" install --force --ignore-scripts 2>&1 | tail -3; then
+    if LD_PRELOAD="$OPENAT2_SHIM" timeout "$INSTALL_TIMEOUT" "$ANDROID_BUN" install --force --ignore-scripts "${BUN_REGISTRY_ARGS[@]}" 2>&1 | tail -3; then
       install_ok=1
       break
     fi
@@ -164,7 +183,11 @@ pkg_installed() { # pkg_installed <name@ver> → 0 when the store already has it
   ls "$SRC_DIR/node_modules/.bun" 2>/dev/null | grep -qx "$key" && return 0
   return 1
 }
-for pkg in "@opencode-ai/pty-linux-arm64-gnu@$PTY_VER" "@parcel/watcher-linux-arm64-glibc@2.5.1" "@opentui/core-linux-arm64@$OPENTUI_VER"; do
+# 2.2.2+ dropped @opencode-ai/pty upstream, so PTY_VER is "none" there —
+# installing "@opencode-ai/pty-linux-arm64-gnu@none" fails with tag not found.
+PTY_PKGS=()
+[[ "$PTY_VER" != "none" ]] && PTY_PKGS+=("@opencode-ai/pty-linux-arm64-gnu@$PTY_VER")
+for pkg in "${PTY_PKGS[@]}" "@parcel/watcher-linux-arm64-glibc@2.5.1" "@opentui/core-linux-arm64@$OPENTUI_VER"; do
   pkg_ok=0
   # Already present → don't re-resolve the whole graph: --force here costs a full
   # registry round-trip per package and is the main place a flaky link hangs.
@@ -173,7 +196,13 @@ for pkg in "@opencode-ai/pty-linux-arm64-gnu@$PTY_VER" "@parcel/watcher-linux-ar
     continue
   fi
   for attempt in 1 2 3 4 5; do
-    if LD_PRELOAD="$OPENAT2_SHIM" timeout "$PLATFORM_INSTALL_TIMEOUT" "$ANDROID_BUN" install --force --ignore-scripts --os=linux --cpu=arm64 "$pkg" 2>&1 | tail -2; then
+    # Direct tarball first: seconds instead of a full registry re-resolve, and
+    # it cannot prune the android optional deps (see npm-fetch.sh).
+    if install_pkg_direct "$pkg" "$SRC_DIR/node_modules" "$NPM_TARBALL_CACHE" >/dev/null 2>&1; then
+      pkg_ok=1
+      break
+    fi
+    if LD_PRELOAD="$OPENAT2_SHIM" timeout "$PLATFORM_INSTALL_TIMEOUT" "$ANDROID_BUN" install --force --ignore-scripts --os=linux --cpu=arm64 "${BUN_REGISTRY_ARGS[@]}" "$pkg" 2>&1 | tail -2; then
       pkg_ok=1
       break
     fi
@@ -184,7 +213,12 @@ for pkg in "@opencode-ai/pty-linux-arm64-gnu@$PTY_VER" "@parcel/watcher-linux-ar
   echo "    ^ $pkg"
 done
 for pkg in "@opentui/core-linux-arm64-musl@$OPENTUI_VER" "@opentui/solid-linux-arm64@$OPENTUI_VER"; do
-  if LD_PRELOAD="$OPENAT2_SHIM" "$ANDROID_BUN" install --force --ignore-scripts --os=linux --cpu=arm64 "$pkg" >/dev/null 2>&1; then
+  # Optional companions (musl core is unused on bionic, solid-linux is a
+  # linux-only extra): never block the build. The old form ran `bun install`
+  # WITHOUT a timeout — one stalled registry resolve hung the build forever.
+  if install_pkg_direct "$pkg" "$SRC_DIR/node_modules" "$NPM_TARBALL_CACHE" >/dev/null 2>&1; then
+    echo "    OK  $pkg"
+  elif LD_PRELOAD="$OPENAT2_SHIM" timeout "${PLATFORM_INSTALL_TIMEOUT:-600}" "$ANDROID_BUN" install --force --ignore-scripts --os=linux --cpu=arm64 "${BUN_REGISTRY_ARGS[@]}" "$pkg" >/dev/null 2>&1; then
     echo "    OK  $pkg"
   else
     echo "    WARN (non-fatal): $pkg unavailable"
@@ -292,7 +326,13 @@ fi
 # ── 1b. install linux platform packages (android bun reports platform=android) ──
 echo "==> installing linux platform packages (pty, watcher)..."
 cd "$SRC_DIR"
-for pkg in "@opencode-ai/pty@$PTY_VER" "@parcel/watcher-linux-arm64-glibc@2.5.1"; do
+# 2.2.2+ has no @opencode-ai/pty at all (PTY_VER=none); installing "@.../pty@none"
+# fails, and the later require_pkg_installed would abort on a package that is
+# legitimately absent.
+LINUX_PKGS=()
+[[ "$PTY_VER" != "none" ]] && LINUX_PKGS+=("@opencode-ai/pty@$PTY_VER")
+LINUX_PKGS+=("@parcel/watcher-linux-arm64-glibc@2.5.1")
+for pkg in "${LINUX_PKGS[@]}"; do
   # Strip only the version suffix: scoped names start with '@', so the greedy
   # `${pkg%%@*}` yields an empty name (caught by require_pkg_installed, 2026-10-24).
   pkg_name="${pkg%@*}"
@@ -302,7 +342,9 @@ for pkg in "@opencode-ai/pty@$PTY_VER" "@parcel/watcher-linux-arm64-glibc@2.5.1"
     echo "    $pkg_short already in store"
   else
     echo "    installing $pkg..."
-    if ! LD_PRELOAD="$OPENAT2_SHIM" "$ANDROID_BUN" install --force --ignore-scripts --os=linux --cpu=arm64 "$pkg" 2>&1 | tail -1; then
+    if install_pkg_direct "$pkg" "$SRC_DIR/node_modules" "$NPM_TARBALL_CACHE" >/dev/null 2>&1; then
+      :
+    elif ! LD_PRELOAD="$OPENAT2_SHIM" timeout "${PLATFORM_INSTALL_TIMEOUT:-600}" "$ANDROID_BUN" install --force --ignore-scripts --os=linux --cpu=arm64 "${BUN_REGISTRY_ARGS[@]}" "$pkg" 2>&1 | tail -1; then
       echo "Error: platform package install failed: $pkg" >&2
       exit 1
     fi
@@ -342,13 +384,22 @@ cd "$ROOT_DIR"
 #   — runtime-stable in the vast majority of environments incl. zero-glibc
 #   (MT-manager verified); accepted trade-off per RFC discussions/29.
 PTY_VARIANT="${PTY_VARIANT:-musl}"
+# 2.2.2+ dropped @opencode-ai/pty upstream (PTY_VER=none): there is no helper
+# binary to install or replace, so the musl/gnu variant logic is a no-op there
+# and the embed assertion degrades to n/a instead of failing the build.
+[[ "$PTY_VER" == "none" ]] && PTY_VARIANT=none
 case "$PTY_VARIANT" in
+  none)
+    echo "==> PTY: PTY_VER=none — upstream ships no @opencode-ai/pty helper; skipping variant install"
+    PTY_ASSET=""
+    ;;
   musl)
     echo "==> installing musl PTY helper (issue #27: gnu variant cannot run on bionic)..."
     # Run inside SRC_DIR: `bun install <pkg>` mutates the package.json/bun.lock of
     # whatever CWD it runs in. This script's CWD is the repo root, which is how
     # the root package.json/bun.lock kept drifting to the build's PTY_VER.
-    if (cd "$SRC_DIR" && LD_PRELOAD="$OPENAT2_SHIM" "$ANDROID_BUN" install --force --ignore-scripts --os=linux --cpu=arm64 "@opencode-ai/pty-linux-arm64-musl@$PTY_VER" 2>&1 | tail -1); then :; fi
+    if (cd "$SRC_DIR" && install_pkg_direct "@opencode-ai/pty-linux-arm64-musl@$PTY_VER" "$SRC_DIR/node_modules" "$NPM_TARBALL_CACHE" >/dev/null 2>&1) \
+       || (cd "$SRC_DIR" && LD_PRELOAD="$OPENAT2_SHIM" timeout "${PLATFORM_INSTALL_TIMEOUT:-600}" "$ANDROID_BUN" install --force --ignore-scripts --os=linux --cpu=arm64 "${BUN_REGISTRY_ARGS[@]}" "@opencode-ai/pty-linux-arm64-musl@$PTY_VER" 2>&1 | tail -1); then :; fi
     PTY_MUSL_BIN="$(find "$STORE" "$SRC_DIR/node_modules" -path '*pty-linux-arm64-musl/bin/opencode-pty' -type f 2>/dev/null | head -n1)"
     if [[ -z "$PTY_MUSL_BIN" ]] || ! file "$PTY_MUSL_BIN" | grep -q 'statically linked'; then
       echo "Error: static musl opencode-pty not found/valid — bionic PTY would be broken (issue #27)" >&2
@@ -383,11 +434,17 @@ esac
 # E5: record the exact pty asset we installed. The compiler embeds the asset's
 # sha256; the post-compile assertion below fails the build when the binary
 # carries any other pty variant (RC4's stale-asset class).
-[[ -n "${PTY_ASSET:-}" && -f "$PTY_ASSET" ]] || { echo "Error: pty asset unresolved (variant=$PTY_VARIANT)" >&2; exit 1; }
-PTY_SHA="$(sha256sum "$PTY_ASSET" | cut -d' ' -f1)"
-mkdir -p "$BUILD_ROOT/$VER"
-printf 'variant=%s\nversion=%s\nsha256=%s\n' "$PTY_VARIANT" "$PTY_VER" "$PTY_SHA" >"$BUILD_ROOT/$VER/pty-sha256.txt"
-echo "    pty asset: $PTY_VARIANT $PTY_VER sha256=${PTY_SHA:0:12}… ($(basename "$PTY_ASSET"))"
+if [[ "$PTY_VARIANT" == "none" ]]; then
+  mkdir -p "$BUILD_ROOT/$VER"
+  printf 'variant=none\nversion=none\nsha256=none\n' >"$BUILD_ROOT/$VER/pty-sha256.txt"
+  echo "    pty asset: none (upstream dropped @opencode-ai/pty at $VER)"
+else
+  [[ -n "${PTY_ASSET:-}" && -f "$PTY_ASSET" ]] || { echo "Error: pty asset unresolved (variant=$PTY_VARIANT)" >&2; exit 1; }
+  PTY_SHA="$(sha256sum "$PTY_ASSET" | cut -d' ' -f1)"
+  mkdir -p "$BUILD_ROOT/$VER"
+  printf 'variant=%s\nversion=%s\nsha256=%s\n' "$PTY_VARIANT" "$PTY_VER" "$PTY_SHA" >"$BUILD_ROOT/$VER/pty-sha256.txt"
+  echo "    pty asset: $PTY_VARIANT $PTY_VER sha256=${PTY_SHA:0:12}… ($(basename "$PTY_ASSET"))"
+fi
 cd "$SRC_DIR/packages/cli"
 
 # ── 2. platform patch (idempotent) ─────────────────────────────────────
@@ -409,6 +466,26 @@ fi
 grep -q '"packageManager": "bun@1.4.0"' "$PM_PKG" || {
   echo "Error: packageManager pin to bun@1.4.0 failed ($PM_PKG)" >&2; exit 1; }
 echo "==> bun pin: package.json packageManager -> bun@1.4.0 (upstream gate accept)"
+
+# ── TS7-native workaround (2.2.1 only, upstream dropped it in 2.2.2) ────
+# typescript@7.1.0-beta ships @typescript/typescript-android-arm64 whose 26 MB
+# `lib/tsc` makes bun 1.4.0 abort with
+#   EACCES: Permission denied while installing @typescript/typescript-android-arm64
+# (it also fails to cache the manifest), so `bun install` never produces a
+# node_modules at all. @typescript/native is a dev-only typechecker that the
+# build never executes, so alias the catalog to the JS-only TS6 line. The
+# rewrite is idempotent and only touches trees that still declare it.
+if grep -q '"@typescript/native": "npm:typescript@7' "$PM_PKG"; then
+  python3 - "$PM_PKG" <<'PY_TS7'
+import io, sys
+p = sys.argv[1]
+s = io.open(p, encoding="utf-8").read()
+s = s.replace('"@typescript/native": "npm:typescript@7.1.0-beta"',
+              '"@typescript/native": "npm:@typescript/typescript6@6.0.2"', 1)
+io.open(p, "w", encoding="utf-8").write(s)
+print("    TS7 native -> TS6 alias (bun 1.4.0 cannot install its android .node)")
+PY_TS7
+fi
 
 # ── rc2b (#20): re-deploy + sweep AFTER the last bun install, pre-embed ──
 # 1b's `bun install --force` re-extracts pristine glibc store contents and
@@ -484,6 +561,12 @@ if [[ ! -f "$APP_DIR/dist/index.html" && -f "$DIST_CACHE/index.html" ]]; then
 fi
 if [[ ! -f "$APP_DIR/dist/index.html" ]]; then
   echo "==> web-ui: pre-building packages/app dist (vite)"
+  # vite 8 builds through rolldown and tailwind through lightningcss/oxide; all
+  # three are napi packages whose android-arm64 optional dep was pruned by the
+  # --os=linux platform installs above. Restore them (npm tarballs, no
+  # resolution) or the build dies with "Cannot find native binding".
+  ensure_napi_android "$SRC_DIR/bun.lock" "$SRC_DIR/node_modules" \
+    "${TMPDIR:-/data/data/com.termux/files/usr/tmp}/v2src/.napi-android-cache" || true
   # bionic-node quirk: vite prints "built in Xs" then HANGS (zero io, no socket)
   # — kill at 240s and let the artifact gate (below) be the pass/fail judge.
   if ! timeout 240 bash -c 'cd "$1" && OPENCODE_CHANNEL=latest VITE_OPENCODE_SERVER_MODE=origin "$2" run build' _ "$APP_DIR" "$ANDROID_BUN"; then
@@ -519,12 +602,15 @@ PTY_META="$BUILD_ROOT/$VER/pty-sha256.txt"
 [[ -f "$PTY_META" ]] || { echo "Error: pty metadata missing: $PTY_META (cannot verify pty variant)" >&2; exit 1; }
 PTY_EXPECT="$(sed -n 's/^sha256=//p' "$PTY_META" | head -n1)"
 [[ -n "$PTY_EXPECT" ]] || { echo "Error: sha256 missing in $PTY_META" >&2; exit 1; }
-if ! strings -a "$DIST_BIN" | grep -c "$PTY_EXPECT" >/dev/null; then
+if [[ "$PTY_EXPECT" == "none" ]]; then
+  echo "    pty embed: n/a (PTY_VER=none at this version)"
+elif ! strings -a "$DIST_BIN" | grep -c "$PTY_EXPECT" >/dev/null; then
   echo "Error: embedded pty asset mismatch — expected sha256 $PTY_EXPECT (from $PTY_META), binary carries another variant" >&2
   echo "       rebuild with a clean tree (stale pty asset class, docs/runbooks/release-runbook.md §2)" >&2
   exit 1
+else
+  echo "    pty embed OK (${PTY_EXPECT:0:12}…)"
 fi
-echo "    pty embed OK (${PTY_EXPECT:0:12}…)"
 
 # ── 4. normalize to packaging contract names ───────────────────────────
 mkdir -p "$OUT_DIR"
