@@ -11,7 +11,18 @@ CHUNK_BASE="$STORE_CHUNK/node_modules/@opentui/core"
 # Dynamic discovery: OpenTUI chunk filenames drift between releases (issue #25 —
 # 0.5.12 ships chunk-bun-8f4q4e2m.js, older releases 9gqvxy8c). Locate the
 # platform loader by content instead of by generated filename.
-CHUNK_JS="$(grep -RIl --include='chunk-bun-*.js' 'platform: process.platform' "$CHUNK_BASE" 2>/dev/null | head -1)"
+CHUNK_JS="$(grep -RIl --include='chunk-bun-*.js' 'platform: process.platform' "$CHUNK_BASE" 2>/dev/null | head -1 || true)"
+if [ -z "$CHUNK_JS" ]; then
+  # 0.8.0+ moved the asset target into getCurrentNodeAssetTarget() and hardcodes
+  # `platform: "linux"` there, i.e. the patch's *effect* is upstream now while
+  # the old anchors are gone. Prove the property instead of no-op'ing silently:
+  # a future rename that drops it would otherwise ship a binary that resolves
+  # @opentui/core-android-arm64 and dies at TUI init.
+  CHUNK_JS="$(grep -RIl --include='chunk-bun-*.js' 'platform: "linux"' "$CHUNK_BASE" 2>/dev/null | head -1 || true)"
+  [ -n "$CHUNK_JS" ] && [ -f "$CHUNK_JS" ] || { echo "error: platform loader chunk not found under $CHUNK_BASE" >&2; exit 1; }
+  echo "platform chunk: $(basename "$CHUNK_JS") (upstream already pins linux target)"
+  exit 0
+fi
 [ -n "$CHUNK_JS" ] && [ -f "$CHUNK_JS" ] || { echo "error: platform loader chunk not found under $CHUNK_BASE"; exit 1; }
 echo "platform chunk: $(basename "$CHUNK_JS")"
 # 1) platform literal present?
@@ -30,6 +41,10 @@ fi
 # 2) linux branch force
 if grep -q 'if (true) {' "$CHUNK_JS"; then
   echo "platform patch already applied (branch force)"
+elif ! grep -q 'if (process\.platform === "linux") {' "$CHUNK_JS"; then
+  # 0.8.0+ dropped the linux branch guard entirely (the target is already linux),
+  # so there is nothing to force here.
+  echo "branch force: no linux branch guard in this release — skip"
 else
   sed -i 's/if (process\.platform === "linux") {/if (true) {/' "$CHUNK_JS"
   if ! grep -q 'if (true) {' "$CHUNK_JS"; then
