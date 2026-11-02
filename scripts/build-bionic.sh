@@ -401,6 +401,12 @@ case "$PTY_VARIANT" in
     # the root package.json/bun.lock kept drifting to the build's PTY_VER.
     if (cd "$SRC_DIR" && install_pkg_direct "$PTY_PKG-linux-arm64-musl@$PTY_VER" "$SRC_DIR/node_modules" "$NPM_TARBALL_CACHE" >/dev/null 2>&1) \
        || (cd "$SRC_DIR" && LD_PRELOAD="$OPENAT2_SHIM" timeout "${PLATFORM_INSTALL_TIMEOUT:-600}" "$ANDROID_BUN" install --force --ignore-scripts --os=linux --cpu=arm64 "${BUN_REGISTRY_ARGS[@]}" "$PTY_PKG-linux-arm64-musl@$PTY_VER" 2>&1 | tail -1); then :; fi
+    # A `bun install --os=linux` above re-resolves the whole tree and can leave
+    # node_modules/@opencode/pty-linux-arm64-gnu as a bin/-only stub, which later
+    # kills the CLI build with "Cannot find module '@opencode/pty-linux-arm64-gnu
+    # /package.json'". Re-extract the platform package (idempotent) so the
+    # package layout the embedder reads is intact.
+    install_pkg_direct "$PTY_PKG-linux-arm64-gnu@$PTY_VER" "$SRC_DIR/node_modules" "$NPM_TARBALL_CACHE" >/dev/null 2>&1 || true
     PTY_MUSL_BIN="$(find "$STORE" "$SRC_DIR/node_modules" -path '*pty-linux-arm64-musl/bin/opencode-pty' -type f 2>/dev/null | head -n1)"
     if [[ -z "$PTY_MUSL_BIN" ]] || ! file "$PTY_MUSL_BIN" | grep -q 'statically linked'; then
       echo "Error: static musl opencode-pty not found/valid — bionic PTY would be broken (issue #27)" >&2
