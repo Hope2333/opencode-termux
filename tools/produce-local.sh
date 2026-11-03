@@ -13,9 +13,22 @@ die() { printf '[produce] ERROR: %s\n' "$*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || die "missing: $1"; }
 
 need npm
+# Upstream renamed the published platform binary at the 2.x line:
+#   v1 (1.x)  -> opencode-linux-arm64        (npm versions stop at 1.19.x)
+#   v2 (2.x+) -> @opencode/cli-linux-arm64
+# Resolving 2.x against the v1 name fails with ETARGET, which is how the
+# 2.2.5 wrapper build died.
+pkg_for_version() {
+	case "${1:-}" in
+		2.*) printf '%s' "@opencode/cli-linux-arm64" ;;
+		*)   printf '%s' "opencode-linux-arm64" ;;
+	esac
+}
+
 if [[ -z "$INPUT_VER" ]]; then
-	if ! INPUT_VER="$(npm view opencode-linux-arm64 version)"; then
-		die "failed to resolve latest opencode-linux-arm64 version"
+	# "latest" must follow the v2 line now; v1 keeps its own name.
+	if ! INPUT_VER="$(npm view @opencode/cli-linux-arm64 version)"; then
+		die "failed to resolve latest @opencode/cli-linux-arm64 version"
 	fi
 fi
 [[ -n "$INPUT_VER" ]] || die "no version specified"
@@ -46,11 +59,17 @@ fi
 
 # Download from npm
 cd "$EXTRACT"
-log "downloading opencode-linux-arm64@$VER from npm"
-if ! npm pack "opencode-linux-arm64@$VER" >/dev/null; then
-	die "npm pack failed"
+SRC_PKG="$(pkg_for_version "$VER")"
+log "downloading $SRC_PKG@$VER from npm"
+rm -f ./*.tgz 2>/dev/null || true
+if ! npm pack "$SRC_PKG@$VER" >/dev/null; then
+	die "npm pack failed ($SRC_PKG@$VER)"
 fi
-tar -xzf opencode-linux-arm64-*.tgz
+# The tarball name follows the package name (scoped packages drop the @ and /):
+#   opencode-linux-arm64-1.19.5.tgz  |  opencode-cli-linux-arm64-2.2.5.tgz
+_tgz="$(ls -1 ./*.tgz 2>/dev/null | head -1)"
+[[ -n "$_tgz" ]] || die "npm pack produced no tarball for $SRC_PKG@$VER"
+tar -xzf "$_tgz"
 RAW="package/bin/opencode"
 [[ -f "$RAW" && -x "$RAW" ]] || die "binary not found"
 

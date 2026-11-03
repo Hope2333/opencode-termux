@@ -28,10 +28,17 @@ fi
 
 # Version: use explicit VERSION if set, else read from the staged runtime.
 if [[ -z "${VERSION:-}" ]]; then
-	if ! VERSION="$("$STAGED_PREFIX/lib/opencode/runtime/opencode" --version)"; then
+	# The wrapped runtime prints "opencode v2.2.5" (upstream naming), while the
+	# native line prints a bare "2.2.5". Normalise to the bare semver — dpkg
+	# rejects a Version field with embedded spaces.
+	if ! _raw_ver="$("$STAGED_PREFIX/lib/opencode/runtime/opencode" --version)"; then
 		echo "Error: staged runtime version check failed" >&2
 		exit 1
 	fi
+fi
+# Only normalise when we actually read it (an explicit VERSION wins untouched).
+if [[ -n "${_raw_ver:-}" ]]; then
+	VERSION="$(printf '%s' "$_raw_ver" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
 fi
 [[ -n "$VERSION" ]] || {
 	echo "Error: staged runtime returned an empty version" >&2
