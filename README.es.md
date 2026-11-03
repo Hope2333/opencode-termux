@@ -144,6 +144,9 @@ Dentro de una generación, native / wrapper / compressed son mutuamente excluyen
 
 ## 💬 Comunidad y Discussions
 
+> **Los issues siguen abiertos hasta que el problema desaparece de verdad.** Si un issue fue cerrado pero el problema sigue ahí, reábrelo (o comenta) sin problema: eso es bienvenido, no es ruido. Aquí "cerrado" significa "creemos que está arreglado", no "deja de preguntar".
+
+
 ![Discussions](https://raw.githubusercontent.com/Hope2333/opencode-termux/native-android/assets/discussions-banner.svg)
 
 Charla, preguntas e ideas. RC3 renovó toda la familia en dos generaciones: 13 versiones v2 (native y wrapper) + 3 familias v1 (1.18.30–32), todo con PKGREL=3 y 70 assets verificados por digest. v1 (`opencode1*`) y v2 (`opencode*`) coexisten.

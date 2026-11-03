@@ -144,6 +144,9 @@ pacman -S opencode1           # v1 メインライン
 
 ## 💬 コミュニティ & Discussions
 
+> **Issue は問題が本当に消えるまで開いたままです。** クローズ済みの issue でも、同じ問題がまだ起きる場合は遠慮なく再オープン（またはコメント）してください。それは歓迎です。ここでの「クローズ」は「直ったと思う」という意味で、「もう話すな」という意味ではありません。
+
+
 ![Discussions](https://raw.githubusercontent.com/Hope2333/opencode-termux/native-android/assets/discussions-banner.svg)
 
 雑談・Q&A・アイデア募集中。RC3 で二世代ファミリーを全面リフレッシュ：v2 native/wrapper 各 13 バージョン + v1 3 ファミリー（1.18.30–32）、全て PKGREL=3、70 アセットを digest 照合済み。v1（`opencode1*`）と v2（`opencode*`）は共存できます。

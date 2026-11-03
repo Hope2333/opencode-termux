@@ -144,6 +144,9 @@ Within one generation, native / wrapper / compressed are mutually exclusive (pic
 
 ## 💬 Community & Discussions
 
+> **Issues stay open until the problem is gone.** If an issue was marked closed but you still hit the problem, please reopen it (or comment on it) — that is welcome, not noise. A closed issue here means "we believe it's fixed", not "stop talking".
+
+
 ![Discussions](https://raw.githubusercontent.com/Hope2333/opencode-termux/native-android/assets/discussions-banner.svg)
 
 **English** — Chat, Q&A and ideas. RC3 refreshed the whole two-generation family: 13 v2 versions (native & wrapper) + v1 three families (1.18.30–32), all PKGREL=3, 70 assets digest-verified.

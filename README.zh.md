@@ -144,6 +144,9 @@ pacman -S opencode1           # v1 主线
 
 ## 💬 社区与讨论
 
+> **issue 关到问题真的消失为止。** 如果某个 issue 被标记为已关闭，但你仍然遇到同样的问题，请直接重新打开它（或在下面留言）——这是受欢迎的，不是打扰。这里的"已关闭"只代表"我们认为修好了"，不代表"别再提"。
+
+
 ![Discussions](https://raw.githubusercontent.com/Hope2333/opencode-termux/native-android/assets/discussions-banner.svg)
 
 聊天吹水、问答求助、点子脑洞。RC3 双代全家族已上架：v2 native/wrapper 各 13 版 + v1 三族 1.18.30–32，全量 PKGREL=3，70 件 digest 逐件对账。v1（`opencode1*`）与 v2（`opencode*`）跨代共存，双装不冲突。
