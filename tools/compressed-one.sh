@@ -76,6 +76,19 @@ elif ! is_hardened "$RUNTIME" 2>/dev/null; then
 else
   echo "[harden] runtime already hardened, skip"
 fi
+# ── 2.6 v1 TUI reply-batch guard — MUST run before UPX ──────────────────────
+# Termux answers the startup capability probe in one burst; opentui 0.4.5's
+# anchored guards match none of a concatenated blob, so it becomes a "key" and
+# is rendered (^[]10;rgb:..., ^[[?1016;0$y, mouse as 0;108;22M). The fix is an
+# equal-length in-place edit of the embedded JS (tools/a2/patch-v1-binary.py).
+# Ordering is not negotiable: UPX compresses the code section, after which the
+# bundle can no longer be edited — so this runs on the raw runtime, right after
+# the seccomp surgery and well before UPX.
+if [[ "$FAMILY" == "opencode1" && "$NOUPX" != "1" ]]; then
+  python3 tools/a2/patch-v1-binary.py "$RUNTIME" \
+    || { echo "FATAL: v1 reply-batch guard failed (anchor drift?) — refusing to ship an input-dead TUI"; exit 1; }
+fi
+
 rsha=$(sha256sum "$RUNTIME" | cut -d' ' -f1)
 echo "[input] runtime $rsz B sha=$rsha"
 
