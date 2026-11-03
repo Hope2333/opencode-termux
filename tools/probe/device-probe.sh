@@ -61,7 +61,12 @@ fi
 case "$PTY_CODE" in
 200|201) echo "pty=ok" ;;
 *)
+	# The API body is often generic; the real cause (e.g. ERR_DLOPEN_FAILED) is
+	# only in the server log — take it from there when the body has none.
 	_why="$(printf '%s' "$PTY_BODY" | grep -o 'ERR_[A-Z_]*' | head -1)"
+	if [ -z "$_why" ]; then
+		_why="$(tail -40 "$SERVE_LOG" 2>/dev/null | grep -o 'ERR_[A-Z_]*' | head -1)"
+	fi
 	echo "pty=fail:${_why:-http-$PTY_CODE}"
 	[ -n "$PTY_BODY" ] && printf '%s\n' "$PTY_BODY" | head -c 200 | sed 's/^/  pty! /'
 	;;
