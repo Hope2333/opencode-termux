@@ -72,6 +72,17 @@ if [[ "$VERSION" == 1.* ]]; then
 	# $ORIGIN/../lib/opencode resolved via the launcher's LD_LIBRARY_PATH) +
 	# the XDG-isolating launcher at bin/opencode1. v2 stays bin-direct.
 	install -D -m755 "$NATIVE_BIN" "$DEB_ROOT$PREFIX/lib/opencode1/runtime/opencode"
+	# v1 TUI reply-batch guard: the embedded JS parses terminal replies, and
+	# Termux answers the startup capability probe in one burst — a blob with two
+	# or more ESC matches none of the anchored guards and becomes a "key" whose
+	# sequence is rendered (^[]10;rgb:..., ^[[?1016;0$y, mouse as 0;108;22M).
+	# The source-level fix lives in tools/a2/patch-v1-replies.py; for the
+	# already-built runtime we apply the equivalent in-place edit (same length,
+	# bunfs manifest safe) and fail the package if the anchor drifted.
+	if ! python3 "$ROOT_DIR/tools/a2/patch-v1-binary.py" "$DEB_ROOT$PREFIX/lib/opencode1/runtime/opencode"; then
+		echo "Error: v1 runtime reply-batch patch failed (anchor drift?) — refusing to package an input-dead TUI" >&2
+		exit 1
+	fi
 	install -D -m755 "$ROOT_DIR/scripts/opencode1-launcher.sh" "$DEB_ROOT$PREFIX/bin/opencode1"
 	# oldkernel-compat follow-up: ship the `.grafted` B 档 marker next to the
 	# runtime when the T6 graft build produced one beside the native binary.

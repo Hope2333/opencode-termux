@@ -119,14 +119,16 @@ if [ "$_oc_has_sub" -eq 0 ]; then
 fi
 if [ "$_oc_is_tui" -eq 1 ] && _oc_err="$(mktemp "${TMPDIR:-/tmp}/opencode-crash-stderr.XXXXXX" 2>/dev/null)"; then
 	_oc_rc=0
-	_oc_fwd() { [ -n "${_oc_pid:-}" ] && kill -"$1" "$_oc_pid" 2>/dev/null || true; }
-	trap '_oc_fwd TERM' TERM
-	trap '_oc_fwd HUP' HUP
-	trap '_oc_fwd INT' INT
-	"$OC_RT" ${_oc_args[@]+"${_oc_args[@]}"} 2> "$_oc_err" &
-	_oc_pid=$!
-	wait "$_oc_pid" || _oc_rc=$?
-	trap - TERM HUP INT
+	# The TUI MUST run in the foreground process group. Running it with `&`
+	# (the old crash-capture shape) left it outside the terminal's foreground
+	# pgrp, so it could never take the tty out of canonical/echo mode: keystrokes
+	# were line-buffered (nothing happens until Enter), the terminal's replies to
+	# the startup capability probe were echoed to the screen as
+	# `^[]10;rgb:...` / `^[[?1016;0$y` / `^[P0+r...`, and mouse reports arrived as
+	# text like `0;108;22M`. Capturing stderr does NOT need a background child —
+	# a foreground command with a redirect keeps the same file and rc, and
+	# Ctrl-C/TERM go straight to it (no forwarding traps needed).
+	"$OC_RT" ${_oc_args[@]+"${_oc_args[@]}"} 2> "$_oc_err" || _oc_rc=$?
 	if [ -s "$_oc_err" ]; then cat "$_oc_err" >&2 || true; fi
 	# crash record: SIGSEGV + bun.report/OpenTUI signature only (else silent)
 	if [ "$_oc_rc" -eq 139 ] && grep -qiE 'bun\.report|opentui' "$_oc_err" 2>/dev/null; then
