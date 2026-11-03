@@ -18,6 +18,9 @@ set -euo pipefail
 # 环境变量:
 #   OPENCODE_PTY_NPM_TGZ  预下载的 bun-pty-<ver>.tgz 路径（可选，离线用）
 #   BUN_PTY_VER           bun-pty 版本（默认 0.4.11）
+#   BUN_PTY_RUNPATH       非空时额外产出一个带 DT_RUNPATH 的变体（native 线用）：
+#                         shim.so 不随解包目录走，必须给 loader 一条绝对搜索路径。
+#                         例：/data/data/com.termux/files/usr/lib/opencode/pty
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SRC_DIR="$ROOT_DIR/tools/bun-pty-splice"
@@ -75,9 +78,31 @@ PATCHED_SZ=$(stat -c%s "$DIST_DIR/librust_pty_arm64_musl_patched.so")
 echo "$PATCHED_SHA256  $DIST_DIR/librust_pty_arm64_musl_patched.so" | sha256sum -c - \
 	|| { echo "ERR: 补丁成品 sha256 与验证台基准不符（补丁应为确定性逐字节复现）" >&2; exit 1; }
 
+# --- 5. (可选) DT_RUNPATH 变体：native 线用 ----------------------------------
+# 内嵌资产在运行时被解到临时目录，shim.so 不会躺在它旁边；DT_RUNPATH 给 loader
+# 一条绝对搜索路径即可，DT_NEEDED 仍保持等长补丁后的 "shim.so"。
+# 注意：先做上面的 sha256 基准校验，再做 patchelf（后者会改文件，hash 必变）。
+RP_OUT="$DIST_DIR/librust_pty_arm64_musl_patched_rp.so"
+if [[ -n "${BUN_PTY_RUNPATH:-}" ]]; then
+	echo "[5/5] DT_RUNPATH -> $BUN_PTY_RUNPATH"
+	command -v patchelf >/dev/null 2>&1 || { echo "ERR: 需要 patchelf" >&2; exit 1; }
+	install -m755 "$DIST_DIR/librust_pty_arm64_musl_patched.so" "$RP_OUT"
+	patchelf --set-rpath "$BUN_PTY_RUNPATH" "$RP_OUT"
+	llvm-readelf -d "$RP_OUT" 2>/dev/null | grep -q 'RUNPATH' \
+		|| { echo "ERR: RUNPATH 未写入 $RP_OUT" >&2; exit 1; }
+	# 符号面必须与未加 RUNPATH 的变体逐条一致（patchelf 只应动动态段）
+	if command -v llvm-nm >/dev/null 2>&1; then
+		diff <(llvm-nm -D --defined-only "$DIST_DIR/librust_pty_arm64_musl_patched.so" | awk '{print $3}' | sort) \
+		     <(llvm-nm -D --defined-only "$RP_OUT" | awk '{print $3}' | sort) >/dev/null \
+			|| { echo "ERR: RUNPATH 变体导出符号与基准不一致" >&2; exit 1; }
+	fi
+	echo "      size: $(stat -c%s "$DIST_DIR/librust_pty_arm64_musl_patched.so") -> $(stat -c%s "$RP_OUT") bytes"
+fi
+
 echo
 echo "OK: 产物在 $DIST_DIR"
 sha256sum "$DIST_DIR/librust_pty_arm64_musl_patched.so" "$DIST_DIR/shim.so"
+[[ -f "$RP_OUT" ]] && sha256sum "$RP_OUT"
 echo "orig: $ORIG_SZ bytes -> patched: $PATCHED_SZ bytes (equal-length)"
 echo "部署路径契约: <prefix>/lib/opencode1/pty/{librust_pty_arm64_musl_patched.so,shim.so}"
 echo "              launcher 检测到该文件即注入 BUN_PTY_LIB（向后兼容：缺省不注入）"
