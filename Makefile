@@ -218,12 +218,12 @@ deb-native:
 		exit 1; \
 	fi
 	rm -rf packing/dpkg-native/work
-	MAINTAINER='$(PACKAGER_NAME)' VERSION='$(VER)' HOOKS_ENABLE='$(HOOKS_ENABLE)' HOOKS_DISABLE='$(HOOKS_DISABLE)' HOOK_STALE_SERVE_KILL_VERSIONS='$(HOOK_STALE_SERVE_KILL_VERSIONS)' ./scripts/package/package_deb_native.sh
+	MAINTAINER='$(PACKAGER_NAME)' VERSION='$(VER)' PKGREL='$(PKGREL)' DEB_REV='$(DEB_REV)' HOOKS_ENABLE='$(HOOKS_ENABLE)' HOOKS_DISABLE='$(HOOKS_DISABLE)' HOOK_STALE_SERVE_KILL_VERSIONS='$(HOOK_STALE_SERVE_KILL_VERSIONS)' ./scripts/package/package_deb_native.sh
 	@if [ "$(OUTPUT_ROOT)" != "$(CURDIR)/packing" ]; then \
 		if [ "$(MIX)" = "1" ]; then \
-			mkdir -p "$(OUTPUT_ROOT)" && cp -f $(PKG_BASE)_$(VER)_aarch64.deb "$(OUTPUT_ROOT)/"; \
+			mkdir -p "$(OUTPUT_ROOT)" && cp -f $(PKG_BASE)_$(VER)*_aarch64.deb "$(OUTPUT_ROOT)/"; \
 		else \
-			mkdir -p "$(OUTPUT_ROOT)/deb" && cp -f $(PKG_BASE)_$(VER)_aarch64.deb "$(OUTPUT_ROOT)/deb/"; \
+			mkdir -p "$(OUTPUT_ROOT)/deb" && cp -f $(PKG_BASE)_$(VER)*_aarch64.deb "$(OUTPUT_ROOT)/deb/"; \
 		fi; \
 	fi
 

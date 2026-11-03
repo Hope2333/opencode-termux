@@ -51,7 +51,14 @@ esac
 
 DEB_ROOT="${DEB_ROOT:-$ROOT_DIR/packing/dpkg-native/work}"
 OUT_DIR="${OUT_DIR:-$ROOT_DIR/packing/dpkg-native}"
-OUT_FILE="$OUT_DIR/${PKG_NAME}_${VERSION}_${ARCH_DEB}.deb"
+# Package revision: PKGREL/DEB_REV > 1 means a repack of the same upstream
+# version (build/packaging fix, no upstream change). It must show up in BOTH the
+# control Version and the filename, otherwise a repack silently overwrites the
+# already-published asset of the same name with different bytes.
+REV="${DEB_REV:-${PKGREL:-}}"
+REV_SUFFIX=""
+[[ -n "$REV" && "$REV" != "1" ]] && REV_SUFFIX="-$REV"
+OUT_FILE="$OUT_DIR/${PKG_NAME}_${VERSION}${REV_SUFFIX}_${ARCH_DEB}.deb"
 
 rm -rf "$DEB_ROOT"
 mkdir -p "$DEB_ROOT/DEBIAN" "$DEB_ROOT$PREFIX/bin" "$OUT_DIR"
@@ -127,7 +134,7 @@ fi
 
 cat >"$DEB_ROOT/DEBIAN/control" <<EOF
 Package: $PKG_NAME
-Version: $VERSION${DEB_REV:-}
+Version: $VERSION${REV:+-$REV}
 Architecture: $ARCH_DEB
 Maintainer: $MAINTAINER
 Section: utils

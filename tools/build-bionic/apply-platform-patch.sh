@@ -21,6 +21,9 @@ if [ -z "$CHUNK_JS" ]; then
   CHUNK_JS="$(grep -RIl --include='chunk-bun-*.js' 'platform: "linux"' "$CHUNK_BASE" 2>/dev/null | head -1 || true)"
   [ -n "$CHUNK_JS" ] && [ -f "$CHUNK_JS" ] || { echo "error: platform loader chunk not found under $CHUNK_BASE" >&2; exit 1; }
   echo "platform chunk: $(basename "$CHUNK_JS") (upstream already pins linux target)"
+  # Tagged-pointer FFI fix still has to run: 0.8.0 pins the linux target but the
+  # BigInt break is upstream-unfixed (#43/#45/#46).
+  bash "$(dirname "$0")/apply-ffi-pointer.sh" "$CHUNK_BASE" || exit 1
   exit 0
 fi
 [ -n "$CHUNK_JS" ] && [ -f "$CHUNK_JS" ] || { echo "error: platform loader chunk not found under $CHUNK_BASE"; exit 1; }
@@ -53,3 +56,5 @@ else
   fi
   echo "branch force patched"
 fi
+
+bash "$(dirname "$0")/apply-ffi-pointer.sh" "$CHUNK_BASE" || exit 1

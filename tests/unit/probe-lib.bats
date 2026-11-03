@@ -78,6 +78,26 @@ verdict() { run bash -c 'source "$1"; printf "%s\n" "$2" | probe_verdict' _ "$LI
 	[ "$output" = "PASS" ]
 }
 
+@test "probe_pkg_path prefers the highest package revision" {
+	d="$(mktemp -d "${TMPDIR:-/tmp}/probe-pkg.XXXXXX")"
+	: >"$d/opencode_2.2.5_aarch64.deb"
+	: >"$d/opencode_2.2.5-2_aarch64.deb"
+	: >"$d/opencode_2.2.5-10_aarch64.deb"
+	run bash -c 'source "$1"; probe_pkg_path "$2" v2 2.2.5' _ "$LIB" "$d"
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"opencode_2.2.5-10_aarch64.deb" ]]
+	rm -rf "$d"
+}
+
+@test "probe_pkg_path falls back to the plain (rev 1) package" {
+	d="$(mktemp -d "${TMPDIR:-/tmp}/probe-pkg.XXXXXX")"
+	: >"$d/opencode_2.2.5_aarch64.deb"
+	run bash -c 'source "$1"; probe_pkg_path "$2" v2 2.2.5' _ "$LIB" "$d"
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"opencode_2.2.5_aarch64.deb" ]]
+	rm -rf "$d"
+}
+
 @test "probe_verdict rejects a failed install" {
 	bad="${GOOD/install=ok/install=fail}"
 	run bash -c 'source "$1"; printf "%s\n" "$2" | probe_verdict' _ "$LIB" "$bad"

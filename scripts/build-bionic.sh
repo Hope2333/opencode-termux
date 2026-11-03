@@ -587,6 +587,39 @@ else
   echo "==> web-ui: dist ready ($(du -sh "$APP_DIR/dist" | cut -f1)), skip vite"
 fi
 
+# ── bun-pty: embed a bionic librust_pty instead of the glibc asset ──────────
+# bun-pty resolves BUN_PTY_LIB -> embedded require() -> disk candidates. Native
+# has no launcher to set the env, so the embedded copy is what runs — and the
+# upstream one is glibc-linked, which makes POST /api/pty die with
+# ERR_DLOPEN_FAILED while serve and the TUI look perfectly healthy
+# (Push261103 shipped exactly that).
+#
+# The replacement is a *bionic* build of the same crate (tools/bun-pty-splice/
+# build-bionic-embed.sh) — NOT the musl+s him splice the compressed family uses.
+# Tried that first: it dlopens (shim found via DT_RUNPATH) but SIGSEGVs at 0x0
+# inside bun's loader path, because musl's runtime expectations go far past the
+# handful of libc symbols a shim can satisfy.
+BUNPTY_BIONIC="$ROOT_DIR/tools/bun-pty-splice/dist/librust_pty_arm64_bionic.so"
+if [[ ! -f "$BUNPTY_BIONIC" ]]; then
+  echo "==> bun-pty: bionic embed lib missing, building it (cargo, host aarch64-linux-android)"
+  bash "$ROOT_DIR/tools/bun-pty-splice/build-bionic-embed.sh" >/dev/null 2>&1 || true
+fi
+[[ -f "$BUNPTY_BIONIC" ]] || {
+  echo "Error: bionic librust_pty missing ($BUNPTY_BIONIC) — run tools/bun-pty-splice/build-bionic-embed.sh" >&2
+  exit 1
+}
+BUNPTY_TARGETS=()
+while IFS= read -r _f; do BUNPTY_TARGETS+=("$_f"); done < <(
+  find "$SRC_DIR/node_modules" -path '*bun-pty/rust-pty/target/release/librust_pty_arm64.so' -type f 2>/dev/null)
+[[ ${#BUNPTY_TARGETS[@]} -gt 0 ]] || {
+  echo "Error: no bun-pty librust_pty_arm64.so under $SRC_DIR/node_modules — the embed step would ship the glibc asset" >&2
+  exit 1
+}
+for _f in "${BUNPTY_TARGETS[@]}"; do
+  cp -f "$BUNPTY_BIONIC" "$_f"
+  echo "    bionic pty -> ${_f#$SRC_DIR/}"
+done
+
 echo "==> compiling (android bun, target=opencode-linux-arm64)"
 # Upstream moved target selection from `--target=` (argv) to OPENCODE_TARGET (env)
 # in 2.2.0. Pass both: new trees read the env, old trees read the flag, and each
@@ -602,6 +635,19 @@ if ! strings -a "$DIST_BIN" | grep -cE '(_)?assets/index-' >/dev/null; then
   exit 1
 fi
 echo "    web-ui assets present in artifact"
+
+# Hard assertion: the embedded pty asset must be the bionic build. The glibc
+# asset is the only thing that pulls libpthread.so.0/libc.so.6 into the payload,
+# so their absence is a direct, cheap proof that our replacement won.
+if strings -a "$DIST_BIN" | grep -qF 'libpthread.so.0'; then
+  echo "Error: glibc pty asset still embedded (libpthread.so.0 present) — POST /api/pty would fail" >&2
+  exit 1
+fi
+if ! strings -a "$DIST_BIN" | grep -cF 'bun_pty_spawn' >/dev/null; then
+  echo "Error: bun-pty symbols missing from artifact — pty asset not embedded at all" >&2
+  exit 1
+fi
+echo "    bionic pty embedded (no glibc markers, bun_pty_* present)"
 
 # Hard assertion: the artifact must embed the pty asset we installed (E5).
 # Prevents the RC4 class where a build picked up a stale pty variant.

@@ -50,13 +50,22 @@ probe_expand_range() {
 
 # probe_pkg_path <deb-dir> <kind> <ver> — path if present, empty otherwise.
 probe_pkg_path() {
-	local dir="$1" kind="$2" ver="$3" p
-	if [ "$kind" = v1 ]; then
-		p="$dir/opencode1_${ver}_aarch64.deb"
-	else
-		p="$dir/opencode_${ver}_aarch64.deb"
-	fi
-	[ -f "$p" ] && printf '%s\n' "$p"
+	local dir="$1" kind="$2" ver="$3" base p best="" best_rev=0 rev
+	if [ "$kind" = v1 ]; then base="opencode1_${ver}"; else base="opencode_${ver}"; fi
+	# Plain (`<base>_aarch64.deb`, implicitly rev 1) or repack
+	# (`<base>-<rev>_aarch64.deb`). Probe the HIGHEST revision: after a build fix
+	# the repack is the artifact under test, and silently probing the stale plain
+	# file would test the wrong bytes.
+	for p in "$dir/$base"_aarch64.deb "$dir/$base"-*_aarch64.deb; do
+		[ -f "$p" ] || continue
+		case "$p" in
+		*"-$base"*) : ;;
+		esac
+		rev="$(printf '%s' "$p" | sed -n 's/.*-\([0-9]\+\)_aarch64\.deb$/\1/p')"
+		[ -n "$rev" ] || rev=1
+		if [ "$rev" -ge "$best_rev" ]; then best="$p"; best_rev="$rev"; fi
+	done
+	[ -n "$best" ] && printf '%s\n' "$best"
 }
 
 # probe_verdict — read `key=value` lines on stdin, print "PASS" or "FAIL: ...".
