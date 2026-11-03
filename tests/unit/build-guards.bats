@@ -33,7 +33,17 @@ setup() {
 @test "apply-platform-patch: pristine anchors are patched" {
   d="$WORK/pristine/node_modules/@opentui/core"
   mkdir -p "$d"
-  printf 'const a = { platform: process.platform, };\nif (process.platform === "linux") {\n  x()\n}\n' >"$d/chunk-bun-x.js"
+  # Real chunks also carry the FFI pointer guard; the platform patch now runs the
+  # tagged-pointer fix unconditionally, so the fixture has to look like upstream
+  # (a chunk without POINTER_UNSAFE is treated as layout drift -> hard fail).
+  {
+    printf 'const a = { platform: process.platform, };\nif (process.platform === "linux") {\n  x()\n}\n'
+    printf 'var POINTER_UNSAFE = "Pointer exceeds safe integer range";\n'
+    printf 'function toSafeNumberPointer(pointer) {\n'
+    printf '  if (pointer < 0n) {\n    throw new Error(POINTER_NEGATIVE);\n  }\n'
+    printf '  if (pointer > BigInt(Number.MAX_SAFE_INTEGER)) {\n    throw new Error(POINTER_UNSAFE);\n  }\n'
+    printf '  return Number(pointer);\n}\n'
+  } >"$d/chunk-bun-x.js"
   run bash "$REPO_ROOT/tools/build-bionic/apply-platform-patch.sh" "$WORK/pristine"
   [ "$status" -eq 0 ]
   grep -q 'platform: "linux",' "$d/chunk-bun-x.js"
