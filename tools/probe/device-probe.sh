@@ -31,9 +31,41 @@ v1) echo "expected=$V" ;;
 esac
 
 # --- serve -----------------------------------------------------------------
-(nohup "$BIN" serve --port "$PORT" >/dev/null 2>&1 &)
-sleep 12
-echo "serve=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT/" 2>/dev/null)"
+# The server log is kept (not /dev/null) because the API password is printed
+# there and the pty probe below needs it.
+SERVE_LOG="$T/probe-serve.log"
+: >"$SERVE_LOG"
+(nohup "$BIN" serve --port "$PORT" >"$SERVE_LOG" 2>&1 &)
+SERVE_CODE=000
+for _ in $(seq 1 30); do
+	SERVE_CODE="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT/" 2>/dev/null)"
+	[ "$SERVE_CODE" = 200 ] && break
+	sleep 1
+done
+echo "serve=$SERVE_CODE"
+
+# --- pty (bionic dlopen gate) ----------------------------------------------
+# A TUI frame does NOT prove terminals work: on bionic the embedded
+# librust_pty is glibc-linked, so POST /api/pty dies with ERR_DLOPEN_FAILED
+# while serve and the TUI look perfectly healthy (Push261103 shipped that).
+# This is the only check that catches it, so it is mandatory.
+PW="$(sed -n 's/^server password //p' "$SERVE_LOG" 2>/dev/null | head -1)"
+PTY_CODE=000
+PTY_BODY=""
+if [ -n "$PW" ]; then
+	_resp="$(curl -s -u "opencode:$PW" -X POST -H 'content-type: application/json' \
+		-d '{}' -w '\n%{http_code}' "http://127.0.0.1:$PORT/api/pty" 2>/dev/null)"
+	PTY_CODE="$(printf '%s' "$_resp" | tail -1)"
+	PTY_BODY="$(printf '%s' "$_resp" | sed '$d' | head -c 400)"
+fi
+case "$PTY_CODE" in
+200|201) echo "pty=ok" ;;
+*)
+	_why="$(printf '%s' "$PTY_BODY" | grep -o 'ERR_[A-Z_]*' | head -1)"
+	echo "pty=fail:${_why:-http-$PTY_CODE}"
+	[ -n "$PTY_BODY" ] && printf '%s\n' "$PTY_BODY" | head -c 200 | sed 's/^/  pty! /'
+	;;
+esac
 
 self=$$; ppid=$PPID
 for d in /proc/[0-9]*; do

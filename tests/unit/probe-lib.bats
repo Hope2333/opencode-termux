@@ -63,6 +63,7 @@ GOOD='install=ok
 version=opencode v2.1.0
 expected=opencode v2.1.0
 serve=200
+pty=ok
 tui_bytes=1342
 typed_diff=2
 echoed=1
@@ -87,6 +88,23 @@ verdict() { run bash -c 'source "$1"; printf "%s\n" "$2" | probe_verdict' _ "$LI
 	bad="${GOOD/version=opencode v2.1.0/version=opencode v2.0.31}"
 	run bash -c 'source "$1"; printf "%s\n" "$2" | probe_verdict' _ "$LIB" "$bad"
 	[[ "$output" == *"v2.0.31"* ]]
+}
+
+@test "probe_verdict rejects a pty that cannot be created" {
+	bad="$(printf '%s\n' "$GOOD" | sed 's/^pty=ok$/pty=fail:ERR_DLOPEN_FAILED/')"
+	run bash -c 'source "$1"; printf "%s\n" "$2" | probe_verdict' _ "$LIB" "$bad"
+	[ "$status" -eq 0 ]
+	[[ "$output" == FAIL:* ]]
+	[[ "$output" == *"pty"* ]]
+	[[ "$output" == *"ERR_DLOPEN_FAILED"* ]]
+}
+
+@test "probe_verdict rejects a probe without a pty result (fail loud, not silent pass)" {
+	bad="$(printf '%s\n' "$GOOD" | grep -v '^pty=')"
+	run bash -c 'source "$1"; printf "%s\n" "$2" | probe_verdict' _ "$LIB" "$bad"
+	[ "$status" -eq 0 ]
+	[[ "$output" == FAIL:* ]]
+	[[ "$output" == *"pty"* ]]
 }
 
 @test "probe_verdict rejects a non-200 serve" {

@@ -108,14 +108,14 @@ for V in $VERS; do
 
 	get() { printf '%s\n' "$kv" | sed -n "s/^$1=//p" | head -1; }
 	version="$(get version)"; serve="$(get serve)"; tui="$(get tui_bytes)"
-	echoed="$(get echoed)"; alive="$(get alive15)"
+	echoed="$(get echoed)"; alive="$(get alive15)"; pty="$(get pty)"
 
-	printf '%-8s %-22s serve=%-4s tui=%-6s echo=%-3s alive=%-4s %s\n' \
-		"$V" "$version" "$serve" "$tui" "$echoed" "$alive" "$verdict"
+	printf '%-8s %-22s serve=%-4s pty=%-24s tui=%-6s echo=%-3s alive=%-4s %s\n' \
+		"$V" "$version" "$serve" "${pty:-missing}" "$tui" "$echoed" "$alive" "$verdict"
 	printf '%s\n' "$kv" | grep -E '^  [|!] ' | sed 's/^/         /'
 
 	status="PASS"; case "$verdict" in FAIL*) status="FAIL"; failures=$((failures + 1)) ;; esac
-	rows="$rows$V|$version|$serve|$tui|$echoed|$alive|$verdict\n"
+	rows="$rows$V|$version|$serve|$pty|$tui|$echoed|$alive|$verdict\n"
 	json_items="$json_items${json_items:+,}{\"version\":\"$V\",\"reported\":\"$version\",\"serve\":\"$serve\",\"tui_bytes\":\"$tui\",\"echoed\":\"$echoed\",\"alive15\":\"$alive\",\"verdict\":\"$verdict\"}"
 done
 

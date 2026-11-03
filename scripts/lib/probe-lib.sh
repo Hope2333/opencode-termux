@@ -65,19 +65,21 @@ probe_pkg_path() {
 #   install=ok        dpkg accepted the package
 #   version=<expected>  binary reports the version we asked for
 #   serve=200         HTTP server answers on /
+#   pty=ok            a terminal can be created over the API (bionic dlopen gate)
 #   tui_bytes>=800    a real TUI frame was captured (a CLI fallback is ~0-307B)
 #   echoed>=1         typed text came back on screen (input path alive)
 #   alive15=YES       still running 15s after the keystroke
 #   crash=0 degrade=0 no panic/SIGSEGV and no legacy-kernel downgrade banner
 probe_verdict() {
 	local kv key val
-	local install="" version="" expected="" serve="" tui_bytes="" echoed="" alive15="" crash="" degrade=""
+	local install="" version="" expected="" serve="" pty="" tui_bytes="" echoed="" alive15="" crash="" degrade=""
 	while IFS='=' read -r key val; do
 		case "$key" in
 		install) install="$val" ;;
 		version) version="$val" ;;
 		expected) expected="$val" ;;
 		serve) serve="$val" ;;
+		pty) pty="$val" ;;
 		tui_bytes) tui_bytes="$val" ;;
 		echoed) echoed="$val" ;;
 		alive15) alive15="$val" ;;
@@ -91,6 +93,11 @@ probe_verdict() {
 		echo "FAIL: version reported '$version', expected '$expected'"; return 0
 	fi
 	[ "$serve" = 200 ] || { echo "FAIL: serve (${serve:-none})"; return 0; }
+	# pty=ok is mandatory: without it the TUI renders but no terminal can ever
+	# be created (POST /api/pty -> ERR_DLOPEN_FAILED on bionic). A probe that
+	# does not report pty at all fails loudly instead of silently passing.
+	[ -n "$pty" ] || { echo "FAIL: pty (missing)"; return 0; }
+	[ "$pty" = ok ] || { echo "FAIL: pty ($pty)"; return 0; }
 	[ "${tui_bytes:-0}" -ge 800 ] 2>/dev/null || { echo "FAIL: tui (${tui_bytes:-0} B)"; return 0; }
 	[ "${echoed:-0}" -ge 1 ] 2>/dev/null || { echo "FAIL: input echo"; return 0; }
 	[ "$alive15" = YES ] || { echo "FAIL: not alive after 15s"; return 0; }
