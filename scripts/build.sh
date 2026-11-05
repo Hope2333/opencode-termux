@@ -43,8 +43,19 @@ fi
 # Install wrapped OpenCode binary (the real OpenCode app)
 if [[ -f "$RUNTIME_INPUT" ]]; then
 	install -m 755 "$RUNTIME_INPUT" "$LIB_DIR/runtime/opencode"
+	
+	# ── Patch glibc loader for Termux (fixes background service spawn) ───────
+	if command -v patchelf >/dev/null 2>&1; then
+	    log "patching glibc interpreter and RPATH for Termux compatibility"
+	    patchelf --set-interpreter /data/data/com.termux/files/usr/glibc/lib/ld-linux-aarch64.so.1 \
+	             --set-rpath /data/data/com.termux/files/usr/glibc/lib \
+	             "$LIB_DIR/runtime/opencode" 2>/dev/null || \
+	        log "WARN: patchelf failed (non-fatal, maybe already patched or not glibc)"
+	else
+	    log "WARN: patchelf not found, skipping glibc patch"
+	fi
+
 	log "installed OpenCode app binary"
-	RUNTIME_MODE="opencode-wrapped"
 else
 	fail "no runtime found at $RUNTIME_INPUT"
 fi
