@@ -84,7 +84,7 @@ um() {
 
 @test "validate_deb_payload accepts payload containing runtime binary" {
 	cat >"$STUB_BIN/dpkg-deb" <<'EOF'
-#!/usr/bin/env bash
+#!/data/data/com.termux/files/usr/bin/env bash
 echo "drwxr-xr-x root/root 0 ./usr/lib/opencode/runtime/opencode"
 EOF
 	chmod +x "$STUB_BIN/dpkg-deb"
@@ -94,7 +94,7 @@ EOF
 
 @test "validate_deb_payload rejects payload missing runtime binary" {
 	cat >"$STUB_BIN/dpkg-deb" <<'EOF'
-#!/usr/bin/env bash
+#!/data/data/com.termux/files/usr/bin/env bash
 echo "drwxr-xr-x root/root 0 ./usr/bin/somethingelse"
 EOF
 	chmod +x "$STUB_BIN/dpkg-deb"
@@ -105,7 +105,7 @@ EOF
 
 @test "validate_deb_payload dies when payload is unreadable/empty" {
 	cat >"$STUB_BIN/dpkg-deb" <<'EOF'
-#!/usr/bin/env bash
+#!/data/data/com.termux/files/usr/bin/env bash
 exit 1
 EOF
 	chmod +x "$STUB_BIN/dpkg-deb"

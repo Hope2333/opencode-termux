@@ -28,7 +28,7 @@ EOF
 # gh mock: prints whatever $GH_VIEW_TSV holds (first call = release view assets).
 write_gh_mock() {
   cat > "$WORK/bin/gh" <<'EOF'
-#!/usr/bin/env bash
+#!/data/data/com.termux/files/usr/bin/env bash
 case "$*" in
   *"release view"*) printf '%s\n' "${GH_VIEW_TSV:-}"; exit "${GH_VIEW_RC:-0}" ;;
   *"release upload"*) echo "mock-upload $*" >> "$GH_UPLOAD_LOG"; exit 0 ;;

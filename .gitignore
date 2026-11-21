@@ -31,8 +31,6 @@ package/bin/opencode
 .sisyphus/
 .omo/
 
-# Vendored test runner (fetched on demand by tests/bootstrap.sh)
-tests/vendor/
 
 # Python bytecode
 tools/transplant/__pycache__/

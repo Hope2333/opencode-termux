@@ -12,7 +12,7 @@ setup() {
 	STUB_BIN="$TEST_TMPDIR/bin"
 	mkdir -p "$STUB_BIN"
 	cat >"$STUB_BIN/make" <<'EOF'
-#!/usr/bin/env bash
+#!/data/data/com.termux/files/usr/bin/env bash
 # Print each received argument on its own line for exact assertions.
 printf '%s\n' "$@"
 EOF

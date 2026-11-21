@@ -260,7 +260,7 @@ status:
 selfcheck:
 	./tools/plugin-selfcheck.sh
 
-# Run the shell unit test suite (bats). Fetches a pinned bats-core on demand.
+# Run the shell unit test suite with the local offline runner.
 test:
 	./tests/run.sh
 

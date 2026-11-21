@@ -15,7 +15,7 @@ opencode-termux/
 ├── tools/                      # operator CLIs (transplant, fleet push, compressed-one, plugin manager)
 ├── packing/                    # package templates + manifests (mixed with generated outputs)
 ├── docs/                       # runbooks, architecture notes, history (docs/README.md is the index)
-├── tests/                      # bats unit tests + transplant golden
+├── tests/                      # local shell unit tests + transplant golden
 ├── artifacts/                  # generated runtime/staging outputs (disposable)
 └── .github/workflows/          # unit tests, upstream probe, CI handoff workflows
 ```

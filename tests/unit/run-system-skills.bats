@@ -68,7 +68,7 @@ hook() {
 
 @test "core_version parses semver from opencode --version" {
 	cat >"$STUB_BIN/opencode" <<'EOF'
-#!/usr/bin/env bash
+#!/data/data/com.termux/files/usr/bin/env bash
 echo "opencode 1.17.3"
 EOF
 	chmod +x "$STUB_BIN/opencode"
@@ -78,8 +78,13 @@ EOF
 }
 
 @test "core_version defaults to 0.0.0 when unavailable" {
-	# No opencode on PATH and no staged runtime binary under PREFIX.
-	hook "core_version"
+	# Shadow opencode with a silent failure and leave no staged runtime binary.
+	cat >"$STUB_BIN/opencode" <<'EOF'
+#!/data/data/com.termux/files/usr/bin/env bash
+exit 1
+EOF
+	chmod +x "$STUB_BIN/opencode"
+	run bash -c "export PATH=\"$STUB_BIN:\$PATH\"; source '$HOOK'; core_version"
 	[ "$status" -eq 0 ]
 	[ "$output" = "0.0.0" ]
 }
