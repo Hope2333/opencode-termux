@@ -1,0 +1,242 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# tools/official-glibc/install.sh — 在 Termux 上安装隔离的官方 glibc opencode
+#
+# 用户级回退方案：不动 native bionic 主线，不产包族，不改系统包。
+# 背景与坑位见 issue #54；shim 源码见同目录 getifaddrs_shim.c。
+#
+# 默认只写 ~/.local 下的目录。改全局 DNS、改 pty helper、导入旧库都是显式 opt-in。
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+P="${PREFIX:-/data/data/com.termux/files/usr}"
+GLIBC_LIB="$P/glibc/lib"
+GLIBC_LD="$GLIBC_LIB/ld-linux-aarch64.so.1"
+HOME_DIR="${HOME:-/data/data/com.termux/files/home}"
+
+VER="2.4.0"
+PORT="49474"
+DNS=""
+PATCH_PTY=0
+IMPORT_DB=""
+DEST=""
+SHA256="${SHA256:-}"
+
+log() { printf '[oc-glibc] %s\n' "$*" >&2; }
+die() { printf '[oc-glibc] ERROR: %s\n' "$*" >&2; exit 1; }
+need() { command -v "$1" >/dev/null 2>&1 || die "缺少命令: $1（先 pkg install glibc patchelf-glibc clang binutils curl）"; }
+
+usage() {
+	cat <<'EOF'
+用法: tools/official-glibc/install.sh [选项]
+
+  --ver VER          官方版本，默认 2.4.0
+  --port N           隔离服务端口，默认 49474
+  --dns IP           可选：把 glibc 的 resolv.conf 改为该 DNS（自动备份）
+  --patch-pty        可选：给共用的 opencode-pty helper 改 INTERP（自动备份）
+  --import-db PATH   可选：把该 SQLite 库在线备份到新版隔离数据目录
+  --dest DIR         安装根目录，默认 $HOME/.local
+  --help             显示本帮助
+
+示例:
+  ./tools/official-glibc/install.sh
+  ./tools/official-glibc/install.sh --dns 223.5.5.5 --patch-pty
+
+依赖：glibc、patchelf-glibc、clang、binutils、curl（pkg install ...）。
+非 2.4.0 版本必须显式提供 SHA256 环境变量（tarball 的 sha256）。
+EOF
+}
+
+while (($#)); do
+	case "$1" in
+		--ver)        [ $# -ge 2 ] || die "--ver 需要参数"; VER="$2"; shift 2 ;;
+		--port)       [ $# -ge 2 ] || die "--port 需要参数"; PORT="$2"; shift 2 ;;
+		--dns)        [ $# -ge 2 ] || die "--dns 需要参数"; DNS="$2"; shift 2 ;;
+		--patch-pty)  PATCH_PTY=1; shift ;;
+		--import-db)  [ $# -ge 2 ] || die "--import-db 需要参数"; IMPORT_DB="$2"; shift 2 ;;
+		--dest)       [ $# -ge 2 ] || die "--dest 需要参数"; DEST="$2"; shift 2 ;;
+		-h|--help)    usage; exit 0 ;;
+		*)            die "未知参数: $1（用 --help 查看用法）" ;;
+	esac
+done
+
+[[ "$VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "版本号格式不对: $VER"
+[[ "$PORT" =~ ^[0-9]+$ ]] || die "端口必须是数字: $PORT"
+[ -n "$DNS" ] && [[ ! "$DNS" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] && die "DNS 必须是 IPv4: $DNS"
+
+need curl
+need tar
+need clang
+need sha256sum
+
+# Termux 的 patchelf 由 patchelf-glibc 包装到 $PREFIX/glibc/bin，不一定在 PATH 里。
+PATCHELF=""
+for candidate in patchelf "$P/glibc/bin/patchelf"; do
+	if command -v "$candidate" >/dev/null 2>&1 || [ -x "$candidate" ]; then
+		PATCHELF="$candidate"
+		break
+	fi
+done
+[ -n "$PATCHELF" ] || die "缺少 patchelf（先 pkg install patchelf-glibc）"
+
+# patchelf 自己也是 glibc 二进制：从 bionic shell 调它必须先清掉 termux-exec
+# 预加载，并显式给出库路径，否则会报 "libc.so: invalid ELF header"。
+run_patchelf() {
+	env -u LD_PRELOAD LD_LIBRARY_PATH="$GLIBC_LIB" "$PATCHELF" "$@"
+}
+
+[ -f "$GLIBC_LD" ] || die "找不到 glibc loader: $GLIBC_LD（先 pkg install glibc）"
+[ "$(uname -m)" = "aarch64" ] || die "只支持 aarch64"
+[ -f "$SCRIPT_DIR/getifaddrs_shim.c" ] || die "找不到 shim 源码: $SCRIPT_DIR/getifaddrs_shim.c"
+
+# 版本钉死：2.4.0 是本轮实测版本；其他版本必须自带校验和。
+case "$VER" in
+	2.4.0) SHA256="0b6e6e2a25939bba2e6bdd7d07e86c9127c1afc52f5f0c084870f5786ec3f474" ;;
+	*)     [ -n "$SHA256" ] || die "版本 $VER 没有内置 sha256，请设置 SHA256=<tarball sha256>" ;;
+esac
+
+DEST="${DEST:-$HOME_DIR/.local}"
+OPT_DIR="$DEST/opt/opencode-official-$VER"
+STATE_DIR="$DEST/state/oc-official-$VER"
+BIN_DIR="$DEST/bin"
+LAUNCHER="$BIN_DIR/opencode2"
+STAMP="$(date +%Y%m%d%H%M%S)"
+
+CACHE="$HOME_DIR/.cache"
+mkdir -p "$CACHE"
+TMP="$(mktemp -d "$CACHE/oc-official-glibc.XXXXXX")"
+trap 'rm -rf "$TMP"' EXIT
+
+URL="https://registry.npmjs.org/@opencode/cli-linux-arm64/-/cli-linux-arm64-${VER}.tgz"
+TGZ="$TMP/opencode.tgz"
+log "下载 $URL"
+curl -fsSL --retry 3 -o "$TGZ" "$URL" || die "下载失败"
+ACTUAL="$(sha256sum "$TGZ" | awk '{print $1}')"
+[ "$ACTUAL" = "$SHA256" ] || die "sha256 不匹配: 期望 $SHA256，实际 $ACTUAL"
+tar -xzf "$TGZ" -C "$TMP" || die "解包失败"
+BIN_SRC="$TMP/package/bin/opencode"
+[ -x "$BIN_SRC" ] || die "tarball 里找不到 package/bin/opencode"
+
+mkdir -p "$OPT_DIR/bin" "$OPT_DIR/lib" "$BIN_DIR" \
+	"$STATE_DIR/state" "$STATE_DIR/share" "$STATE_DIR/config"
+[ -e "$LAUNCHER" ] && cp -p "$LAUNCHER" "$LAUNCHER.bak-$STAMP"
+
+install -m 755 "$BIN_SRC" "$OPT_DIR/bin/opencode"
+cp "$SCRIPT_DIR/getifaddrs_shim.c" "$OPT_DIR/lib/getifaddrs_shim.c"
+
+# 只改 INTERP。给 2.4.0 加 RUNPATH 会段错误；库路径交给启动器的 LD_LIBRARY_PATH。
+run_patchelf --set-interpreter "$GLIBC_LD" "$OPT_DIR/bin/opencode"
+[ "$(run_patchelf --print-interpreter "$OPT_DIR/bin/opencode")" = "$GLIBC_LD" ] || die "INTERP 校验失败"
+
+log "编译 getifaddrs shim"
+clang --target=aarch64-linux-android -nostdlib -shared -fPIC \
+	-I"$P/glibc/include" \
+	-o "$OPT_DIR/lib/getifaddrs-shim.so" "$OPT_DIR/lib/getifaddrs_shim.c" \
+	|| die "shim 编译失败"
+if command -v readelf >/dev/null 2>&1; then
+	readelf -d "$OPT_DIR/lib/getifaddrs-shim.so" | grep -q '(NEEDED)' \
+		&& die "shim 不应依赖外部库"
+fi
+
+# 启动器：XDG 与端口都隔离，主配置用软链共享。
+cat > "$LAUNCHER" <<EOF
+#!$P/bin/bash
+# Generated by tools/official-glibc/install.sh — 不要直接编辑。
+set -euo pipefail
+BIN="$OPT_DIR/bin/opencode"
+SHIM="$OPT_DIR/lib/getifaddrs-shim.so"
+GLIBC_LIB="$GLIBC_LIB"
+STATE="$STATE_DIR"
+
+export XDG_STATE_HOME="\$STATE/state"
+export XDG_DATA_HOME="\$STATE/share"
+export XDG_CONFIG_HOME="\$STATE/config"
+mkdir -p "\$XDG_STATE_HOME/opencode" "\$XDG_DATA_HOME/opencode" "\$XDG_CONFIG_HOME/opencode"
+
+MAIN_CFG="$HOME_DIR/.config/opencode"
+for f in opencode.jsonc opencode.json cli.json; do
+	if [ -f "\$MAIN_CFG/\$f" ] && [ ! -e "\$XDG_CONFIG_HOME/opencode/\$f" ]; then
+		ln -s "\$MAIN_CFG/\$f" "\$XDG_CONFIG_HOME/opencode/\$f" 2>/dev/null || true
+	fi
+done
+
+SERVICE="\$XDG_CONFIG_HOME/opencode/service.json"
+if [ ! -f "\$SERVICE" ]; then
+	printf '{\n  "hostname": "0.0.0.0",\n  "port": $PORT\n}\n' > "\$SERVICE"
+fi
+
+# termux-exec 会把 glibc 的 libc.so（文本链接脚本）当共享库加载。
+unset LD_PRELOAD
+export LD_LIBRARY_PATH="\$GLIBC_LIB"
+export LD_PRELOAD="\$SHIM"
+exec "\$BIN" "\$@"
+EOF
+chmod 755 "$LAUNCHER"
+
+# 可选：补 nsswitch.conf + 换 DNS（改全局文件，先备份）。
+if [ -n "$DNS" ]; then
+	NSS="$P/glibc/etc/nsswitch.conf"
+	if [ -e "$NSS" ]; then
+		log "$NSS 已存在，不覆盖"
+	else
+		cat > "$NSS" <<'EOF'
+passwd:         files
+group:          files
+shadow:         files
+gshadow:        files
+hosts:          files dns
+networks:       files dns
+protocols:      files
+services:       files
+ethers:         files
+rpc:            files
+netgroup:       files
+automount:      files
+EOF
+		log "已创建 $NSS"
+	fi
+	RESOLV="$P/etc/resolv.conf"
+	if [ -f "$RESOLV" ]; then
+		cp -p "$RESOLV" "$RESOLV.bak-$STAMP"
+	fi
+	printf 'nameserver %s\n' "$DNS" > "$RESOLV"
+	log "resolv.conf -> $DNS（备份 $RESOLV.bak-$STAMP）"
+fi
+
+# 可选：PTY helper 也是 glibc 二进制，且新旧两版共用同一路径。
+if [ "$PATCH_PTY" = 1 ]; then
+	HELPER_ROOT="$HOME_DIR/.cache/opencode/bin/opencode-pty"
+	[ -d "$HELPER_ROOT" ] || die "找不到 pty helper 目录: $HELPER_ROOT"
+	COUNT=0
+	while IFS= read -r h; do
+		cp -p "$h" "$h.bak-$STAMP"
+		run_patchelf --set-interpreter "$GLIBC_LD" "$h"
+		COUNT=$((COUNT + 1))
+	done < <(find "$HELPER_ROOT" -type f -name opencode-pty)
+	log "已给 $COUNT 个 pty helper 改 INTERP"
+fi
+
+# 可选：在线备份旧库到隔离数据目录（老库可能仍被 2.2.5 以 WAL 占用）。
+if [ -n "$IMPORT_DB" ]; then
+	need python3
+	[ -f "$IMPORT_DB" ] || die "找不到旧库: $IMPORT_DB"
+	TARGET="$STATE_DIR/share/opencode/opencode.db"
+	[ ! -e "$TARGET" ] || die "目标库已存在，拒绝覆盖: $TARGET"
+	mkdir -p "$(dirname "$TARGET")"
+	python3 - "$IMPORT_DB" "$TARGET" <<'PY'
+import sqlite3, sys
+src, dst = sys.argv[1], sys.argv[2]
+s = sqlite3.connect(f"file:{src}?mode=ro", uri=True)
+d = sqlite3.connect(dst)
+s.backup(d)
+d.close()
+s.close()
+PY
+	log "旧库已导入 $TARGET（之后由 2.4.0 自己跑剩余迁移）"
+fi
+
+OUT="$("$LAUNCHER" --version 2>&1)" || die "启动器验证失败: $OUT"
+printf '%s\n' "$OUT" | grep -q "$VER" || die "版本验证失败: $OUT"
+
+log "完成"
+printf '  启动器: %s\n  安装目录: %s\n  隔离状态: %s\n' "$LAUNCHER" "$OPT_DIR" "$STATE_DIR"
+printf '  验证: %s\n' "$OUT"
