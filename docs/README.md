@@ -66,7 +66,8 @@
 |---|---|---|---|
 | [Execution Checklist](runbooks/install-and-verify.md) | active | 全代 | 2026-10-24 |
 | [Local Production Blueprint (No GitHub Actions)](runbooks/local-production.md) | active | wrapper 线 | 2026-10-24 |
-| [D2 — 机器与环境手册](runbooks/machine-env.md) | active | 全代 | 2026-10-24 |
+| [D2 — 机器与环境手册](runbooks/machine-env.md) | active | 全代 | 2026-11-03 |
+| [官方 2.4.0 glibc 二进制在 Termux 的用户级回退方案](runbooks/official-glibc-240-fallback.md) | active | v2 2.4.0（官方 `@opencode/cli-linux-arm64`） | — |
 | [发布运行手册（Release Runbook）](runbooks/release-runbook.md) | active | 全代 | 2026-10-29 |
 
 ### `reference`
@@ -83,7 +84,7 @@
 | [22 - opencode web 的 Termux sv 服务](reference/termux-services.md) | active | 全代 | 2026-10-24 |
 | [TUI 可达性判定表（rc6-b2-upx-tui 终版）](reference/tui-reachability.md) | active | v1/v2 | 2026-10-24 |
 | [上游 issue 与同步台账](reference/upstream-issues.md) | active | 全代（v1/v2） | 2026-10-24 |
-| [Version probe (device criteria)](reference/version-probe.md) | active | — | — |
+| [Version probe (device criteria)](reference/version-probe.md) | active | — | 2026-10-30 |
 
 ### `history`
 
