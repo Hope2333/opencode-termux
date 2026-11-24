@@ -49,6 +49,7 @@
 | [Make Maintainer Surface](build/make-maintainer.md) | active | 全代 | 2026-10-24 |
 | [native 线演进史 — 从 ELF 拼接手术到 bionic 真编译](build/native-line-evolution.md) | active | v1/v2（演进史） | 2026-10-24 |
 | [transplant — native-android 移植操作手册](build/transplant.md) | active | v1 1.18.x（A 线） | 2026-10-24 |
+| [wrapper 线：glibc 加载形态的三个判定](build/wrapper.md) | active | v1/v2 wrapper 兼容线（含早期 glibc 加载形态） | — |
 
 ### `packaging`
 
@@ -66,7 +67,7 @@
 |---|---|---|---|
 | [Execution Checklist](runbooks/install-and-verify.md) | active | 全代 | 2026-10-24 |
 | [Local Production Blueprint (No GitHub Actions)](runbooks/local-production.md) | active | wrapper 线 | 2026-10-24 |
-| [D2 — 机器与环境手册](runbooks/machine-env.md) | active | 全代 | 2026-10-24 |
+| [D2 — 机器与环境手册](runbooks/machine-env.md) | active | 全代 | 2026-11-03 |
 | [发布运行手册（Release Runbook）](runbooks/release-runbook.md) | active | 全代 | 2026-10-29 |
 
 ### `reference`
@@ -83,7 +84,7 @@
 | [22 - opencode web 的 Termux sv 服务](reference/termux-services.md) | active | 全代 | 2026-10-24 |
 | [TUI 可达性判定表（rc6-b2-upx-tui 终版）](reference/tui-reachability.md) | active | v1/v2 | 2026-10-24 |
 | [上游 issue 与同步台账](reference/upstream-issues.md) | active | 全代（v1/v2） | 2026-10-24 |
-| [Version probe (device criteria)](reference/version-probe.md) | active | — | — |
+| [Version probe (device criteria)](reference/version-probe.md) | active | — | 2026-10-30 |
 
 ### `history`
 
